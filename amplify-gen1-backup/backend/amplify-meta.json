@@ -1,5 +1,5 @@
 {
-  "main": {
+  "providers": {
     "awscloudformation": {
       "AuthRoleName": "amplify-syndicate-main-425ee-authRole",
       "UnauthRoleArn": "arn:aws:iam::977099023383:role/amplify-syndicate-main-425ee-unauthRole",

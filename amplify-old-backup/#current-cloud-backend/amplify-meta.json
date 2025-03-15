@@ -1,0 +1,58 @@
+{
+  "providers": {
+    "awscloudformation": {
+      "AuthRoleName": "amplify-syndicate-dev-0cb4c-authRole",
+      "UnauthRoleArn": "arn:aws:iam::977099023383:role/amplify-syndicate-dev-0cb4c-unauthRole",
+      "AuthRoleArn": "arn:aws:iam::977099023383:role/amplify-syndicate-dev-0cb4c-authRole",
+      "Region": "us-east-1",
+      "DeploymentBucketName": "amplify-syndicate-dev-0cb4c-deployment",
+      "UnauthRoleName": "amplify-syndicate-dev-0cb4c-unauthRole",
+      "StackName": "amplify-syndicate-dev-0cb4c",
+      "StackId": "arn:aws:cloudformation:us-east-1:977099023383:stack/amplify-syndicate-dev-0cb4c/255e8900-0196-11f0-92bf-12ec7a6f0bf3",
+      "AmplifyAppId": "d1zyz7atjvageo"
+    }
+  },
+  "auth": {
+    "syndicateauth": {
+      "service": "Cognito",
+      "providerPlugin": "awscloudformation",
+      "dependsOn": [],
+      "customAuth": false,
+      "frontendAuthConfig": {
+        "socialProviders": [],
+        "usernameAttributes": [
+          "EMAIL"
+        ],
+        "signupAttributes": [
+          "EMAIL",
+          "FAMILY_NAME",
+          "GIVEN_NAME"
+        ],
+        "passwordProtectionSettings": {
+          "passwordPolicyMinLength": 8,
+          "passwordPolicyCharacters": []
+        },
+        "mfaConfiguration": "OFF",
+        "mfaTypes": [
+          "SMS"
+        ],
+        "verificationMechanisms": [
+          "EMAIL"
+        ]
+      },
+      "providerMetadata": {
+        "s3TemplateURL": "https://s3.amazonaws.com/amplify-syndicate-dev-0cb4c-deployment/amplify-cfn-templates/auth/syndicateauth-cloudformation-template.json",
+        "logicalId": "authsyndicateauth"
+      },
+      "lastPushTimeStamp": "2025-03-15T12:18:00.120Z",
+      "output": {
+        "UserPoolId": "us-east-1_zHl0E0PI2",
+        "AppClientIDWeb": "3hd8cck2bij6lddp4pn1vkc0h1",
+        "AppClientID": "4ks67aagdohf2476ht8oloa4n0",
+        "UserPoolArn": "arn:aws:cognito-idp:us-east-1:977099023383:userpool/us-east-1_zHl0E0PI2",
+        "UserPoolName": "syndicateuserpool"
+      },
+      "lastPushDirHash": "1pVYcQxlAvpvUcKzGqH8L5HeeY4="
+    }
+  }
+}
