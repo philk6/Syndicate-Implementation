@@ -18,5 +18,5 @@ applications:
           - 'node_modules/**/*'
       cache:
         paths:
-          - node_modules/**/*
+          - syndicate/node_modules/**/*
     appRoot: syndicate
