@@ -4,19 +4,15 @@ applications:
       phases:
         preBuild:
           commands:
-            - cd syndicate
             - npm install
         build:
           commands:
             - npm run build
       artifacts:
-        baseDirectory: syndicate
+        baseDirectory: .next
         files:
-          - '.next/**/*'
-          - 'public/**/*'
-          - 'package.json'
-          - 'node_modules/**/*'
+          - '**/*'
       cache:
         paths:
           - node_modules/**/*
-    appRoot: syndicate
+    appRoot: syndicate/syndicate
