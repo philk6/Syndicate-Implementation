@@ -3,7 +3,8 @@ backend:
   phases:
     build:
       commands:
-        - amplifyPush --simple # Generates amplify_outputs.json
+        - amplifyPush --simple
+        - if [ -f amplify_outputs.json ]; then cp amplify_outputs.json ./app/; else echo "amplify_outputs.json not found" && ls -R > build_output.txt; fi
 frontend:
   phases:
     preBuild:
@@ -11,13 +12,11 @@ frontend:
         - npm ci
     build:
       commands:
-        - cp amplify_outputs.json ./app/ # Match import path
         - npm run build
   artifacts:
     baseDirectory: .next
     files:
       - '**/*'
-  cache:
-    paths:
-      - node_modules/**/*
-      
+    cache:
+      paths:
+        - node_modules/**/*
