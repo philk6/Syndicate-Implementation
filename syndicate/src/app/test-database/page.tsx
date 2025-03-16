@@ -1,9 +1,10 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { OrderProduct } from '../../../lib/types';
 
 export default function TestDatabasePage() {
-  const [data, setData] = useState<any[] | null>(null);
+  const [data, setData] = useState<OrderProduct[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
 

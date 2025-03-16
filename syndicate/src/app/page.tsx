@@ -2,18 +2,23 @@
 
 import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
+import { OrderStatus } from '../../lib/types';
 
 export default function Home() {
-  const [statuses, setStatuses] = useState<any[]>([]);
+  const [statuses, setStatuses] = useState<OrderStatus[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function fetchStatuses() {
-      const { data, error } = await supabase.from('order_statuses').select('*');
+      const { data, error } = await supabase
+        .from('order_statuses')
+        .select('*')
+        .returns<OrderStatus[]>();
+        
       if (error) {
         console.error('Error fetching statuses:', error);
       } else {
-        setStatuses(data);
+        setStatuses(data || []);
       }
       setLoading(false);
     }

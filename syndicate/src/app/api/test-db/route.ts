@@ -1,9 +1,13 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '../../../../lib/supabase';
+import { OrderProduct } from '../../../../lib/types';
 
 export async function GET() {
   try {
-    const { data, error } = await supabase.from('order_products').select('*');
+    const { data, error } = await supabase
+      .from('order_products')
+      .select('*')
+      .returns<OrderProduct[]>();
     
     if (error) {
       console.error('Database error:', error);

@@ -1,0 +1,17 @@
+version: 1
+frontend:
+  phases:
+    preBuild:
+      commands:
+        - cd syndicate
+        - npm install
+    build:
+      commands:
+        - npm run build
+  artifacts:
+    baseDirectory: syndicate/.next
+    files:
+      - '**/*'
+  cache:
+    paths:
+      - syndicate/node_modules/**/* 

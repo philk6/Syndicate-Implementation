@@ -1,8 +1,12 @@
 import { supabase } from '../../../lib/supabase';
+import { OrderProduct } from '../../../lib/types';
 
 export default async function TestDatabaseDirectPage() {
   // This runs on the server
-  const { data, error } = await supabase.from('order_products').select('*');
+  const { data, error } = await supabase
+    .from('order_products')
+    .select('*')
+    .returns<OrderProduct[]>();
   
   return (
     <div className="p-6">
