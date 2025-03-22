@@ -53,6 +53,11 @@ export default function OrdersPage() {
     fetchOrders();
   }, [isAuthenticated, loading, router]);
 
+  // Function to navigate to order detail page
+  const handleOrderClick = (orderId: number) => {
+    router.push(`/orders/${orderId}`);
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-900 p-6 flex items-center justify-center">
@@ -85,7 +90,11 @@ export default function OrdersPage() {
               </TableHeader>
               <TableBody>
                 {orders.map((order) => (
-                  <TableRow key={order.order_id} className="hover:bg-[#35353580] transition-colors focus:ring-[#35353580] border-[#6a6a6a80]">
+                  <TableRow 
+                    key={order.order_id} 
+                    className="hover:bg-[#35353580] transition-colors focus:ring-[#35353580] border-[#6a6a6a80] cursor-pointer"
+                    onClick={() => handleOrderClick(order.order_id)}
+                  >
                     <TableCell className="text-gray-200">{order.order_id}</TableCell>
                     <TableCell className="text-gray-200">{order.leadtime}</TableCell>
                     <TableCell className="text-gray-200">
