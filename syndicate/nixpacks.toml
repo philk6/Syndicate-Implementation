@@ -1,15 +1,11 @@
-# Specify the providers (Node.js in this case)
 [phases.setup]
-  nixPkgs = ['nodejs_18', 'npm-9_x']
+nixPkgs = ['nodejs_18', 'npm-9_x']
 
-# Install dependencies
 [phases.install]
-  cmds = ['npm ci']
+cmds = ['npm ci']
 
-# Build the Next.js app
 [phases.build]
-  cmds = ['npm run build']
+cmds = ['npm run build']
 
-# Start the app
 [start]
-  cmd = 'npm run start'
+cmd = 'npm run start'
