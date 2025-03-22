@@ -13,8 +13,17 @@ import {
   TableRow,
 } from '@/components/ui/table';
 
+// Define the Order type based on Supabase data
+interface Order {
+  order_id: number;
+  leadtime: number;
+  deadline: string;
+  label_upload_deadline: string;
+  order_statuses: { description: string }[]; // Updated to an array
+}
+
 export default function OrdersPage() {
-  const [orders, setOrders] = useState<any[]>([]);
+  const [orders, setOrders] = useState<Order[]>([]); // Use Order[] instead of any[]
   const [loadingOrders, setLoadingOrders] = useState(true);
   const { isAuthenticated, loading } = useAuth();
   const router = useRouter();
@@ -85,7 +94,9 @@ export default function OrdersPage() {
                     <TableCell className="text-gray-200">
                       {new Date(order.label_upload_deadline).toLocaleString()}
                     </TableCell>
-                    <TableCell className="text-gray-200">{order.order_statuses.description}</TableCell>
+                    <TableCell className="text-gray-200">
+                      {order.order_statuses[0]?.description || 'N/A'} {/* Handle array */}
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>

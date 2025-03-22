@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { supabase } from '../../../lib/supabase';
 import { useAuth } from '../../../lib/auth';
+import Image from 'next/image';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -28,7 +29,8 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-[#080808] p-4">
-      <img src="/syndicate_logo.jpeg" alt="Logo" className="w-32 h-auto mb-4" />
+      {/* <img src="/syndicate_logo.jpeg" alt="Logo" className="w-32 h-auto mb-4" /> */}
+      <Image src="/syndicate_logo.jpeg" alt="Logo" width={519} height={519} className="w-32 h-auto mb-4" />
       <h1 className="text-2xl font-bold text-[#bfbfbf] text-center mb-6">Sign in to your account</h1>
       <div className="card">
         <div className="">
@@ -69,7 +71,7 @@ export default function LoginPage() {
             Login
           </button>
           <p className="text-center text-sm text-[#bfbfbf]">
-            Don't have an account?{' '}
+            {"Don't have an account?"}{' '}
             <a href="/signup" className="text-[#c8aa64] hover:text-[#d3bb82] underline">
               Sign Up
             </a>

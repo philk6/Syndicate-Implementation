@@ -1,22 +1,7 @@
 import './globals.css';
 import { ReactNode } from 'react';
 import { AuthProvider } from '../../lib/auth';
-import { AppSidebar } from '@/components/app-sidebar';
 import { ClientLayoutWithConditionalSidebar } from '@/components/client-layout-with-sidebar';
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
-} from "@/components/ui/breadcrumb"
-import { Separator } from "@/components/ui/separator"
-import {
-  SidebarInset,
-  SidebarProvider,
-  SidebarTrigger,
-} from "@/components/ui/sidebar"
 
 export const metadata = {
   title: 'Syndicate - Group Buying for Amazon Sellers',
