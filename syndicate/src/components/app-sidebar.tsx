@@ -103,8 +103,8 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             <SidebarMenuButton size="lg" asChild>
               <a href="#">
                 <div className="flex flex-col gap-0.5 leading-none">
-                  <span className="font-semibold">The Syndicate - Buyers Portal</span>
-                  <span className="">v0.0.1 Alpha</span>
+                  <span className="text-[#c8aa64] font-bold">The Syndicate - Buyers Portal</span>
+                  <span className="text-[#bfbfbf]">v0.0.1 Alpha</span>
                 </div>
               </a>
             </SidebarMenuButton>

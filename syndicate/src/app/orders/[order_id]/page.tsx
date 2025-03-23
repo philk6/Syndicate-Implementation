@@ -14,48 +14,60 @@ import {
   TableRow,
 } from '@/components/ui/table';
 
-// Define the Order type with more complete information
+// Define the Order type
 interface Order {
   order_id: number;
   leadtime: number;
   deadline: string;
   label_upload_deadline: string;
   order_statuses: { description: string }[];
-  // Add more fields as needed
 }
 
 // Product interface for order items
 interface OrderProduct {
-  id?: number;
-  sequence?: number;
+  sequence: number;
   order_id: number;
-  product_id?: number;
-  asin?: string;
+  asin: string;
   quantity: number;
   price: number;
   description?: string;
-  created_at?: string;
-  updated_at?: string;
 }
 
 export default function OrderDetailPage({ params }: { params: { order_id: string } }) {
   const orderId = parseInt(params.order_id);
   const [order, setOrder] = useState<Order | null>(null);
   const [products, setProducts] = useState<OrderProduct[]>([]);
+  const [ungatedStatus, setUngatedStatus] = useState<Record<number, boolean>>({});
+  const [companyId, setCompanyId] = useState<number | null>(null);
+  const [maxInvestment, setMaxInvestment] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
-  const { isAuthenticated, loading: authLoading } = useAuth();
+  const { isAuthenticated, loading: authLoading, user } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
-    if (authLoading) return; // Wait until auth check completes
+    if (authLoading) return;
 
     if (!isAuthenticated) {
       router.push('/login');
       return;
     }
 
-    async function fetchOrderData() {
+    async function fetchData() {
       setLoading(true);
+
+      // Fetch user's company_id
+      const { data: userData, error: userError } = await supabase
+        .from('users')
+        .select('company_id')
+        .eq('email', user?.email)
+        .single();
+
+      if (userError) {
+        console.error('Error fetching user data:', userError);
+        setLoading(false);
+        return;
+      }
+      setCompanyId(userData.company_id);
 
       // Fetch order details
       const { data: orderData, error: orderError } = await supabase
@@ -73,11 +85,46 @@ export default function OrderDetailPage({ params }: { params: { order_id: string
       // Fetch order products
       const { data: productData, error: productError } = await supabase
         .from('order_products')
-        .select('*')
+        .select('sequence, order_id, asin, quantity, price, description')
         .eq('order_id', orderId);
 
       if (productError) {
         console.error('Error fetching order products:', productError);
+      }
+
+      // Fetch existing max_investment from order_company
+      if (userData.company_id) {
+        const { data: companyOrderData, error: companyOrderError } = await supabase
+          .from('order_company')
+          .select('max_investment')
+          .eq('order_id', orderId)
+          .eq('company_id', userData.company_id)
+          .single();
+
+        if (companyOrderError && companyOrderError.code !== 'PGRST116') { // PGRST116 is "no rows"
+          console.error('Error fetching order company data:', companyOrderError);
+        } else if (companyOrderData) {
+          setMaxInvestment(companyOrderData.max_investment);
+        }
+      }
+
+      // Fetch existing ungated status for this company
+      if (userData.company_id) {
+        const { data: ungatedData, error: ungatedError } = await supabase
+          .from('order_products_company')
+          .select('sequence, ungated')
+          .eq('order_id', orderId)
+          .eq('company_id', userData.company_id);
+
+        if (ungatedError) {
+          console.error('Error fetching ungated status:', ungatedError);
+        } else {
+          const ungatedMap = ungatedData?.reduce((acc, item) => {
+            acc[item.sequence] = item.ungated;
+            return acc;
+          }, {} as Record<number, boolean>);
+          setUngatedStatus(ungatedMap || {});
+        }
       }
 
       setOrder(orderData);
@@ -85,8 +132,53 @@ export default function OrderDetailPage({ params }: { params: { order_id: string
       setLoading(false);
     }
 
-    fetchOrderData();
-  }, [orderId, isAuthenticated, authLoading, router]);
+    fetchData();
+  }, [orderId, isAuthenticated, authLoading, router, user]);
+
+  const handleUngatedChange = async (sequence: number, checked: boolean) => {
+    if (!companyId) return;
+
+    setUngatedStatus(prev => ({ ...prev, [sequence]: checked }));
+
+    const { error } = await supabase
+      .from('order_products_company')
+      .upsert({
+        order_id: orderId,
+        sequence,
+        company_id: companyId,
+        ungated: checked,
+        quantity: products.find(p => p.sequence === sequence)?.quantity || 0
+      }, {
+        onConflict: ['order_id', 'sequence', 'company_id']
+      });
+
+    if (error) {
+      console.error('Error updating ungated status:', error);
+      setUngatedStatus(prev => ({ ...prev, [sequence]: !checked }));
+    }
+  };
+
+  const handleMaxInvestmentChange = async (value: string) => {
+    if (!companyId) return;
+
+    const newMaxInvestment = parseFloat(value) || 0;
+    setMaxInvestment(newMaxInvestment);
+
+    const { error } = await supabase
+      .from('order_company')
+      .upsert({
+        order_id: orderId,
+        company_id: companyId,
+        max_investment: newMaxInvestment
+      }, {
+        onConflict: ['order_id', 'company_id']
+      });
+
+    if (error) {
+      console.error('Error updating max investment:', error);
+      setMaxInvestment(null); // Revert on error
+    }
+  };
 
   if (authLoading || loading) {
     return (
@@ -102,7 +194,7 @@ export default function OrderDetailPage({ params }: { params: { order_id: string
       <div className="mx-auto">
         <div className="flex items-center mb-6">
           <Link href="/orders" className="text-blue-500 hover:text-blue-400 mr-4">
-            &larr; Back to Orders
+            ← Back to Orders
           </Link>
           <h1 className="text-3xl font-bold text-white">Order Not Found</h1>
         </div>
@@ -116,7 +208,7 @@ export default function OrderDetailPage({ params }: { params: { order_id: string
       <div className="mx-auto">
         <div className="flex items-center mb-6">
           <Link href="/orders" className="text-[#c8aa64] hover:text-[#9d864e] mr-4">
-            &larr; Back to Orders
+            ← Back to Orders
           </Link>
         </div>
 
@@ -148,25 +240,31 @@ export default function OrderDetailPage({ params }: { params: { order_id: string
         </div>
 
         <div className="bg-[#18181A] rounded-lg p-6">
-          {/* <h2 className="text-xl font-semibold text-white mb-4">Order Products</h2> */}
           {products.length === 0 ? (
             <p className="text-gray-400">No products found for this order.</p>
           ) : (
             <Table className='bg-[#18181A]'>
               <TableHeader>
                 <TableRow className="border-[#6a6a6a80] hover:bg-[#18181A]">
-                  {products[0].asin && <TableHead className="text-gray-300">ASIN</TableHead>}
-                  {products[0].sequence && <TableHead className="text-gray-300">Sequence</TableHead>}
+                  <TableHead className="text-gray-300">ASIN</TableHead>
+                  <TableHead className="text-gray-300">Ungated?</TableHead>
                   <TableHead className="text-gray-300">Price</TableHead>
                   <TableHead className="text-gray-300">Quantity</TableHead>
                   {products[0].description && <TableHead className="text-gray-300">Description</TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {products.map((product, index) => (
-                  <TableRow key={index} className="hover:bg-[#35353580] transition-colors border-[#6a6a6a80]">
-                    {product.asin && <TableCell className="text-gray-200">{product.asin}</TableCell>}
-                    {product.sequence && <TableCell className="text-gray-200">{product.sequence}</TableCell>}
+                {products.map((product) => (
+                  <TableRow key={product.sequence} className="hover:bg-[#35353580] transition-colors border-[#6a6a6a80]">
+                    <TableCell className="text-gray-200">{product.asin}</TableCell>
+                    <TableCell className="text-gray-200">
+                      <input
+                        type="checkbox"
+                        checked={ungatedStatus[product.sequence] || false}
+                        onChange={(e) => handleUngatedChange(product.sequence, e.target.checked)}
+                        className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded"
+                      />
+                    </TableCell>
                     <TableCell className="text-gray-200">${product.price}</TableCell>
                     <TableCell className="text-gray-200">{product.quantity}</TableCell>
                     {product.description && <TableCell className="text-gray-200">{product.description}</TableCell>}
@@ -176,7 +274,22 @@ export default function OrderDetailPage({ params }: { params: { order_id: string
             </Table>
           )}
         </div>
+
+        <div className="mb-4 float-right text-align-right mt-14">
+            <label htmlFor="maxInvestment" className="text-gray-300 font-medium block mb-2">
+              Maximum Investment ($)
+            </label>
+            <input
+              type="number"
+              id="maxInvestment"
+              value={maxInvestment || ''}
+              onChange={(e) => handleMaxInvestmentChange(e.target.value)}
+              className="bg-[#1f1f1f] text-gray-300 border border-[#6a6a6a80] rounded px-3 py-2 w-full max-w-xs"
+              step="100"
+              min="1000"
+            />
+          </div>
       </div>
     </div>
   );
-} 
+}
