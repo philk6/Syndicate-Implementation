@@ -71,8 +71,8 @@ export default function OrdersPage() {
   return (
     <div className="min-h-screen bg-background p-6">
       <div className="mx-auto">
-        <h1 className="text-3xl font-bold text-white mb-6">Orders</h1>
-        <div className="card max-w-full">
+        <h1 className="text-3xl font-bold text-[#d1d5db] mb-6">Orders</h1>
+        <div className="card max-w-full border-[#2b2b2b] border-solid border">
           {loadingOrders ? (
             <p className="text-gray-400 text-center">Loading orders...</p>
           ) : orders.length === 0 ? (
@@ -80,7 +80,7 @@ export default function OrdersPage() {
           ) : (
             <Table>
               <TableHeader>
-                <TableRow className='border-[#6a6a6a80] hover:bg-[#35353580] hover:bg-[#202020]'>
+                <TableRow className='border-[#2b2b2b] bg-[#171612] hover:bg-[#171612]'>
                   <TableHead className="text-gray-300">Order ID</TableHead>
                   <TableHead className="text-gray-300">Lead Time (days)</TableHead>
                   <TableHead className="text-gray-300">Application Deadline</TableHead>
@@ -92,7 +92,7 @@ export default function OrdersPage() {
                 {orders.map((order) => (
                   <TableRow 
                     key={order.order_id} 
-                    className="hover:bg-[#35353580] transition-colors focus:ring-[#35353580] border-[#6a6a6a80] cursor-pointer"
+                    className="hover:bg-[#35353580] transition-colors focus:ring-[#35353580] border-[#2b2b2b] cursor-pointer"
                     onClick={() => handleOrderClick(order.order_id)}
                   >
                     <TableCell className="text-gray-200">{order.order_id}</TableCell>
