@@ -82,10 +82,10 @@ export default function OrdersPage() {
               <TableHeader>
                 <TableRow className='border-[#2b2b2b] bg-[#171612] hover:bg-[#171612]'>
                   <TableHead className="text-gray-300">Order ID</TableHead>
+                  <TableHead className="text-gray-300">Status</TableHead>
                   <TableHead className="text-gray-300">Lead Time (days)</TableHead>
                   <TableHead className="text-gray-300">Application Deadline</TableHead>
                   <TableHead className="text-gray-300">Label Upload Deadline</TableHead>
-                  <TableHead className="text-gray-300">Status</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -96,15 +96,15 @@ export default function OrdersPage() {
                     onClick={() => handleOrderClick(order.order_id)}
                   >
                     <TableCell className="text-gray-200">{order.order_id}</TableCell>
+                    <TableCell className="text-gray-200">
+                      {order.order_statuses[0]?.description || 'N/A'} {/* Handle array */}
+                    </TableCell>
                     <TableCell className="text-gray-200">{order.leadtime}</TableCell>
                     <TableCell className="text-gray-200">
                       {new Date(order.deadline).toLocaleString()}
                     </TableCell>
                     <TableCell className="text-gray-200">
                       {new Date(order.label_upload_deadline).toLocaleString()}
-                    </TableCell>
-                    <TableCell className="text-gray-200">
-                      {order.order_statuses[0]?.description || 'N/A'} {/* Handle array */}
                     </TableCell>
                   </TableRow>
                 ))}
