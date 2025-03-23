@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useParams } from 'next/navigation';
 import { useAuth } from '../../../../lib/auth';
 import { supabase } from '../../../../lib/supabase';
 import Link from 'next/link';
@@ -33,8 +33,9 @@ interface OrderProduct {
   description?: string;
 }
 
-export default function OrderDetailPage({ params }: { params: { order_id: string } }) {
-  const orderId = parseInt(params.order_id);
+export default function OrderDetailPage() {
+  const params = useParams();
+  const orderId = parseInt(params.order_id as string); // Type assertion to ensure order_id is treated as string
   const [order, setOrder] = useState<Order | null>(null);
   const [products, setProducts] = useState<OrderProduct[]>([]);
   const [ungatedStatus, setUngatedStatus] = useState<Record<number, boolean>>({});
@@ -149,7 +150,7 @@ export default function OrderDetailPage({ params }: { params: { order_id: string
         ungated: checked,
         quantity: products.find(p => p.sequence === sequence)?.quantity || 0
       }, {
-        onConflict: ['order_id', 'sequence', 'company_id']
+        onConflict: 'order_id, sequence, company_id'
       });
 
     if (error) {
@@ -171,7 +172,7 @@ export default function OrderDetailPage({ params }: { params: { order_id: string
         company_id: companyId,
         max_investment: newMaxInvestment
       }, {
-        onConflict: ['order_id', 'company_id']
+        onConflict: 'order_id, company_id'
       });
 
     if (error) {
@@ -198,7 +199,7 @@ export default function OrderDetailPage({ params }: { params: { order_id: string
           </Link>
           <h1 className="text-3xl font-bold text-white">Order Not Found</h1>
         </div>
-        <p className="text-gray-400">The requested order does not exist or you don't have permission to view it.</p>
+        <p className="text-gray-400">The requested order does not exist or you don&apos;t have permission to view it.</p>
       </div>
     </div>
   );
@@ -243,7 +244,7 @@ export default function OrderDetailPage({ params }: { params: { order_id: string
           {products.length === 0 ? (
             <p className="text-gray-400">No products found for this order.</p>
           ) : (
-            <Table className='bg-[#18181A]'>
+            <Table className="bg-[#18181A]">
               <TableHeader>
                 <TableRow className="border-[#6a6a6a80] hover:bg-[#18181A]">
                   <TableHead className="text-gray-300">ASIN</TableHead>
@@ -276,19 +277,19 @@ export default function OrderDetailPage({ params }: { params: { order_id: string
         </div>
 
         <div className="mb-4 float-right text-align-right mt-14">
-            <label htmlFor="maxInvestment" className="text-gray-300 font-medium block mb-2">
-              Maximum Investment ($)
-            </label>
-            <input
-              type="number"
-              id="maxInvestment"
-              value={maxInvestment || ''}
-              onChange={(e) => handleMaxInvestmentChange(e.target.value)}
-              className="bg-[#1f1f1f] text-gray-300 border border-[#6a6a6a80] rounded px-3 py-2 w-full max-w-xs"
-              step="100"
-              min="1000"
-            />
-          </div>
+          <label htmlFor="maxInvestment" className="text-gray-300 font-medium block mb-2">
+            Maximum Investment ($)
+          </label>
+          <input
+            type="number"
+            id="maxInvestment"
+            value={maxInvestment || ''}
+            onChange={(e) => handleMaxInvestmentChange(e.target.value)}
+            className="bg-[#1f1f1f] text-gray-300 border border-[#6a6a6a80] rounded px-3 py-2 w-full max-w-xs"
+            step="100"
+            min="1000"
+          />
+        </div>
       </div>
     </div>
   );
