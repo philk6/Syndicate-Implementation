@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../../../lib/auth';
 import { supabase } from '../../../lib/supabase';
+import { PostgrestError } from '@supabase/supabase-js';
 import {
   Table,
   TableBody,
@@ -12,6 +13,8 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { Badge } from '@/components/ui/badge';
+import { Progress } from '@/components/ui/progress';
 
 // Define the Order type based on Supabase data
 interface Order {
@@ -19,17 +22,17 @@ interface Order {
   leadtime: number;
   deadline: string;
   label_upload_deadline: string;
-  order_statuses: { description: string }[]; // Updated to an array
+  order_statuses: { description: string }; // Changed to array
 }
 
 export default function OrdersPage() {
-  const [orders, setOrders] = useState<Order[]>([]); // Use Order[] instead of any[]
+  const [orders, setOrders] = useState<Order[]>([]);
   const [loadingOrders, setLoadingOrders] = useState(true);
   const { isAuthenticated, loading } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
-    if (loading) return; // Wait until auth check completes
+    if (loading) return;
 
     if (!isAuthenticated) {
       router.push('/login');
@@ -39,12 +42,19 @@ export default function OrdersPage() {
     async function fetchOrders() {
       const { data, error } = await supabase
         .from('orders')
-        .select('order_id, leadtime, deadline, label_upload_deadline, order_statuses(description)')
-        .order('deadline', { ascending: true });
+        .select(`
+          order_id,
+          leadtime,
+          deadline,
+          label_upload_deadline,
+          order_statuses!order_status_id (description)
+        `)
+        .order('deadline', { ascending: true }) as { data: Order[] | null, error: PostgrestError | null };
 
       if (error) {
         console.error('Error fetching orders:', error);
       } else {
+        console.log('Fetched orders:', data);
         setOrders(data || []);
       }
       setLoadingOrders(false);
@@ -53,7 +63,6 @@ export default function OrdersPage() {
     fetchOrders();
   }, [isAuthenticated, loading, router]);
 
-  // Function to navigate to order detail page
   const handleOrderClick = (orderId: number) => {
     router.push(`/orders/${orderId}`);
   };
@@ -65,6 +74,23 @@ export default function OrdersPage() {
       </div>
     );
   }
+
+  const calculateProgress = (deadline: string): number => {
+    const now = new Date();
+    const deadlineDate = new Date(deadline + 'Z'); // Treat as UTC
+    if (isNaN(deadlineDate.getTime())) {
+      return 0; // Invalid date
+    }
+    const diffMs = deadlineDate.getTime() - now.getTime();
+    const daysLeft = diffMs / (1000 * 60 * 60 * 24);
+    if (daysLeft > 5) {
+      return 100;
+    } else if (daysLeft >= 0) {
+      return (daysLeft / 5) * 100;
+    } else {
+      return 0;
+    }
+  };
 
   if (!isAuthenticated) return null;
 
@@ -80,7 +106,7 @@ export default function OrdersPage() {
           ) : (
             <Table>
               <TableHeader>
-                <TableRow className='border-[#2b2b2b] bg-[#171612] hover:bg-[#171612]'>
+                <TableRow className="border-[#2b2b2b] bg-[#171612] hover:bg-[#171612]">
                   <TableHead className="text-gray-300">Order ID</TableHead>
                   <TableHead className="text-gray-300">Status</TableHead>
                   <TableHead className="text-gray-300">Lead Time (days)</TableHead>
@@ -90,21 +116,28 @@ export default function OrdersPage() {
               </TableHeader>
               <TableBody>
                 {orders.map((order) => (
-                  <TableRow 
-                    key={order.order_id} 
+                  <TableRow
+                    key={order.order_id}
                     className="hover:bg-[#35353580] transition-colors focus:ring-[#35353580] border-[#2b2b2b] cursor-pointer"
                     onClick={() => handleOrderClick(order.order_id)}
                   >
                     <TableCell className="text-gray-200">{order.order_id}</TableCell>
                     <TableCell className="text-gray-200">
-                      {order.order_statuses[0]?.description || 'N/A'} {/* Handle array */}
+                      <Badge variant="outline" className='bg-[#c8aa64] text-[#242424]'>{order.order_statuses?.description || 'N/A'}</Badge>
                     </TableCell>
-                    <TableCell className="text-gray-200">{order.leadtime}</TableCell>
+                    <TableCell className="text-gray-200">{order.leadtime}
+                    </TableCell>
+                    {/* <TableCell className="text-gray-200">
+                      {new Date(order.deadline).toLocaleString()}
+                      <Progress value={33} />
+                    </TableCell> */}
                     <TableCell className="text-gray-200">
                       {new Date(order.deadline).toLocaleString()}
+                      <Progress value={calculateProgress(order.deadline)} />
                     </TableCell>
                     <TableCell className="text-gray-200">
                       {new Date(order.label_upload_deadline).toLocaleString()}
+                      <Progress value={calculateProgress(order.label_upload_deadline)} />
                     </TableCell>
                   </TableRow>
                 ))}

@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useAuth } from '../../../../lib/auth';
 import { supabase } from '../../../../lib/supabase';
+import { PostgrestError } from '@supabase/supabase-js';
 import Link from 'next/link';
 import {
   Table,
@@ -13,6 +14,9 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Check } from 'lucide-react';
 
 // Define the Order type
 interface Order {
@@ -20,7 +24,7 @@ interface Order {
   leadtime: number;
   deadline: string;
   label_upload_deadline: string;
-  order_statuses: { description: string }[];
+  order_statuses: { description: string };
 }
 
 // Product interface for order items
@@ -75,7 +79,7 @@ export default function OrderDetailPage() {
         .from('orders')
         .select('order_id, leadtime, deadline, label_upload_deadline, order_statuses(description)')
         .eq('order_id', orderId)
-        .single();
+        .single() as { data: Order | null, error: PostgrestError | null };
 
       if (orderError) {
         console.error('Error fetching order:', orderError);
@@ -181,6 +185,41 @@ export default function OrderDetailPage() {
     }
   };
 
+  const handleSubmitInvestment = async () => {
+    if (!companyId || !order) return;
+  
+    try {
+      // Prepare the data for order_products_company
+      const investmentData = products.map(product => ({
+        order_id: order.order_id,
+        sequence: product.sequence,
+        company_id: companyId,
+        quantity: product.quantity,
+        ungated: ungatedStatus[product.sequence] || false
+      }));
+  
+      // Insert/update all records at once
+      const { error } = await supabase
+        .from('order_products_company')
+        .upsert(investmentData, {
+          onConflict: 'order_id, sequence, company_id'
+        });
+  
+      if (error) {
+        console.error('Error submitting investment:', error);
+        alert('Failed to submit investment. Please try again.');
+        return;
+      }
+  
+      alert('Investment submitted successfully!');
+      // Optionally redirect or refresh the page
+      // router.push('/orders');
+    } catch (err) {
+      console.error('Unexpected error:', err);
+      alert('An unexpected error occurred. Please try again.');
+    }
+  };
+
   if (authLoading || loading) {
     return (
       <div className="min-h-screen bg-[#14130F] p-6 flex items-center justify-center">
@@ -214,15 +253,15 @@ export default function OrderDetailPage() {
         </div>
 
         <div className="flex items-center mb-6">
-          <h1 className="text-3xl font-bold text-white">Order #{order.order_id}</h1>
+          <h1 className="text-3xl font-bold text-[#bfbfbf]">Order #{order.order_id}</h1>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-          <div className="bg-[#18181A] rounded-lg p-6">
+          <div className="bg-[#191813] rounded-lg p-6 border border-[#2b2b2b]">
             <div className="flex flex-wrap gap-6 text-gray-300">
               <div className="flex flex-col">
                 <span className="font-medium">Status</span>
-                <span>{order.order_statuses[0]?.description || 'N/A'}</span>
+                <Badge variant="outline" className='bg-[#c8aa64] text-[#242424]'>{order.order_statuses?.description || 'N/A'}</Badge>
               </div>
               <div className="flex flex-col">
                 <span className="font-medium">Lead Time</span>
@@ -240,13 +279,13 @@ export default function OrderDetailPage() {
           </div>
         </div>
 
-        <div className="bg-[#18181A] rounded-lg p-6">
+        <div className="bg-[#191813] rounded-lg p-6 border border-[#2b2b2b]">
           {products.length === 0 ? (
             <p className="text-gray-400">No products found for this order.</p>
           ) : (
-            <Table className="bg-[#18181A]">
+            <Table className="bg-[#191813]">
               <TableHeader>
-                <TableRow className="border-[#6a6a6a80] hover:bg-[#18181A]">
+                <TableRow className="border-[#2B2B2B] hover:bg-[#191813]">
                   <TableHead className="text-gray-300">ASIN</TableHead>
                   <TableHead className="text-gray-300">Ungated?</TableHead>
                   <TableHead className="text-gray-300">Price</TableHead>
@@ -276,7 +315,7 @@ export default function OrderDetailPage() {
           )}
         </div>
 
-        <div className="mb-4 float-right text-align-right mt-14">
+        <div className="mb-4 flex flex-col items-end mt-14">
           <label htmlFor="maxInvestment" className="text-gray-300 font-medium block mb-2">
             Maximum Investment ($)
           </label>
@@ -289,6 +328,13 @@ export default function OrderDetailPage() {
             step="100"
             min="1000"
           />
+          <Button
+            onClick={handleSubmitInvestment}
+            className="mt-10 bg-[#c8aa64] hover:bg-[#9d864e] text-[#242424]"
+          >
+            <Check className="mr-2 h-4 w-4" />
+            Submit Investment
+          </Button>
         </div>
       </div>
     </div>
