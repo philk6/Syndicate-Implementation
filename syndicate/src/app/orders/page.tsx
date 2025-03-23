@@ -60,7 +60,7 @@ export default function OrdersPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-900 p-6 flex items-center justify-center">
+      <div className="min-h-screen bg-[#14130F] p-6 flex items-center justify-center">
         <p className="text-gray-400">Loading...</p>
       </div>
     );

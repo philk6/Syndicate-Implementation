@@ -1,16 +1,25 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react'; // Added useEffect
 import { supabase } from '../../../lib/supabase';
 import { useAuth } from '../../../lib/auth';
 import Image from 'next/image';
+import { useRouter } from 'next/navigation'; // Added useRouter
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(false);
   const [message, setMessage] = useState('');
-  const { login } = useAuth();
+  const { isAuthenticated } = useAuth(); // Changed to only use isAuthenticated
+  const router = useRouter(); // Added router
+
+  // Redirect if already authenticated
+  useEffect(() => {
+    if (isAuthenticated) {
+      router.push('/orders');
+    }
+  }, [isAuthenticated, router]);
 
   const handleLogin = async () => {
     const { data, error } = await supabase.auth.signInWithPassword({
@@ -23,13 +32,14 @@ export default function LoginPage() {
       return;
     }
 
-    login(data.session.access_token); // Use context login
+    // No need to call login from useAuth; Supabase handles session, and useAuth will detect it
     setMessage('Login successful! Redirecting...');
+    // Redirect after a short delay to show the success message
+    setTimeout(() => router.push('/orders'), 1000);
   };
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-[#080808] p-4">
-      {/* <img src="/syndicate_logo.jpeg" alt="Logo" className="w-32 h-auto mb-4" /> */}
       <Image src="/syndicate_logo.jpeg" alt="Logo" width={519} height={519} className="w-32 h-auto mb-4" />
       <h1 className="text-2xl font-bold text-[#bfbfbf] text-center mb-6">Sign in to your account</h1>
       <div className="card">
@@ -50,7 +60,7 @@ export default function LoginPage() {
           />
           <div className="flex justify-between items-center text-sm text-[#bfbfbf] mb-6">
             <label className="flex items-center">
-            <input
+              <input
                 type="checkbox"
                 checked={rememberMe}
                 onChange={(e) => setRememberMe(e.target.checked)}
@@ -64,10 +74,7 @@ export default function LoginPage() {
               </a>
             </p>
           </div>
-          <button
-            onClick={handleLogin}
-            className="button"
-          >
+          <button onClick={handleLogin} className="button">
             Login
           </button>
           <p className="text-center text-sm text-[#bfbfbf]">

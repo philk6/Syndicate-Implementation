@@ -17,6 +17,7 @@ import {
   SidebarFooter,
 } from '@/components/ui/sidebar';
 import { NavUser } from '@/components/nav-user';
+import { useRouter } from 'next/navigation'; // Added useRouter
 
 // Sample data
 const data = {
@@ -42,8 +43,9 @@ const data = {
 };
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
-  const { isAuthenticated, user, loading, logout } = useAuth();
+  const { isAuthenticated, user, loading } = useAuth(); // Removed logout from destructuring
   const [userData, setUserData] = useState({ name: 'User', email: '', avatar: '/syndicate_logo.jpeg' });
+  const router = useRouter(); // Added router
 
   useEffect(() => {
     async function fetchUserData() {
@@ -92,6 +94,11 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     fetchUserData();
   }, [isAuthenticated, user]);
 
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    router.push('/login'); // Redirect to login page after logout
+  };
+
   if (loading) return null; // Wait for auth check
   if (!isAuthenticated) return null;
 
@@ -131,7 +138,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       </SidebarContent>
       <SidebarRail />
       <SidebarFooter>
-        <NavUser user={userData} onLogout={logout} />
+        <NavUser user={userData} onLogout={handleLogout} /> {/* Pass handleLogout instead of logout */}
       </SidebarFooter>
     </Sidebar>
   );

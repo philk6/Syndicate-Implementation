@@ -1,28 +1,30 @@
 'use client';
 
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useState, useEffect, ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from './supabase';
-
-// Define a type for the user object based on Supabase's structure
-interface User {
-  id: string;
-  email?: string; // Optional, as it might not always be present
-}
+import { Session, User as SupabaseUser } from '@supabase/supabase-js';
 
 interface AuthContextType {
   isAuthenticated: boolean;
-  user: User | null; // Replace 'any' with 'User | null'
+  user: SupabaseUser | null; // Changed from User to SupabaseUser
   loading: boolean;
   login: (token: string) => void;
   logout: () => Promise<void>;
+}
+
+interface AuthState {
+  session: Session | null;
+  loading: boolean;
+  isAuthenticated: boolean;
+  user: SupabaseUser | null;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [user, setUser] = useState<User | null>(null); // Replace 'any' with 'User | null'
+  const [user, setUser] = useState<SupabaseUser | null>(null); // Changed from User to SupabaseUser
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
@@ -31,7 +33,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const { data: { session } } = await supabase.auth.getSession();
       if (session) {
         setIsAuthenticated(true);
-        setUser(session.user); // Type is inferred as User
+        setUser(session.user); // session.user is SupabaseUser
         localStorage.setItem('token', session.access_token);
       } else {
         setIsAuthenticated(false);
@@ -46,7 +48,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'SIGNED_IN') {
         setIsAuthenticated(true);
-        setUser(session?.user || null); // Type-safe with User | null
+        setUser(session?.user || null); // session?.user is SupabaseUser | undefined, handled as null
         localStorage.setItem('token', session?.access_token || '');
       } else if (event === 'SIGNED_OUT') {
         setIsAuthenticated(false);
@@ -81,10 +83,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 }
 
-export function useAuth() {
-  const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
-  return context;
+export function useAuth(): AuthState {
+  const [session, setSession] = useState<Session | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+    }).catch((error) => {
+      console.error('Error fetching session:', error);
+    }).finally(() => {
+      setLoading(false);
+    });
+
+    const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
+      setSession(session);
+    });
+
+    return () => {
+      listener.subscription.unsubscribe();
+    };
+  }, []);
+
+  return {
+    session,
+    loading,
+    isAuthenticated: !!session,
+    user: session ? session.user : null, // session.user is SupabaseUser
+  };
 }
