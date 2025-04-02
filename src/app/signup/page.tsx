@@ -6,8 +6,6 @@ import { supabase } from '../../../lib/supabase';
 import bcrypt from 'bcryptjs';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp';
-import { REGEXP_ONLY_DIGITS_AND_CHARS } from "input-otp";
 
 export default function SignupPage() {
   const [firstname, setFirstname] = useState('');
@@ -64,7 +62,7 @@ export default function SignupPage() {
       email,
       password: hashedPassword,
       company_id: companyData.company_id,
-      role: 'user',
+      role: 'User',
     });
 
     if (userError) {
@@ -89,82 +87,30 @@ export default function SignupPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-[#080808] p-4">
       <div className="card">
-        <h1 className="text-2xl font-bold text-[#ffffff] text-center">Sign Up</h1>
+        <h1 className="text-2xl font-bold text-[#bfbfbf] text-center">Sign Up</h1>
         <div className="">
-          {/* Flex container for First name and Last name */}
-          <div className="flex flex-col sm:flex-row gap-4 mb-3">
+          <div className="flex gap-2">
             <div className="flex-1">
               <h3 className="input-label">First name</h3>
-              <Input
-                type="text"
-                placeholder="Enter first name"
-                value={firstname}
-                onChange={(e) => setFirstname(e.target.value)}
-                className="border-[#A7A7A7] text-[#FFFFFF] placeholder:text-[#A7A7A7]"
-              />
+              <Input type='text' placeholder='Enter first name' value={firstname} onChange={(e) => setFirstname(e.target.value)} className='mb-2 border-[#A7A7A7] text-[#A7A7A7]'/>
             </div>
             <div className="flex-1">
               <h3 className="input-label">Last name</h3>
-              <Input
-                type="text"
-                placeholder="Enter last name"
-                value={lastname}
-                onChange={(e) => setLastname(e.target.value)}
-                className="border-[#A7A7A7] text-[#FFFFFF] placeholder:text-[#A7A7A7]"
-              />
+              <Input type='text' placeholder='Enter last name' value={lastname} onChange={(e) => setLastname(e.target.value)} className='mb-2 border-[#A7A7A7] text-[#A7A7A7]'/>
             </div>
           </div>
-
           <h3 className="input-label">Email</h3>
-          <Input
-            type="email"
-            placeholder="Enter email address"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="mb-3 border-[#A7A7A7] text-[#FFFFFF] placeholder:text-[#A7A7A7]"
-          />
+          <Input type='email' placeholder='Enter email address' value={email} onChange={(e) => setEmail(e.target.value)} className='mb-2 border-[#A7A7A7] text-[#A7A7A7]'/>
           <h3 className="input-label">Password</h3>
-          <Input
-            type="password"
-            placeholder="Enter password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="mb-3 border-[#A7A7A7] text-[#FFFFFF] placeholder:text-[#A7A7A7]"
-          />
+          <Input type='password' placeholder='Enter password' value={password} onChange={(e) => setPassword(e.target.value)} className='mb-2 border-[#A7A7A7] text-[#A7A7A7]'/>
           <h3 className="input-label">Company name</h3>
-          <Input
-            type="text"
-            placeholder="Enter company name"
-            value={companyName}
-            onChange={(e) => setCompanyName(e.target.value)}
-            className="mb-3 border-[#A7A7A7] text-[#FFFFFF] placeholder:text-[#A7A7A7]"
-          />
-          {/* Divider Line */}
-          <div className="border-t border-[#a7a7a7] my-4 mt-8"></div>
-          <div className="text-center">
-            <h3 className="input-label">Enter your invitation code</h3>
-          </div>
-          <div className="flex justify-center mb-4">
-            <InputOTP
-              maxLength={5}
-              value={inviteCode}
-              onChange={(value) => setInviteCode(value)}
-              pattern={REGEXP_ONLY_DIGITS_AND_CHARS}
-              className="mb-8"
-            >
-              <InputOTPGroup>
-                <InputOTPSlot index={0} className="border-[#A7A7A7] text-[#FFFFFF]" />
-                <InputOTPSlot index={1} className="border-[#A7A7A7] text-[#FFFFFF]" />
-                <InputOTPSlot index={2} className="border-[#A7A7A7] text-[#FFFFFF]" />
-                <InputOTPSlot index={3} className="border-[#A7A7A7] text-[#FFFFFF]" />
-                <InputOTPSlot index={4} className="border-[#A7A7A7] text-[#FFFFFF]" />
-              </InputOTPGroup>
-            </InputOTP>
-          </div>
+          <Input type='text' placeholder='Enter company name' value={companyName} onChange={(e) => setCompanyName(e.target.value)} className='mb-2 border-[#A7A7A7] text-[#A7A7A7]'/>
+          <h3 className="input-label">Invite code</h3>
+          <Input type='text' placeholder='Enter invite code' value={inviteCode} onChange={(e) => setInviteCode(e.target.value)} className='mb-8 border-[#A7A7A7] text-[#A7A7A7]' />
           <Button onClick={handleSignup} className="button">
             Sign Up
           </Button>
-          <p className="text-center text-sm text-[#A7A7A7]">
+          <p className="text-center text-sm text-gray-400">
             Already have an account?{' '}
             <a href="/login" className="text-[#c8aa64] hover:text-[#d3bb82] underline">
               Login
@@ -183,4 +129,4 @@ export default function SignupPage() {
       </div>
     </div>
   );
-}
+} 

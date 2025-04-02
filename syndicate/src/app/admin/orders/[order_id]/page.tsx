@@ -1,0 +1,459 @@
+'use client';
+
+import { useState, useEffect } from 'react';
+import { useRouter, useParams } from 'next/navigation';
+import { useAuth } from '../../../../../lib/auth';
+import { supabase } from '../../../../../lib/supabase';
+import { PostgrestError } from '@supabase/supabase-js';
+import Link from 'next/link';
+import { CalendarIcon } from 'lucide-react';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Calendar } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Trash2, Plus } from 'lucide-react';
+import { cn } from '@/lib/utils';
+
+interface Order {
+  order_id: number;
+  leadtime: number;
+  deadline: string;
+  label_upload_deadline: string;
+  order_statuses: { description: string };
+  total_amount?: number;
+}
+
+interface OrderProduct {
+  sequence: number;
+  order_id: number;
+  asin: string;
+  quantity: number;
+  price: number;
+  description?: string;
+}
+
+interface OrderStatus {
+  order_status_id: number;
+  description: string;
+}
+
+// Reusable DatePicker Component
+function DatePicker({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (date: string) => void;
+}) {
+  const [date, setDate] = useState<Date | undefined>(new Date(value));
+
+  const handleSelect = (selectedDate: Date | undefined) => {
+    setDate(selectedDate);
+    if (selectedDate) {
+      // Format to ISO string for Supabase (e.g., "2025-03-29T00:00:00")
+      const formattedDate = selectedDate.toISOString().slice(0, 16);
+      onChange(formattedDate);
+    }
+  };
+
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          className={cn(
+            'w-full justify-start text-left font-normal bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80]',
+            !date && 'text-muted-foreground'
+          )}
+        >
+          <CalendarIcon className="mr-2 h-4 w-4" />
+          {date ? date.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : <span>Pick a date</span>}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-auto p-0" align="start">
+        <Calendar
+          mode="single"
+          selected={date}
+          onSelect={handleSelect}
+          initialFocus
+        />
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+export default function AdminOrderManagementPage() {
+  const params = useParams();
+  const orderId = parseInt(params.order_id as string);
+  const [order, setOrder] = useState<Order | null>(null);
+  const [products, setProducts] = useState<OrderProduct[]>([]);
+  const [statuses, setStatuses] = useState<OrderStatus[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [companyApplications, setCompanyApplications] = useState<{
+    company_id: number;
+    company_name: string;
+    max_investment: number;
+    ungated_count: number;
+  }[]>([]);
+  const { isAuthenticated, loading: authLoading, user } = useAuth();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (authLoading) return;
+
+    if (!isAuthenticated || user?.role !== 'admin') {
+      router.push('/login');
+      return;
+    }
+
+    async function fetchData() {
+      setLoading(true);
+
+      const { data: orderData, error: orderError } = await supabase
+        .from('orders')
+        .select('order_id, leadtime, deadline, label_upload_deadline, order_statuses(description)')
+        .eq('order_id', orderId)
+        .single() as { data: Order | null, error: PostgrestError | null };
+
+      if (orderError) {
+        console.error('Error fetching order:', orderError);
+        setLoading(false);
+        return;
+      }
+
+      const { data: productData, error: productError } = await supabase
+        .from('order_products')
+        .select('sequence, order_id, asin, quantity, price, description')
+        .eq('order_id', orderId);
+
+      if (productError) {
+        console.error('Error fetching order products:', productError);
+      }
+
+      const { data: statusData, error: statusError } = await supabase
+        .from('order_statuses')
+        .select('order_status_id, description');
+
+      if (statusError) {
+        console.error('Error fetching statuses:', statusError);
+      }
+
+      // Fetch companies that have applied for this order
+      interface CompanyApplicationResult {
+        company_id: number;
+        company: { name: string } | null;
+        max_investment: number;
+      }
+      
+      const { data: applicationData, error: applicationError } = await supabase
+        .from('order_company')
+        .select('company_id, company(name), max_investment')
+        .eq('order_id', orderId) as { data: CompanyApplicationResult[] | null, error: PostgrestError | null };
+
+      if (applicationError) {
+        console.error('Error fetching company applications:', applicationError);
+      } else if (applicationData && applicationData.length > 0) {
+        // For each company, fetch the count of ungated products
+        const companyApps = await Promise.all(
+          applicationData.map(async (app: CompanyApplicationResult) => {
+            const { data: ungatedData, error: ungatedError } = await supabase
+              .from('order_products_company')
+              .select('sequence')
+              .eq('order_id', orderId)
+              .eq('company_id', app.company_id)
+              .eq('ungated', true);
+              
+            if (ungatedError) {
+              console.error(`Error fetching ungated products for company ${app.company_id}:`, ungatedError);
+              return {
+                company_id: app.company_id,
+                company_name: app.company?.name || 'Unknown',
+                max_investment: app.max_investment,
+                ungated_count: 0
+              };
+            }
+            
+            return {
+              company_id: app.company_id,
+              company_name: app.company?.name || 'Unknown',
+              max_investment: app.max_investment,
+              ungated_count: ungatedData?.length || 0
+            };
+          })
+        );
+        
+        // Sort by max investment (highest first)
+        const sortedApps = companyApps.sort((a, b) => b.max_investment - a.max_investment);
+        
+        setCompanyApplications(sortedApps);
+      } else {
+        setCompanyApplications([]);
+      }
+
+      setOrder(orderData);
+      setProducts(productData || []);
+      setStatuses(statusData || []);
+      setLoading(false);
+    }
+
+    fetchData();
+  }, [orderId, isAuthenticated, authLoading, router, user]);
+
+  const handleStatusChange = async (newStatusId: string) => {
+    const { error } = await supabase
+      .from('orders')
+      .update({ order_status_id: parseInt(newStatusId) })
+      .eq('order_id', orderId);
+
+    if (error) {
+      console.error('Error updating status:', error);
+    } else {
+      setOrder(prev => prev ? { ...prev, order_statuses: statuses.find(s => s.order_status_id === parseInt(newStatusId))! } : null);
+    }
+  };
+
+  const handleProductUpdate = async (sequence: number, field: keyof OrderProduct, value: string | number) => {
+    const updatedProduct = products.find(p => p.sequence === sequence);
+    if (!updatedProduct) return;
+
+    const updatedValue = typeof value === 'string' && (field === 'price' || field === 'quantity') ? parseFloat(value) : value;
+    const { error } = await supabase
+      .from('order_products')
+      .update({ [field]: updatedValue })
+      .eq('order_id', orderId)
+      .eq('sequence', sequence);
+
+    if (error) {
+      console.error('Error updating product:', error);
+    } else {
+      setProducts(prev => prev.map(p => p.sequence === sequence ? { ...p, [field]: updatedValue } : p));
+    }
+  };
+
+  const handleProductRemove = async (sequence: number) => {
+    const { error } = await supabase
+      .from('order_products')
+      .delete()
+      .eq('order_id', orderId)
+      .eq('sequence', sequence);
+
+    if (error) {
+      console.error('Error removing product:', error);
+    } else {
+      setProducts(prev => prev.filter(p => p.sequence !== sequence));
+    }
+  };
+
+  const handleProductAdd = async () => {
+    const newSequence = Math.max(...products.map(p => p.sequence), 0) + 1;
+    const newProduct = {
+      order_id: orderId,
+      sequence: newSequence,
+      asin: 'NEW-ASIN',
+      quantity: 1,
+      price: 0,
+      description: 'New Product',
+    };
+
+    const { error } = await supabase
+      .from('order_products')
+      .insert(newProduct);
+
+    if (error) {
+      console.error('Error adding product:', error);
+    } else {
+      setProducts(prev => [...prev, newProduct]);
+    }
+  };
+
+  const handleOrderUpdate = async (field: 'leadtime' | 'deadline' | 'label_upload_deadline', value: string | number) => {
+    const updatedValue = field === 'leadtime' ? parseInt(value as string) : value;
+    const { error } = await supabase
+      .from('orders')
+      .update({ [field]: updatedValue })
+      .eq('order_id', orderId);
+
+    if (error) {
+      console.error('Error updating order:', error);
+    } else {
+      setOrder(prev => prev ? { ...prev, [field]: updatedValue } : null);
+    }
+  };
+
+  if (authLoading || loading) {
+    return <div className="min-h-screen bg-[#14130F] p-6 flex items-center justify-center"><p className="text-gray-400">Loading...</p></div>;
+  }
+
+  if (!isAuthenticated || user?.role !== 'admin') return null;
+
+  if (!order) return (
+    <div className="min-h-screen bg-[#14130F] p-6">
+      <div className="mx-auto">
+        <Link href="/admin/orders" className="text-[#c8aa64] hover:text-[#9d864e] mr-4">← Back to Orders</Link>
+        <h1 className="text-3xl font-bold text-[#bfbfbf]">Order Not Found</h1>
+        <p className="text-gray-400">The requested order does not exist or you don't have permission to view it.</p>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="min-h-screen bg-background p-6 w-full">
+      <div className="w-full">
+        <Link href="/admin/orders" className="text-[#c8aa64] hover:text-[#9d864e] mb-6 inline-block">← Back to Orders</Link>
+        <h1 className="text-3xl font-bold text-[#bfbfbf] mb-6">Manage Order #{order.order_id}</h1>
+
+        {/* Order Details */}
+        <div className="rounded-lg p-6 bg-gradient-to-br from-[#212121] via-[#0f0f0f] to-[#2b2b2b] shadow-lg w-full mb-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <label className="text-gray-300 font-medium block mb-2">Status</label>
+              <Select onValueChange={handleStatusChange} defaultValue={statuses.find(s => s.description === order.order_statuses.description)?.order_status_id.toString()}>
+                <SelectTrigger className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80]">
+                  <SelectValue placeholder="Select status" />
+                </SelectTrigger>
+                <SelectContent>
+                  {statuses.map(status => (
+                    <SelectItem key={status.order_status_id} value={status.order_status_id.toString()}>{status.description}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="text-gray-300 font-medium block mb-2">Lead Time (days)</label>
+              <Input
+                type="number"
+                value={order.leadtime}
+                onChange={(e) => handleOrderUpdate('leadtime', e.target.value)}
+                className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80]"
+              />
+            </div>
+            <div>
+              <label className="text-gray-300 font-medium block mb-2">Deadline</label>
+              <DatePicker
+                value={order.deadline}
+                onChange={(value) => handleOrderUpdate('deadline', value)}
+              />
+            </div>
+            <div>
+              <label className="text-gray-300 font-medium block mb-2">Label Upload Deadline</label>
+              <DatePicker
+                value={order.label_upload_deadline}
+                onChange={(value) => handleOrderUpdate('label_upload_deadline', value)}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Company Applications */}
+        <div className="rounded-lg p-6 bg-gradient-to-br from-[#212121] via-[#0f0f0f] to-[#2b2b2b] shadow-lg w-full mb-8">
+          <h2 className="text-xl font-semibold text-gray-300 mb-4">Company Applications</h2>
+          {companyApplications.length === 0 ? (
+            <p className="text-gray-400">No companies have applied for this order yet.</p>
+          ) : (
+            <div className="w-full overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead className="text-gray-300 h-12 px-4 text-left align-middle font-medium">Company</TableHead>
+                    <TableHead className="text-gray-300 h-12 px-4 text-left align-middle font-medium">Max Investment ($)</TableHead>
+                    <TableHead className="text-gray-300 h-12 px-4 text-left align-middle font-medium">Ungated Products</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {companyApplications.map((app) => (
+                    <TableRow key={app.company_id} className="hover:bg-[#35353580] transition-colors border-[#6a6a6a80]">
+                      <TableCell className="p-4 align-middle text-gray-300">{app.company_name}</TableCell>
+                      <TableCell className="p-4 align-middle text-gray-300">${app.max_investment.toLocaleString()}</TableCell>
+                      <TableCell className="p-4 align-middle text-gray-300">{app.ungated_count}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </div>
+
+        {/* Order Products */}
+        <div className="rounded-lg p-6 bg-gradient-to-br from-[#212121] via-[#0f0f0f] to-[#2b2b2b] shadow-lg w-full overflow-x-auto">
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-xl font-semibold text-gray-300">Order Products</h2>
+            <Button onClick={handleProductAdd} className="bg-[#c8aa64] hover:bg-[#9d864e] text-[#242424]">
+              <Plus className="mr-2 h-4 w-4" /> Add Product
+            </Button>
+          </div>
+          {products.length === 0 ? (
+            <p className="text-gray-400">No products found.</p>
+          ) : (
+            <div className="w-full overflow-x-auto">
+              <table className="w-full border-collapse bg-transparent" style={{ tableLayout: 'fixed' }}>
+                <thead>
+                  <tr className="border-[#2B2B2B] hover:bg-transparent">
+                    <th className="text-gray-300 w-[20%] h-12 px-4 text-left align-middle font-medium">ASIN</th>
+                    <th className="text-gray-300 w-[15%] h-12 px-4 text-left align-middle font-medium">Price</th>
+                    <th className="text-gray-300 w-[15%] h-12 px-4 text-left align-middle font-medium">Quantity</th>
+                    <th className="text-gray-300 w-[40%] h-12 px-4 text-left align-middle font-medium">Description</th>
+                    <th className="text-gray-300 w-[10%] h-12 px-4 text-left align-middle font-medium">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {products.map((product) => (
+                    <tr key={product.sequence} className="hover:bg-[#35353580] transition-colors border-[#6a6a6a80]">
+                      <td className="p-4 align-middle" style={{ overflowWrap: 'break-word' }}>
+                        <Input
+                          value={product.asin}
+                          onChange={(e) => handleProductUpdate(product.sequence, 'asin', e.target.value)}
+                          className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80]"
+                        />
+                      </td>
+                      <td className="p-4 align-middle" style={{ overflowWrap: 'break-word' }}>
+                        <Input
+                          type="number"
+                          value={product.price}
+                          onChange={(e) => handleProductUpdate(product.sequence, 'price', e.target.value)}
+                          className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80]"
+                        />
+                      </td>
+                      <td className="p-4 align-middle" style={{ overflowWrap: 'break-word' }}>
+                        <Input
+                          type="number"
+                          value={product.quantity}
+                          onChange={(e) => handleProductUpdate(product.sequence, 'quantity', e.target.value)}
+                          className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80]"
+                        />
+                      </td>
+                      <td className="p-4 align-middle" style={{ overflowWrap: 'break-word' }}>
+                        <Input
+                          value={product.description || ''}
+                          onChange={(e) => handleProductUpdate(product.sequence, 'description', e.target.value)}
+                          className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80]"
+                        />
+                      </td>
+                      <td className="p-4 align-middle" style={{ overflowWrap: 'break-word' }}>
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={() => handleProductRemove(product.sequence)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}

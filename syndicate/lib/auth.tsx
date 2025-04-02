@@ -3,11 +3,16 @@
 import { createContext, useState, useEffect, ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from './supabase';
-import { Session, User as SupabaseUser } from '@supabase/supabase-js';
+import { Session } from '@supabase/supabase-js';
+
+interface AuthUser {
+  email: string;
+  role: 'user' | 'admin'; // Custom user type with role
+}
 
 interface AuthContextType {
   isAuthenticated: boolean;
-  user: SupabaseUser | null; // Changed from User to SupabaseUser
+  user: AuthUser | null; // Updated to use AuthUser
   loading: boolean;
   login: (token: string) => void;
   logout: () => Promise<void>;
@@ -17,14 +22,14 @@ interface AuthState {
   session: Session | null;
   loading: boolean;
   isAuthenticated: boolean;
-  user: SupabaseUser | null;
+  user: AuthUser | null; // Updated to use AuthUser
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [user, setUser] = useState<SupabaseUser | null>(null); // Changed from User to SupabaseUser
+  const [user, setUser] = useState<AuthUser | null>(null); // Use AuthUser
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
@@ -32,9 +37,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const initializeAuth = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (session) {
-        setIsAuthenticated(true);
-        setUser(session.user); // session.user is SupabaseUser
-        localStorage.setItem('token', session.access_token);
+        // Fetch role from users table
+        const { data: userData, error } = await supabase
+          .from('users')
+          .select('email, role')
+          .eq('email', session.user.email)
+          .single();
+
+        if (error) {
+          console.error('Error fetching user role:', error);
+          setIsAuthenticated(false);
+          setUser(null);
+        } else {
+          setIsAuthenticated(true);
+          setUser({ email: userData.email, role: userData.role });
+          localStorage.setItem('token', session.access_token);
+        }
       } else {
         setIsAuthenticated(false);
         setUser(null);
@@ -45,11 +63,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     initializeAuth();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'SIGNED_IN') {
-        setIsAuthenticated(true);
-        setUser(session?.user || null); // session?.user is SupabaseUser | undefined, handled as null
-        localStorage.setItem('token', session?.access_token || '');
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'SIGNED_IN' && session) {
+        const { data: userData, error } = await supabase
+          .from('users')
+          .select('email, role')
+          .eq('email', session.user.email)
+          .single();
+
+        if (error) {
+          console.error('Error fetching user role:', error);
+          setIsAuthenticated(false);
+          setUser(null);
+        } else {
+          setIsAuthenticated(true);
+          setUser({ email: userData.email, role: userData.role });
+          localStorage.setItem('token', session.access_token);
+        }
       } else if (event === 'SIGNED_OUT') {
         setIsAuthenticated(false);
         setUser(null);
@@ -86,29 +116,60 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 export function useAuth(): AuthState {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState<AuthUser | null>(null); // Use AuthUser
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession()
+      .then(async ({ data: { session } }) => {
+        setSession(session);
+        if (session) {
+          const { data: userData, error } = await supabase
+            .from('users')
+            .select('email, role')
+            .eq('email', session.user.email)
+            .single();
+          if (error) {
+            console.error('Error fetching user role:', error);
+            setUser(null);
+          } else {
+            setUser({ email: userData.email, role: userData.role });
+          }
+        } else {
+          setUser(null);
+        }
+      })
+      .catch((error) => {
+        console.error('Error fetching session:', error);
+        setUser(null);
+      })
+      .finally(() => setLoading(false));
+
+    const { data: listener } = supabase.auth.onAuthStateChange(async (event, session) => {
       setSession(session);
-    }).catch((error) => {
-      console.error('Error fetching session:', error);
-    }).finally(() => {
-      setLoading(false);
+      if (session) {
+        const { data: userData, error } = await supabase
+          .from('users')
+          .select('email, role')
+          .eq('email', session.user.email)
+          .single();
+        if (error) {
+          console.error('Error fetching user role:', error);
+          setUser(null);
+        } else {
+          setUser({ email: userData.email, role: userData.role });
+        }
+      } else {
+        setUser(null);
+      }
     });
 
-    const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
-      setSession(session);
-    });
-
-    return () => {
-      listener.subscription.unsubscribe();
-    };
+    return () => listener.subscription.unsubscribe();
   }, []);
 
   return {
     session,
     loading,
     isAuthenticated: !!session,
-    user: session ? session.user : null, // session.user is SupabaseUser
+    user,
   };
 }

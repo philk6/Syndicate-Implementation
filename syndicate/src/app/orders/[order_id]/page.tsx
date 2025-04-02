@@ -16,7 +16,12 @@ import {
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Check } from 'lucide-react';
+import { AlertOctagon, Check } from 'lucide-react';
+import { Alert,
+         AlertDescription,
+         AlertTitle, 
+} from '@/components/ui/alert';
+import { Input } from '@/components/ui/input';
 
 // Define the Order type
 interface Order {
@@ -39,13 +44,15 @@ interface OrderProduct {
 
 export default function OrderDetailPage() {
   const params = useParams();
-  const orderId = parseInt(params.order_id as string); // Type assertion to ensure order_id is treated as string
+  const orderId = parseInt(params.order_id as string);
   const [order, setOrder] = useState<Order | null>(null);
   const [products, setProducts] = useState<OrderProduct[]>([]);
   const [ungatedStatus, setUngatedStatus] = useState<Record<number, boolean>>({});
   const [companyId, setCompanyId] = useState<number | null>(null);
   const [maxInvestment, setMaxInvestment] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
+  const [hasSubmitted, setHasSubmitted] = useState(false);
+  const [isOrderClosed, setIsOrderClosed] = useState(false); // New state for order status
   const { isAuthenticated, loading: authLoading, user } = useAuth();
   const router = useRouter();
 
@@ -87,6 +94,11 @@ export default function OrderDetailPage() {
         return;
       }
 
+      // Check if order is closed
+      if (orderData && orderData.order_statuses.description.toLowerCase() === 'closed') {
+        setIsOrderClosed(true);
+      }
+
       // Fetch order products
       const { data: productData, error: productError } = await supabase
         .from('order_products')
@@ -106,7 +118,7 @@ export default function OrderDetailPage() {
           .eq('company_id', userData.company_id)
           .single();
 
-        if (companyOrderError && companyOrderError.code !== 'PGRST116') { // PGRST116 is "no rows"
+        if (companyOrderError && companyOrderError.code !== 'PGRST116') {
           console.error('Error fetching order company data:', companyOrderError);
         } else if (companyOrderData) {
           setMaxInvestment(companyOrderData.max_investment);
@@ -132,6 +144,27 @@ export default function OrderDetailPage() {
         }
       }
 
+      // Check if investment has been submitted
+      if (userData.company_id) {
+        const { data: opcData, error: opcError } = await supabase
+          .from('order_products_company')
+          .select('count')
+          .eq('order_id', orderId)
+          .eq('company_id', userData.company_id);
+
+        const { data: ocData, error: ocError } = await supabase
+          .from('order_company')
+          .select('count')
+          .eq('order_id', orderId)
+          .eq('company_id', userData.company_id);
+
+        if (!opcError && !ocError) {
+          const hasOpcRecords = opcData && opcData.length > 0 && opcData[0].count > 0;
+          const hasOcRecords = ocData && ocData.length > 0 && ocData[0].count > 0;
+          setHasSubmitted(hasOpcRecords && hasOcRecords);
+        }
+      }
+
       setOrder(orderData);
       setProducts(productData || []);
       setLoading(false);
@@ -141,7 +174,7 @@ export default function OrderDetailPage() {
   }, [orderId, isAuthenticated, authLoading, router, user]);
 
   const handleUngatedChange = async (sequence: number, checked: boolean) => {
-    if (!companyId) return;
+    if (!companyId || hasSubmitted || isOrderClosed) return; // Prevent changes if submitted or order closed
 
     setUngatedStatus(prev => ({ ...prev, [sequence]: checked }));
 
@@ -164,7 +197,7 @@ export default function OrderDetailPage() {
   };
 
   const handleMaxInvestmentChange = async (value: string) => {
-    if (!companyId) return;
+    if (!companyId || hasSubmitted || isOrderClosed) return; // Prevent changes if submitted or order closed
 
     const newMaxInvestment = parseFloat(value) || 0;
     setMaxInvestment(newMaxInvestment);
@@ -181,12 +214,12 @@ export default function OrderDetailPage() {
 
     if (error) {
       console.error('Error updating max investment:', error);
-      setMaxInvestment(null); // Revert on error
+      setMaxInvestment(null);
     }
   };
 
   const handleSubmitInvestment = async () => {
-    if (!companyId || !order) return;
+    if (!companyId || !order || hasSubmitted || isOrderClosed) return; // Prevent submission if already submitted or order closed
   
     try {
       // Prepare the data for order_products_company
@@ -212,8 +245,7 @@ export default function OrderDetailPage() {
       }
   
       alert('Investment submitted successfully!');
-      // Optionally redirect or refresh the page
-      // router.push('/orders');
+      setHasSubmitted(true);
     } catch (err) {
       console.error('Unexpected error:', err);
       alert('An unexpected error occurred. Please try again.');
@@ -244,8 +276,8 @@ export default function OrderDetailPage() {
   );
 
   return (
-    <div className="min-h-screen bg-background p-6">
-      <div className="mx-auto">
+    <div className="min-h-screen bg-background p-6 w-full">
+      <div className="w-full">
         <div className="flex items-center mb-6">
           <Link href="/orders" className="text-[#c8aa64] hover:text-[#9d864e] mr-4">
             ← Back to Orders
@@ -256,8 +288,28 @@ export default function OrderDetailPage() {
           <h1 className="text-3xl font-bold text-[#bfbfbf]">Order #{order.order_id}</h1>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-          <div className="bg-[#191813] rounded-lg p-6 border border-[#2b2b2b]">
+        {isOrderClosed && (
+          <Alert className='mb-6 bg-[#7f1d1d] text-[#bfbfbf] w-fit'>
+            <AlertOctagon className="h-4 w-4 text-[#bfbfbf]" />
+            <AlertTitle>Closed</AlertTitle>
+            <AlertDescription>
+              This order is closed. No further investments can be submitted.
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {hasSubmitted && (
+                  <Alert className='mb-6 bg-[#235c12] text-[#bfbfbf] w-fit'>
+                    <AlertOctagon className="h-4 w-4 text-[#bfbfbf]" />
+                    <AlertTitle>Submitted</AlertTitle>
+                    <AlertDescription>
+                      Your investment has been submitted.
+                    </AlertDescription>
+                  </Alert>
+                )}
+
+        <div className="grid grid-cols-1 gap-6 mb-8 w-full">
+          <div className="rounded-lg p-6 bg-gradient-to-br from-[#212121] via-[#0f0f0f] to-[#2b2b2b] shadow-lg w-full">
             <div className="flex flex-wrap gap-6 text-gray-300">
               <div className="flex flex-col">
                 <span className="font-medium">Status</span>
@@ -279,39 +331,42 @@ export default function OrderDetailPage() {
           </div>
         </div>
 
-        <div className="bg-[#191813] rounded-lg p-6 border border-[#2b2b2b]">
+        <div className="rounded-lg p-6 bg-gradient-to-br from-[#212121] via-[#0f0f0f] to-[#2b2b2b] shadow-lg w-full overflow-x-auto">
           {products.length === 0 ? (
             <p className="text-gray-400">No products found for this order.</p>
           ) : (
-            <Table className="bg-[#191813]">
-              <TableHeader>
-                <TableRow className="border-[#2B2B2B] hover:bg-[#191813]">
-                  <TableHead className="text-gray-300">ASIN</TableHead>
-                  <TableHead className="text-gray-300">Ungated?</TableHead>
-                  <TableHead className="text-gray-300">Price</TableHead>
-                  <TableHead className="text-gray-300">Quantity</TableHead>
-                  {products[0].description && <TableHead className="text-gray-300">Description</TableHead>}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {products.map((product) => (
-                  <TableRow key={product.sequence} className="hover:bg-[#35353580] transition-colors border-[#6a6a6a80]">
-                    <TableCell className="text-gray-200">{product.asin}</TableCell>
-                    <TableCell className="text-gray-200">
-                      <input
-                        type="checkbox"
-                        checked={ungatedStatus[product.sequence] || false}
-                        onChange={(e) => handleUngatedChange(product.sequence, e.target.checked)}
-                        className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded"
-                      />
-                    </TableCell>
-                    <TableCell className="text-gray-200">${product.price}</TableCell>
-                    <TableCell className="text-gray-200">{product.quantity}</TableCell>
-                    {product.description && <TableCell className="text-gray-200">{product.description}</TableCell>}
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            <div className="w-full">
+              <table className="w-full border-collapse" style={{ tableLayout: 'fixed' }}>
+                <thead>
+                  <tr className="border-[#2B2B2B] hover:bg-transparent">
+                    <th className="text-gray-300 w-[15%] h-12 px-4 text-left align-middle font-medium">ASIN</th>
+                    <th className="text-gray-300 w-[15%] h-12 px-4 text-left align-middle font-medium">Ungated?</th>
+                    <th className="text-gray-300 w-[15%] h-12 px-4 text-left align-middle font-medium">Price</th>
+                    <th className="text-gray-300 w-[15%] h-12 px-4 text-left align-middle font-medium">Quantity</th>
+                    {products[0].description && <th className="text-gray-300 w-[40%] h-12 px-4 text-left align-middle font-medium">Description</th>}
+                  </tr>
+                </thead>
+                <tbody>
+                  {products.map((product) => (
+                    <tr key={product.sequence} className="hover:bg-[#35353580] transition-colors border-[#6a6a6a80]">
+                      <td className="text-gray-200 p-4 align-middle" style={{ overflowWrap: 'break-word' }}>{product.asin}</td>
+                      <td className="text-gray-200 p-4 align-middle" style={{ overflowWrap: 'break-word' }}>
+                        <input
+                          type="checkbox"
+                          checked={ungatedStatus[product.sequence] || false}
+                          onChange={(e) => handleUngatedChange(product.sequence, e.target.checked)}
+                          className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded"
+                          disabled={hasSubmitted || isOrderClosed}
+                        />
+                      </td>
+                      <td className="text-gray-200 p-4 align-middle" style={{ overflowWrap: 'break-word' }}>${product.price}</td>
+                      <td className="text-gray-200 p-4 align-middle" style={{ overflowWrap: 'break-word' }}>{product.quantity}</td>
+                      {product.description && <td className="text-gray-200 p-4 align-middle" style={{ overflowWrap: 'break-word' }}>{product.description}</td>}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </div>
 
@@ -319,18 +374,20 @@ export default function OrderDetailPage() {
           <label htmlFor="maxInvestment" className="text-gray-300 font-medium block mb-2">
             Maximum Investment ($)
           </label>
-          <input
+          <Input
             type="number"
             id="maxInvestment"
             value={maxInvestment || ''}
             onChange={(e) => handleMaxInvestmentChange(e.target.value)}
-            className="bg-[#1f1f1f] text-gray-300 border border-[#6a6a6a80] rounded px-3 py-2 w-full max-w-xs"
+            className="bg-[#1f1f1f] border border-[#6a6a6a80] rounded px-3 py-2 w-full max-w-xs border-[#A7A7A7] text-[#FFFFFF] placeholder:text-[#A7A7A7]"
             step="100"
             min="1000"
+            disabled={hasSubmitted || isOrderClosed} // Disable if submitted or order closed
           />
           <Button
             onClick={handleSubmitInvestment}
-            className="mt-10 bg-[#c8aa64] hover:bg-[#9d864e] text-[#242424]"
+            className="mt-4 bg-[#c8aa64] hover:bg-[#9d864e] text-[#242424]"
+            disabled={hasSubmitted || isOrderClosed} // Disable if submitted or order closed
           >
             <Check className="mr-2 h-4 w-4" />
             Submit Investment

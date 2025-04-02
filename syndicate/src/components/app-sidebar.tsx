@@ -17,7 +17,8 @@ import {
   SidebarFooter,
 } from '@/components/ui/sidebar';
 import { NavUser } from '@/components/nav-user';
-import { useRouter } from 'next/navigation'; // Added useRouter
+import { useRouter, usePathname } from 'next/navigation'; // Added usePathname
+import { ShoppingCart, History, Settings, Users, Home, type LucideIcon } from 'lucide-react';
 
 // Sample data
 const data = {
@@ -27,16 +28,17 @@ const data = {
       title: 'Operations',
       url: '#',
       items: [
-        { title: 'Open Orders', url: '/orders', isActive: true },
-        { title: 'History', url: '/history' },
+        { title: 'Dashboard', url: '/dashboard', icon: Home },
+        { title: 'Open Orders', url: '/orders', icon: ShoppingCart },
+        { title: 'History', url: '/history', icon: History },
       ],
     },
     {
-      title: 'Application configuration',
+      title: 'Admin Panel',
       url: '#',
       items: [
-        { title: 'Manage Orders', url: '/admin/orders' },
-        { title: 'Manage Users', url: '/admin/users' },
+        { title: 'Manage Orders', url: '/admin/orders', icon: Settings },
+        { title: 'Manage Users', url: '/admin/manage-users', icon: Users },
       ],
     },
   ],
@@ -45,7 +47,8 @@ const data = {
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const { isAuthenticated, user, loading } = useAuth(); // Removed logout from destructuring
   const [userData, setUserData] = useState({ name: 'User', email: '', avatar: '/syndicate_logo.jpeg' });
-  const router = useRouter(); // Added router
+  const router = useRouter();
+  const pathname = usePathname(); // Get current path
 
   useEffect(() => {
     async function fetchUserData() {
@@ -126,8 +129,11 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               <SidebarMenu>
                 {item.items.map((subItem) => (
                   <SidebarMenuItem key={subItem.title}>
-                    <SidebarMenuButton asChild isActive={subItem.isActive}>
-                      <a href={subItem.url}>{subItem.title}</a>
+                    <SidebarMenuButton asChild isActive={pathname === subItem.url}>
+                      <a href={subItem.url}>
+                        {subItem.icon && <subItem.icon className="mr-2 h-4 w-4" />}
+                        <span>{subItem.title}</span>
+                      </a>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                 ))}

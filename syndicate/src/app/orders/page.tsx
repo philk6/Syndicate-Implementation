@@ -16,13 +16,12 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 
-// Define the Order type based on Supabase data
 interface Order {
   order_id: number;
   leadtime: number;
   deadline: string;
   label_upload_deadline: string;
-  order_statuses: { description: string }; // Changed to array
+  order_statuses: { description: string };
 }
 
 export default function OrdersPage() {
@@ -49,6 +48,8 @@ export default function OrdersPage() {
           label_upload_deadline,
           order_statuses!order_status_id (description)
         `)
+        .neq('order_status_id', 3) // Filter out order_status_id = 3
+        .not('order_statuses.description', 'eq', 'Draft') // Filter out 'Draft'
         .order('deadline', { ascending: true }) as { data: Order[] | null, error: PostgrestError | null };
 
       if (error) {
@@ -79,7 +80,7 @@ export default function OrdersPage() {
     const now = new Date();
     const deadlineDate = new Date(deadline + 'Z'); // Treat as UTC
     if (isNaN(deadlineDate.getTime())) {
-      return 0; // Invalid date
+      return 0;
     }
     const diffMs = deadlineDate.getTime() - now.getTime();
     const daysLeft = diffMs / (1000 * 60 * 60 * 24);
@@ -106,7 +107,7 @@ export default function OrdersPage() {
           ) : (
             <Table>
               <TableHeader>
-                <TableRow className="border-[#2b2b2b] bg-[#171612] hover:bg-[#171612]">
+                <TableRow className="hover:bg-transparent">
                   <TableHead className="text-gray-300">Order ID</TableHead>
                   <TableHead className="text-gray-300">Status</TableHead>
                   <TableHead className="text-gray-300">Lead Time (days)</TableHead>
@@ -123,14 +124,11 @@ export default function OrdersPage() {
                   >
                     <TableCell className="text-gray-200">{order.order_id}</TableCell>
                     <TableCell className="text-gray-200">
-                      <Badge variant="outline" className='bg-[#c8aa64] text-[#242424]'>{order.order_statuses?.description || 'N/A'}</Badge>
+                      <Badge variant="outline" className="bg-[#c8aa64] text-[#242424]">
+                        {order.order_statuses?.description || 'N/A'}
+                      </Badge>
                     </TableCell>
-                    <TableCell className="text-gray-200">{order.leadtime}
-                    </TableCell>
-                    {/* <TableCell className="text-gray-200">
-                      {new Date(order.deadline).toLocaleString()}
-                      <Progress value={33} />
-                    </TableCell> */}
+                    <TableCell className="text-gray-200">{order.leadtime}</TableCell>
                     <TableCell className="text-gray-200">
                       {new Date(order.deadline).toLocaleString()}
                       <Progress value={calculateProgress(order.deadline)} />
