@@ -68,14 +68,6 @@ export default function OrdersPage() {
     router.push(`/orders/${orderId}`);
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-[#14130F] p-6 flex items-center justify-center">
-        <p className="text-gray-400">Loading...</p>
-      </div>
-    );
-  }
-
   const calculateProgress = (deadline: string): number => {
     const now = new Date();
     const deadlineDate = new Date(deadline + 'Z'); // Treat as UTC

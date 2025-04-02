@@ -45,7 +45,7 @@ const data = {
 };
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
-  const { isAuthenticated, user, loading } = useAuth(); // Removed logout from destructuring
+  const { isAuthenticated, user } = useAuth(); // Removed unused loading and logout
   const [userData, setUserData] = useState({ name: 'User', email: '', avatar: '/syndicate_logo.jpeg' });
   const router = useRouter();
   const pathname = usePathname(); // Get current path
@@ -102,7 +102,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     router.push('/login'); // Redirect to login page after logout
   };
 
-  if (loading) return null; // Wait for auth check
   if (!isAuthenticated) return null;
 
   return (

@@ -108,7 +108,7 @@ export default function AdminOrderManagementPage() {
   const router = useRouter();
 
   useEffect(() => {
-    if (authLoading) return;
+    // if (authLoading) return; // Allow fetching to start earlier
 
     if (!isAuthenticated || user?.role !== 'admin') {
       router.push('/login');
