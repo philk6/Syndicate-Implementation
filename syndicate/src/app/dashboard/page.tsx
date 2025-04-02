@@ -32,11 +32,6 @@ interface Order {
   total_amount?: number;
 }
 
-interface OrderCompany {
-  order_id: number;
-  max_investment: number;
-}
-
 interface OrderStatusCount {
   status: string;
   count: number;
@@ -93,12 +88,38 @@ export default function UserDashboardPage() {
       if (ordersError) {
         console.error('Error fetching orders:', ordersError);
       } else {
-        const orders = ordersData.map((oc: any) => ({
-          order_id: oc.order_id,
-          deadline: oc.orders.deadline,
-          order_statuses: { description: oc.orders.order_statuses.description },
-          total_amount: oc.orders.total_amount || 0,
-        }));
+        // Explicitly handle potential arrays from Supabase joins
+        const orders = ordersData
+          .map((oc) => {
+            // Treat oc.orders as potentially an array, get first element
+            const orderData = Array.isArray(oc.orders) ? oc.orders[0] : oc.orders;
+
+            if (!orderData) {
+              console.warn(`Missing order data for order_company ${oc.order_id}`);
+              return null; // Skip if base order data is missing
+            }
+
+            // Treat orderData.order_statuses as potentially an array, get first element
+            const statusData = Array.isArray(orderData.order_statuses)
+              ? orderData.order_statuses[0]
+              : orderData.order_statuses;
+
+            // Construct the order object, ensuring compatibility with the Order interface
+            const mappedOrder: Order = {
+              order_id: oc.order_id as number,
+              deadline: orderData.deadline as string,
+              order_statuses: {
+                // Use statusData safely
+                description: statusData?.description ?? 'Unknown',
+              },
+              // total_amount is optional in Order, handle null/undefined
+              total_amount: orderData.total_amount ?? undefined,
+            };
+
+            return mappedOrder;
+          })
+          .filter((order): order is Order => order !== null); // Filter out nulls and assert type
+
         setTotalOrders(orders.length);
         setRecentOrders(orders.slice(0, 5)); // Limit to 5 recent orders
 

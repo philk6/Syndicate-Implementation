@@ -6,22 +6,11 @@ import { useAuth } from '../../../../lib/auth';
 import { supabase } from '../../../../lib/supabase';
 import { PostgrestError } from '@supabase/supabase-js';
 import Link from 'next/link';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { AlertOctagon, Check } from 'lucide-react';
-import { Alert,
-         AlertDescription,
-         AlertTitle, 
-} from '@/components/ui/alert';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Input } from '@/components/ui/input';
+import { AlertOctagon, Check } from 'lucide-react';
 
 // Define the Order type
 interface Order {

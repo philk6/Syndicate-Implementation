@@ -27,7 +27,20 @@ interface Order {
   leadtime: number;
   deadline: string;
   label_upload_deadline: string;
-  order_statuses: { description: string };
+  order_statuses: { description: string } | null; // Allow null for new uploads
+}
+
+// Define interface for rows read from Excel
+interface ExcelRow {
+  'Status': string;
+  'Deadline': string; // Parsed as string due to dateNF
+  'Label Upload Deadline': string; // Parsed as string
+  'Lead Time (days)': number;
+  'ASIN': string;
+  'Price': number;
+  'Quantity': number;
+  'Description'?: string; // Optional column
+  [key: string]: string | number | undefined; // Allow for other potential columns
 }
 
 export default function AdminOrdersPage() {
@@ -152,7 +165,8 @@ export default function AdminOrdersPage() {
         return;
       }
 
-      const rows: any[] = utils.sheet_to_json(sheet, { raw: false, dateNF: 'yyyy-mm-dd' }); // Convert dates to strings
+      // Define the type for the rows read from the excel sheet
+      const rows: ExcelRow[] = utils.sheet_to_json(sheet, { raw: false, dateNF: 'yyyy-mm-dd' }); // Convert dates to strings
       if (rows.length === 0) {
         setUploadMessage('No data found in the file');
         return;

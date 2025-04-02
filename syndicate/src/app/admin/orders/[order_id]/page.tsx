@@ -300,7 +300,7 @@ export default function AdminOrderManagementPage() {
       <div className="mx-auto">
         <Link href="/admin/orders" className="text-[#c8aa64] hover:text-[#9d864e] mr-4">← Back to Orders</Link>
         <h1 className="text-3xl font-bold text-[#bfbfbf]">Order Not Found</h1>
-        <p className="text-gray-400">The requested order does not exist or you don't have permission to view it.</p>
+        <p className="text-gray-400">The requested order does not exist or you don&apos;t have permission to view it.</p>
       </div>
     </div>
   );

@@ -4,7 +4,6 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../../../../lib/auth';
 import { supabase } from '../../../../lib/supabase';
-import { PostgrestError } from '@supabase/supabase-js';
 import {
   Table,
   TableBody,
@@ -17,8 +16,9 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Check, Plus } from 'lucide-react';
+import { User } from '@supabase/supabase-js';
 
-interface User {
+interface AppUser extends User {
   user_id: number;
   email: string;
   firstname: string | null;
@@ -28,7 +28,7 @@ interface User {
 }
 
 export default function ManageUsersPage() {
-  const [users, setUsers] = useState<User[]>([]);
+  const [users, setUsers] = useState<AppUser[]>([]);
   const [inviteCode, setInviteCode] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState<string>('');
@@ -65,7 +65,7 @@ export default function ManageUsersPage() {
         console.error('Error fetching users:', error);
         setMessage('Failed to load users.');
       } else {
-        setUsers(data as unknown as User[]);
+        setUsers(data as unknown as AppUser[]);
       }
       setLoading(false);
     }

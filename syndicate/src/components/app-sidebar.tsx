@@ -18,7 +18,7 @@ import {
 } from '@/components/ui/sidebar';
 import { NavUser } from '@/components/nav-user';
 import { useRouter, usePathname } from 'next/navigation'; // Added usePathname
-import { ShoppingCart, History, Settings, Users, Home, type LucideIcon } from 'lucide-react';
+import { ShoppingCart, History, Settings, Users, Home } from 'lucide-react';
 
 // Sample data
 const data = {
