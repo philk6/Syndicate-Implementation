@@ -108,104 +108,106 @@ export default function AdminOrderManagementPage() {
   const router = useRouter();
 
   useEffect(() => {
-    // if (authLoading) return; // Allow fetching to start earlier
-
-    if (!isAuthenticated || user?.role !== 'admin') {
-      router.push('/login');
-      return;
-    }
-
-    async function fetchData() {
-      setLoading(true);
-
-      const { data: orderData, error: orderError } = await supabase
-        .from('orders')
-        .select('order_id, leadtime, deadline, label_upload_deadline, order_statuses(description)')
-        .eq('order_id', orderId)
-        .single() as { data: Order | null, error: PostgrestError | null };
-
-      if (orderError) {
-        console.error('Error fetching order:', orderError);
-        setLoading(false);
-        return;
+    // Wait for auth loading to complete before checking permissions or fetching data
+    if (!authLoading) {
+      if (!isAuthenticated || user?.role !== 'admin') {
+        router.push('/login');
+        return; // Stop execution if not authorized
       }
 
-      const { data: productData, error: productError } = await supabase
-        .from('order_products')
-        .select('sequence, order_id, asin, quantity, price, description')
-        .eq('order_id', orderId);
+      // Only fetch data if authenticated and authorized
+      async function fetchData() {
+        setLoading(true);
 
-      if (productError) {
-        console.error('Error fetching order products:', productError);
-      }
+        const { data: orderData, error: orderError } = await supabase
+          .from('orders')
+          .select('order_id, leadtime, deadline, label_upload_deadline, order_statuses(description)')
+          .eq('order_id', orderId)
+          .single() as { data: Order | null, error: PostgrestError | null };
 
-      const { data: statusData, error: statusError } = await supabase
-        .from('order_statuses')
-        .select('order_status_id, description');
+        if (orderError) {
+          console.error('Error fetching order:', orderError);
+          setLoading(false);
+          return;
+        }
 
-      if (statusError) {
-        console.error('Error fetching statuses:', statusError);
-      }
+        const { data: productData, error: productError } = await supabase
+          .from('order_products')
+          .select('sequence, order_id, asin, quantity, price, description')
+          .eq('order_id', orderId);
 
-      // Fetch companies that have applied for this order
-      interface CompanyApplicationResult {
-        company_id: number;
-        company: { name: string } | null;
-        max_investment: number;
-      }
-      
-      const { data: applicationData, error: applicationError } = await supabase
-        .from('order_company')
-        .select('company_id, company(name), max_investment')
-        .eq('order_id', orderId) as { data: CompanyApplicationResult[] | null, error: PostgrestError | null };
+        if (productError) {
+          console.error('Error fetching order products:', productError);
+        }
 
-      if (applicationError) {
-        console.error('Error fetching company applications:', applicationError);
-      } else if (applicationData && applicationData.length > 0) {
-        // For each company, fetch the count of ungated products
-        const companyApps = await Promise.all(
-          applicationData.map(async (app: CompanyApplicationResult) => {
-            const { data: ungatedData, error: ungatedError } = await supabase
-              .from('order_products_company')
-              .select('sequence')
-              .eq('order_id', orderId)
-              .eq('company_id', app.company_id)
-              .eq('ungated', true);
+        const { data: statusData, error: statusError } = await supabase
+          .from('order_statuses')
+          .select('order_status_id, description');
+
+        if (statusError) {
+          console.error('Error fetching statuses:', statusError);
+        }
+
+        // Fetch companies that have applied for this order
+        interface CompanyApplicationResult {
+          company_id: number;
+          company: { name: string } | null;
+          max_investment: number;
+        }
+        
+        const { data: applicationData, error: applicationError } = await supabase
+          .from('order_company')
+          .select('company_id, company(name), max_investment')
+          .eq('order_id', orderId) as { data: CompanyApplicationResult[] | null, error: PostgrestError | null };
+
+        if (applicationError) {
+          console.error('Error fetching company applications:', applicationError);
+        } else if (applicationData && applicationData.length > 0) {
+          // For each company, fetch the count of ungated products
+          const companyApps = await Promise.all(
+            applicationData.map(async (app: CompanyApplicationResult) => {
+              const { data: ungatedData, error: ungatedError } = await supabase
+                .from('order_products_company')
+                .select('sequence')
+                .eq('order_id', orderId)
+                .eq('company_id', app.company_id)
+                .eq('ungated', true);
               
-            if (ungatedError) {
-              console.error(`Error fetching ungated products for company ${app.company_id}:`, ungatedError);
+              if (ungatedError) {
+                console.error(`Error fetching ungated products for company ${app.company_id}:`, ungatedError);
+                return {
+                  company_id: app.company_id,
+                  company_name: app.company?.name || 'Unknown',
+                  max_investment: app.max_investment,
+                  ungated_count: 0
+                };
+              }
+              
               return {
                 company_id: app.company_id,
                 company_name: app.company?.name || 'Unknown',
                 max_investment: app.max_investment,
-                ungated_count: 0
+                ungated_count: ungatedData?.length || 0
               };
-            }
-            
-            return {
-              company_id: app.company_id,
-              company_name: app.company?.name || 'Unknown',
-              max_investment: app.max_investment,
-              ungated_count: ungatedData?.length || 0
-            };
-          })
-        );
-        
-        // Sort by max investment (highest first)
-        const sortedApps = companyApps.sort((a, b) => b.max_investment - a.max_investment);
-        
-        setCompanyApplications(sortedApps);
-      } else {
-        setCompanyApplications([]);
+            })
+          );
+          
+          // Sort by max investment (highest first)
+          const sortedApps = companyApps.sort((a, b) => b.max_investment - a.max_investment);
+          
+          setCompanyApplications(sortedApps);
+        } else {
+          setCompanyApplications([]);
+        }
+
+        setOrder(orderData);
+        setProducts(productData || []);
+        setStatuses(statusData || []);
+        setLoading(false);
       }
 
-      setOrder(orderData);
-      setProducts(productData || []);
-      setStatuses(statusData || []);
-      setLoading(false);
+      fetchData();
     }
-
-    fetchData();
   }, [orderId, isAuthenticated, authLoading, router, user]);
 
   const handleStatusChange = async (newStatusId: string) => {
