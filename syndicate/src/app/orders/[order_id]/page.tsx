@@ -37,11 +37,12 @@ export default function OrderDetailPage() {
   const [order, setOrder] = useState<Order | null>(null);
   const [products, setProducts] = useState<OrderProduct[]>([]);
   const [ungatedStatus, setUngatedStatus] = useState<Record<number, boolean>>({});
+  const [ungatedMinAmounts, setUngatedMinAmounts] = useState<Record<number, number | null>>({}); // New state for ungated_min_amount
   const [companyId, setCompanyId] = useState<number | null>(null);
   const [maxInvestment, setMaxInvestment] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [hasSubmitted, setHasSubmitted] = useState(false);
-  const [isOrderClosed, setIsOrderClosed] = useState(false); // New state for order status
+  const [isOrderClosed, setIsOrderClosed] = useState(false);
   const { isAuthenticated, loading: authLoading, user } = useAuth();
   const router = useRouter();
 
@@ -114,11 +115,11 @@ export default function OrderDetailPage() {
         }
       }
 
-      // Fetch existing ungated status for this company
+      // Fetch existing ungated status and ungated_min_amount for this company
       if (userData.company_id) {
         const { data: ungatedData, error: ungatedError } = await supabase
           .from('order_products_company')
-          .select('sequence, ungated')
+          .select('sequence, ungated, ungated_min_amount') // Added ungated_min_amount
           .eq('order_id', orderId)
           .eq('company_id', userData.company_id);
 
@@ -130,6 +131,12 @@ export default function OrderDetailPage() {
             return acc;
           }, {} as Record<number, boolean>);
           setUngatedStatus(ungatedMap || {});
+
+          const minAmountMap = ungatedData?.reduce((acc, item) => {
+            acc[item.sequence] = item.ungated_min_amount;
+            return acc;
+          }, {} as Record<number, number | null>);
+          setUngatedMinAmounts(minAmountMap || {});
         }
       }
 
@@ -163,9 +170,13 @@ export default function OrderDetailPage() {
   }, [orderId, isAuthenticated, authLoading, router, user]);
 
   const handleUngatedChange = async (sequence: number, checked: boolean) => {
-    if (!companyId || hasSubmitted || isOrderClosed) return; // Prevent changes if submitted or order closed
+    if (!companyId || hasSubmitted || isOrderClosed) return;
 
     setUngatedStatus(prev => ({ ...prev, [sequence]: checked }));
+    // Reset ungated_min_amount if unchecked
+    if (!checked) {
+      setUngatedMinAmounts(prev => ({ ...prev, [sequence]: null }));
+    }
 
     const { error } = await supabase
       .from('order_products_company')
@@ -174,7 +185,8 @@ export default function OrderDetailPage() {
         sequence,
         company_id: companyId,
         ungated: checked,
-        quantity: products.find(p => p.sequence === sequence)?.quantity || 0
+        quantity: products.find(p => p.sequence === sequence)?.quantity || 0,
+        ungated_min_amount: checked ? ungatedMinAmounts[sequence] : null, // Include current value if checked
       }, {
         onConflict: 'order_id, sequence, company_id'
       });
@@ -185,8 +197,35 @@ export default function OrderDetailPage() {
     }
   };
 
+  const handleMinAmountChange = (sequence: number, value: string) => {
+    if (!companyId || hasSubmitted || isOrderClosed) return;
+
+    const newMinAmount = value ? parseInt(value) : null;
+    setUngatedMinAmounts(prev => ({ ...prev, [sequence]: newMinAmount }));
+
+    // Optionally save immediately (uncomment if desired)
+    /*
+    const { error } = await supabase
+      .from('order_products_company')
+      .upsert({
+        order_id: orderId,
+        sequence,
+        company_id: companyId,
+        ungated: ungatedStatus[sequence] || false,
+        quantity: products.find(p => p.sequence === sequence)?.quantity || 0,
+        ungated_min_amount: newMinAmount,
+      }, {
+        onConflict: 'order_id, sequence, company_id'
+      });
+
+    if (error) {
+      console.error('Error updating ungated_min_amount:', error);
+    }
+    */
+  };
+
   const handleMaxInvestmentChange = async (value: string) => {
-    if (!companyId || hasSubmitted || isOrderClosed) return; // Prevent changes if submitted or order closed
+    if (!companyId || hasSubmitted || isOrderClosed) return;
 
     const newMaxInvestment = parseFloat(value) || 0;
     setMaxInvestment(newMaxInvestment);
@@ -208,31 +247,30 @@ export default function OrderDetailPage() {
   };
 
   const handleSubmitInvestment = async () => {
-    if (!companyId || !order || hasSubmitted || isOrderClosed) return; // Prevent submission if already submitted or order closed
-  
+    if (!companyId || !order || hasSubmitted || isOrderClosed) return;
+
     try {
-      // Prepare the data for order_products_company
       const investmentData = products.map(product => ({
         order_id: order.order_id,
         sequence: product.sequence,
         company_id: companyId,
         quantity: product.quantity,
-        ungated: ungatedStatus[product.sequence] || false
+        ungated: ungatedStatus[product.sequence] || false,
+        ungated_min_amount: ungatedStatus[product.sequence] ? ungatedMinAmounts[product.sequence] : null, // Include ungated_min_amount
       }));
-  
-      // Insert/update all records at once
+
       const { error } = await supabase
         .from('order_products_company')
         .upsert(investmentData, {
           onConflict: 'order_id, sequence, company_id'
         });
-  
+
       if (error) {
         console.error('Error submitting investment:', error);
         alert('Failed to submit investment. Please try again.');
         return;
       }
-  
+
       alert('Investment submitted successfully!');
       setHasSubmitted(true);
     } catch (err) {
@@ -259,7 +297,7 @@ export default function OrderDetailPage() {
           </Link>
           <h1 className="text-3xl font-bold text-white">Order Not Found</h1>
         </div>
-        <p className="text-gray-400">The requested order does not exist or you don&apos;t have permission to view it.</p>
+        <p className="text-gray-400">The requested order does not exist or you don’t have permission to view it.</p>
       </div>
     </div>
   );
@@ -288,14 +326,14 @@ export default function OrderDetailPage() {
         )}
 
         {hasSubmitted && (
-                  <Alert className='mb-6 bg-[#235c12] text-[#bfbfbf] w-fit'>
-                    <AlertOctagon className="h-4 w-4 text-[#bfbfbf]" />
-                    <AlertTitle>Submitted</AlertTitle>
-                    <AlertDescription>
-                      Your investment has been submitted.
-                    </AlertDescription>
-                  </Alert>
-                )}
+          <Alert className='mb-6 bg-[#235c12] text-[#bfbfbf] w-fit'>
+            <AlertOctagon className="h-4 w-4 text-[#bfbfbf]" />
+            <AlertTitle>Submitted</AlertTitle>
+            <AlertDescription>
+              Your investment has been submitted.
+            </AlertDescription>
+          </Alert>
+        )}
 
         <div className="grid grid-cols-1 gap-6 mb-8 w-full">
           <div className="rounded-lg p-6 bg-gradient-to-br from-[#212121] via-[#0f0f0f] to-[#2b2b2b] shadow-lg w-full">
@@ -330,9 +368,10 @@ export default function OrderDetailPage() {
                   <tr className="border-[#2B2B2B] hover:bg-transparent">
                     <th className="text-gray-300 w-[15%] h-12 px-4 text-left align-middle font-medium">ASIN</th>
                     <th className="text-gray-300 w-[15%] h-12 px-4 text-left align-middle font-medium">Ungated?</th>
+                    <th className="text-gray-300 w-[15%] h-12 px-4 text-left align-middle font-medium">Min Ungated Amount</th>
                     <th className="text-gray-300 w-[15%] h-12 px-4 text-left align-middle font-medium">Price</th>
                     <th className="text-gray-300 w-[15%] h-12 px-4 text-left align-middle font-medium">Quantity</th>
-                    {products[0].description && <th className="text-gray-300 w-[40%] h-12 px-4 text-left align-middle font-medium">Description</th>}
+                    {products[0].description && <th className="text-gray-300 w-[25%] h-12 px-4 text-left align-middle font-medium">Description</th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -346,6 +385,17 @@ export default function OrderDetailPage() {
                           onChange={(e) => handleUngatedChange(product.sequence, e.target.checked)}
                           className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded"
                           disabled={hasSubmitted || isOrderClosed}
+                        />
+                      </td>
+                      <td className="text-gray-200 p-4 align-middle" style={{ overflowWrap: 'break-word' }}>
+                        <Input
+                          type="number"
+                          value={ungatedMinAmounts[product.sequence] || ''}
+                          onChange={(e) => handleMinAmountChange(product.sequence, e.target.value)}
+                          className="bg-[#1f1f1f] border border-[#6a6a6a80] rounded px-3 py-2 w-full text-[#FFFFFF] placeholder:text-[#A7A7A7]"
+                          placeholder="Min Amount"
+                          min="0"
+                          disabled={!ungatedStatus[product.sequence] || hasSubmitted || isOrderClosed}
                         />
                       </td>
                       <td className="text-gray-200 p-4 align-middle" style={{ overflowWrap: 'break-word' }}>${product.price}</td>
@@ -371,12 +421,12 @@ export default function OrderDetailPage() {
             className="bg-[#1f1f1f] border border-[#6a6a6a80] rounded px-3 py-2 w-full max-w-xs border-[#A7A7A7] text-[#FFFFFF] placeholder:text-[#A7A7A7]"
             step="100"
             min="1000"
-            disabled={hasSubmitted || isOrderClosed} // Disable if submitted or order closed
+            disabled={hasSubmitted || isOrderClosed}
           />
           <Button
             onClick={handleSubmitInvestment}
             className="mt-4 bg-[#c8aa64] hover:bg-[#9d864e] text-[#242424]"
-            disabled={hasSubmitted || isOrderClosed} // Disable if submitted or order closed
+            disabled={hasSubmitted || isOrderClosed}
           >
             <Check className="mr-2 h-4 w-4" />
             Submit Investment

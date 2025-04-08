@@ -73,6 +73,7 @@ export default function AdminOrdersPage() {
           label_upload_deadline,
           order_statuses!order_status_id (description)
         `)
+        .order('order_id', { ascending: false })
         .order('deadline', { ascending: true }) as { data: Order[] | null, error: PostgrestError | null };
 
       if (ordersError) {
@@ -212,6 +213,7 @@ export default function AdminOrdersPage() {
         sequence: index + 1,
         asin: row['ASIN'],
         price: row['Price'],
+        cost_price: row['Price'],
         quantity: row['Quantity'],
         description: row['Description'] || '',
       }));

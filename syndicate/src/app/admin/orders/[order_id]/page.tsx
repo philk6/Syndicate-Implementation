@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useTransition } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useAuth } from '../../../../../lib/auth';
 import { supabase } from '../../../../../lib/supabase';
@@ -20,8 +20,10 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Trash2, Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { calculateOrderAllocation } from './actions';
 
 interface Order {
   order_id: number;
@@ -39,11 +41,55 @@ interface OrderProduct {
   quantity: number;
   price: number;
   description?: string;
+  cost_price: number;
+  roi?: number;
 }
 
 interface OrderStatus {
   order_status_id: number;
   description: string;
+}
+
+interface CompanyApplication {
+  company_id: number;
+  company_name: string;
+  max_investment: number;
+  ungated_count: number;
+}
+
+interface PreAssignment {
+  assignment_id: number;
+  order_id: number;
+  sequence: number;
+  company_id: number;
+  company_name: string;
+  quantity: number | null;
+}
+
+interface Company {
+  company_id: number;
+  name: string;
+}
+
+interface PreAssignmentQueryResult {
+  assignment_id: number;
+  order_id: number;
+  sequence: number;
+  company_id: number;
+  company: { name: string } | null;
+  quantity: number | null;
+}
+
+interface AllocationResult {
+  id: number;
+  order_id: number;
+  sequence: number;
+  company_id: number;
+  quantity: number;
+  roi: number | null;
+  needs_review: boolean;
+  created_at: string;
+  company: { name: string } | null; // Joined data
 }
 
 // Reusable DatePicker Component
@@ -59,7 +105,6 @@ function DatePicker({
   const handleSelect = (selectedDate: Date | undefined) => {
     setDate(selectedDate);
     if (selectedDate) {
-      // Format to ISO string for Supabase (e.g., "2025-03-29T00:00:00")
       const formattedDate = selectedDate.toISOString().slice(0, 16);
       onChange(formattedDate);
     }
@@ -97,25 +142,27 @@ export default function AdminOrderManagementPage() {
   const [order, setOrder] = useState<Order | null>(null);
   const [products, setProducts] = useState<OrderProduct[]>([]);
   const [statuses, setStatuses] = useState<OrderStatus[]>([]);
+  const [companies, setCompanies] = useState<Company[]>([]);
+  const [preAssignments, setPreAssignments] = useState<PreAssignment[]>([]);
   const [loading, setLoading] = useState(true);
-  const [companyApplications, setCompanyApplications] = useState<{
-    company_id: number;
-    company_name: string;
-    max_investment: number;
-    ungated_count: number;
-  }[]>([]);
+  const [companyApplications, setCompanyApplications] = useState<CompanyApplication[]>([]);
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [selectedSequence, setSelectedSequence] = useState<number | null>(null);
+  const [dialogCompanyId, setDialogCompanyId] = useState<string>('');
+  const [dialogQuantity, setDialogQuantity] = useState<string>('');
   const { isAuthenticated, loading: authLoading, user } = useAuth();
   const router = useRouter();
+  const [isPending, startTransition] = useTransition();
+  const [feedbackMessage, setFeedbackMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [allocationResults, setAllocationResults] = useState<AllocationResult[]>([]);
 
   useEffect(() => {
-    // Wait for auth loading to complete before checking permissions or fetching data
     if (!authLoading) {
       if (!isAuthenticated || user?.role !== 'admin') {
         router.push('/login');
-        return; // Stop execution if not authorized
+        return;
       }
 
-      // Only fetch data if authenticated and authorized
       async function fetchData() {
         setLoading(true);
 
@@ -133,7 +180,7 @@ export default function AdminOrderManagementPage() {
 
         const { data: productData, error: productError } = await supabase
           .from('order_products')
-          .select('sequence, order_id, asin, quantity, price, description')
+          .select('sequence, order_id, asin, quantity, price, cost_price, description, roi')
           .eq('order_id', orderId);
 
         if (productError) {
@@ -148,13 +195,29 @@ export default function AdminOrderManagementPage() {
           console.error('Error fetching statuses:', statusError);
         }
 
-        // Fetch companies that have applied for this order
+        const { data: companyData, error: companyError } = await supabase
+          .from('company')
+          .select('company_id, name');
+
+        if (companyError) {
+          console.error('Error fetching companies:', companyError);
+        }
+
+        const { data: preAssignmentData, error: preAssignmentError } = await supabase
+          .from('order_pre_assignments')
+          .select('assignment_id, order_id, sequence, company_id, company(name), quantity')
+          .eq('order_id', orderId) as { data: PreAssignmentQueryResult[] | null, error: PostgrestError | null };
+
+        if (preAssignmentError) {
+          console.error('Error fetching pre-assignments:', preAssignmentError);
+        }
+
         interface CompanyApplicationResult {
           company_id: number;
           company: { name: string } | null;
           max_investment: number;
         }
-        
+
         const { data: applicationData, error: applicationError } = await supabase
           .from('order_company')
           .select('company_id, company(name), max_investment')
@@ -163,7 +226,6 @@ export default function AdminOrderManagementPage() {
         if (applicationError) {
           console.error('Error fetching company applications:', applicationError);
         } else if (applicationData && applicationData.length > 0) {
-          // For each company, fetch the count of ungated products
           const companyApps = await Promise.all(
             applicationData.map(async (app: CompanyApplicationResult) => {
               const { data: ungatedData, error: ungatedError } = await supabase
@@ -172,37 +234,53 @@ export default function AdminOrderManagementPage() {
                 .eq('order_id', orderId)
                 .eq('company_id', app.company_id)
                 .eq('ungated', true);
-              
+
               if (ungatedError) {
                 console.error(`Error fetching ungated products for company ${app.company_id}:`, ungatedError);
                 return {
                   company_id: app.company_id,
                   company_name: app.company?.name || 'Unknown',
                   max_investment: app.max_investment,
-                  ungated_count: 0
+                  ungated_count: 0,
                 };
               }
-              
+
               return {
                 company_id: app.company_id,
                 company_name: app.company?.name || 'Unknown',
                 max_investment: app.max_investment,
-                ungated_count: ungatedData?.length || 0
+                ungated_count: ungatedData?.length || 0,
               };
             })
           );
-          
-          // Sort by max investment (highest first)
+
           const sortedApps = companyApps.sort((a, b) => b.max_investment - a.max_investment);
-          
           setCompanyApplications(sortedApps);
         } else {
           setCompanyApplications([]);
         }
 
+        // Fetch allocation results
+        const { data: allocationData, error: allocationError } = await supabase
+          .from('allocation_results')
+          .select('*, company(name)') // Select all allocation fields and join company name
+          .eq('order_id', orderId);
+
+        if (allocationError) {
+          console.error('Error fetching allocation results:', allocationError);
+        }
+
+        // Set all states
         setOrder(orderData);
         setProducts(productData || []);
         setStatuses(statusData || []);
+        setCompanies(companyData || []);
+        setPreAssignments(preAssignmentData?.map(pa => ({
+          ...pa,
+          company_id: pa.company_id,
+          company_name: pa.company?.name ?? 'Unknown Company',
+        })) || []);
+        setAllocationResults(allocationData || []); // Set allocation results state
         setLoading(false);
       }
 
@@ -223,11 +301,11 @@ export default function AdminOrderManagementPage() {
     }
   };
 
-  const handleProductUpdate = async (sequence: number, field: keyof OrderProduct, value: string | number) => {
+  const handleProductUpdate = async (sequence: number, field: keyof OrderProduct | 'roi', value: string | number) => {
     const updatedProduct = products.find(p => p.sequence === sequence);
     if (!updatedProduct) return;
 
-    const updatedValue = typeof value === 'string' && (field === 'price' || field === 'quantity') ? parseFloat(value) : value;
+    const updatedValue = typeof value === 'string' && (field === 'price' || field === 'quantity' || field === 'cost_price' || field === 'roi') ? parseFloat(value) : value;
     const { error } = await supabase
       .from('order_products')
       .update({ [field]: updatedValue })
@@ -252,6 +330,7 @@ export default function AdminOrderManagementPage() {
       console.error('Error removing product:', error);
     } else {
       setProducts(prev => prev.filter(p => p.sequence !== sequence));
+      setPreAssignments(prev => prev.filter(pa => pa.sequence !== sequence));
     }
   };
 
@@ -264,6 +343,7 @@ export default function AdminOrderManagementPage() {
       quantity: 1,
       price: 0,
       description: 'New Product',
+      cost_price: 0,
     };
 
     const { error } = await supabase
@@ -291,6 +371,99 @@ export default function AdminOrderManagementPage() {
     }
   };
 
+  const handlePreAssign = async () => {
+    if (!selectedSequence || !dialogCompanyId) {
+      alert('Please select a company.');
+      return;
+    }
+
+    const company_id = parseInt(dialogCompanyId);
+    const qty = dialogQuantity ? parseInt(dialogQuantity) : null;
+    const product = products.find(p => p.sequence === selectedSequence);
+    if (!product) return;
+
+    // Calculate total assigned quantity for this product, excluding null (full) assignments
+    const assignedQuantities = preAssignments
+      .filter(pa => pa.sequence === selectedSequence && pa.quantity !== null)
+      .reduce((sum, pa) => sum + (pa.quantity || 0), 0);
+    const newTotal = assignedQuantities + (qty || 0);
+
+    if (newTotal > product.quantity) {
+      alert(`Total pre-assigned quantity (${newTotal}) exceeds available amount (${product.quantity}).`);
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from('order_pre_assignments')
+      .insert({
+        order_id: orderId,
+        sequence: selectedSequence,
+        company_id,
+        quantity: qty,
+      })
+      .select('assignment_id, order_id, sequence, company_id, company(name), quantity')
+      .single() as { data: PreAssignmentQueryResult | null, error: PostgrestError | null };
+
+    if (error) {
+      console.error('Error adding pre-assignment:', error);
+      alert('Failed to add pre-assignment.');
+    } else if (data) {
+      setPreAssignments(prev => [
+        ...prev,
+        {
+          assignment_id: data.assignment_id,
+          order_id: data.order_id,
+          sequence: data.sequence,
+          company_id: data.company_id,
+          quantity: data.quantity,
+          company_name: data.company?.name ?? 'Unknown Company',
+        }
+      ]);
+      setIsDialogOpen(false);
+      setDialogCompanyId('');
+      setDialogQuantity('');
+      setSelectedSequence(null);
+    }
+  };
+
+  const handlePreAssignRemove = async (assignmentId: number) => {
+    const { error } = await supabase
+      .from('order_pre_assignments')
+      .delete()
+      .eq('assignment_id', assignmentId);
+
+    if (error) {
+      console.error('Error removing pre-assignment:', error);
+      alert('Failed to remove pre-assignment.');
+    } else {
+      setPreAssignments(prev => prev.filter(pa => pa.assignment_id !== assignmentId));
+    }
+  };
+
+  const openPreAssignDialog = (sequence: number) => {
+    setSelectedSequence(sequence);
+    setDialogCompanyId('');
+    setDialogQuantity('');
+    setIsDialogOpen(true);
+  };
+
+  const handleCalculateAllocation = () => {
+    setFeedbackMessage(null); // Clear previous feedback
+    startTransition(async () => {
+      const result = await calculateOrderAllocation(orderId);
+      setFeedbackMessage({ type: result.success ? 'success' : 'error', text: result.message });
+
+      if (result.success) {
+        // On successful allocation AND status update, refresh the page data
+        router.refresh();
+      }
+      // No else needed, if it failed, we just show the error message
+    });
+  };
+
+  // Create a map for quick ASIN lookup
+  const productAsinMap = new Map(products.map(p => [p.sequence, p.asin]));
+
   if (authLoading || loading) {
     return <div className="min-h-screen bg-[#14130F] p-6 flex items-center justify-center"><p className="text-gray-400">Loading...</p></div>;
   }
@@ -307,18 +480,42 @@ export default function AdminOrderManagementPage() {
     </div>
   );
 
+  // Calculate these values within the render logic so they update on re-renders
+  const isOrderEditable = order.order_statuses.description.toLowerCase() !== 'closed';
+  const currentStatusId = statuses.find(s => s.description === order.order_statuses.description)?.order_status_id;
+
   return (
     <div className="min-h-screen bg-background p-6 w-full">
       <div className="w-full">
         <Link href="/admin/orders" className="text-[#c8aa64] hover:text-[#9d864e] mb-6 inline-block">← Back to Orders</Link>
-        <h1 className="text-3xl font-bold text-[#bfbfbf] mb-6">Manage Order #{order.order_id}</h1>
+        <div className="flex justify-between items-center mb-6">
+             <h1 className="text-3xl font-bold text-[#bfbfbf]">Manage Order #{order.order_id}</h1>
+             {/* Allocation Button - Disable if order is closed */}
+             <Button
+                onClick={handleCalculateAllocation}
+                disabled={isPending || !isOrderEditable} // Also disable if order is closed
+                className="bg-[#c8aa64] hover:bg-[#9d864e] text-[#242424] disabled:opacity-50"
+             >
+                {isPending ? 'Calculating...' : 'Calculate Order'}
+             </Button>
+        </div>
+
+        {/* Feedback Message Area */}
+        {feedbackMessage && (
+            <div className={`mb-4 p-3 rounded ${feedbackMessage.type === 'success' ? 'bg-green-900 text-green-200' : 'bg-red-900 text-red-200'}`}>
+                {feedbackMessage.text}
+            </div>
+        )}
 
         {/* Order Details */}
         <div className="rounded-lg p-6 bg-gradient-to-br from-[#212121] via-[#0f0f0f] to-[#2b2b2b] shadow-lg w-full mb-8">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
               <label className="text-gray-300 font-medium block mb-2">Status</label>
-              <Select onValueChange={handleStatusChange} defaultValue={statuses.find(s => s.description === order.order_statuses.description)?.order_status_id.toString()}>
+              <Select
+                 value={currentStatusId ? currentStatusId.toString() : ''}
+                 onValueChange={handleStatusChange}
+              >
                 <SelectTrigger className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80]">
                   <SelectValue placeholder="Select status" />
                 </SelectTrigger>
@@ -384,11 +581,11 @@ export default function AdminOrderManagementPage() {
           )}
         </div>
 
-        {/* Order Products */}
+        {/* Order Products with Pre-Assignments */}
         <div className="rounded-lg p-6 bg-gradient-to-br from-[#212121] via-[#0f0f0f] to-[#2b2b2b] shadow-lg w-full overflow-x-auto">
           <div className="flex justify-between items-center mb-4">
             <h2 className="text-xl font-semibold text-gray-300">Order Products</h2>
-            <Button onClick={handleProductAdd} className="bg-[#c8aa64] hover:bg-[#9d864e] text-[#242424]">
+            <Button onClick={handleProductAdd} className="bg-[#c8aa64] hover:bg-[#9d864e] text-[#242424]" disabled={!isOrderEditable}>
               <Plus className="mr-2 h-4 w-4" /> Add Product
             </Button>
           </div>
@@ -399,62 +596,210 @@ export default function AdminOrderManagementPage() {
               <table className="w-full border-collapse bg-transparent" style={{ tableLayout: 'fixed' }}>
                 <thead>
                   <tr className="border-[#2B2B2B] hover:bg-transparent">
-                    <th className="text-gray-300 w-[20%] h-12 px-4 text-left align-middle font-medium">ASIN</th>
-                    <th className="text-gray-300 w-[15%] h-12 px-4 text-left align-middle font-medium">Price</th>
-                    <th className="text-gray-300 w-[15%] h-12 px-4 text-left align-middle font-medium">Quantity</th>
-                    <th className="text-gray-300 w-[40%] h-12 px-4 text-left align-middle font-medium">Description</th>
+                    <th className="text-gray-300 w-[10%] h-12 px-4 text-left align-middle font-medium">ASIN</th>
+                    <th className="text-gray-300 w-[10%] h-12 px-4 text-left align-middle font-medium">Cost Price</th>
+                    <th className="text-gray-300 w-[10%] h-12 px-4 text-left align-middle font-medium">Price</th>
+                    <th className="text-gray-300 w-[10%] h-12 px-4 text-left align-middle font-medium">Quantity</th>
+                    <th className="text-gray-300 w-[10%] h-12 px-4 text-left align-middle font-medium">ROI (%)</th>
+                    <th className="text-gray-300 w-[20%] h-12 px-4 text-left align-middle font-medium">Description</th>
+                    <th className="text-gray-300 w-[20%] h-12 px-4 text-left align-middle font-medium">Pre-Assigned To</th>
                     <th className="text-gray-300 w-[10%] h-12 px-4 text-left align-middle font-medium">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {products.map((product) => (
-                    <tr key={product.sequence} className="hover:bg-[#35353580] transition-colors border-[#6a6a6a80]">
-                      <td className="p-4 align-middle" style={{ overflowWrap: 'break-word' }}>
-                        <Input
-                          value={product.asin}
-                          onChange={(e) => handleProductUpdate(product.sequence, 'asin', e.target.value)}
-                          className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80]"
-                        />
-                      </td>
-                      <td className="p-4 align-middle" style={{ overflowWrap: 'break-word' }}>
-                        <Input
-                          type="number"
-                          value={product.price}
-                          onChange={(e) => handleProductUpdate(product.sequence, 'price', e.target.value)}
-                          className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80]"
-                        />
-                      </td>
-                      <td className="p-4 align-middle" style={{ overflowWrap: 'break-word' }}>
-                        <Input
-                          type="number"
-                          value={product.quantity}
-                          onChange={(e) => handleProductUpdate(product.sequence, 'quantity', e.target.value)}
-                          className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80]"
-                        />
-                      </td>
-                      <td className="p-4 align-middle" style={{ overflowWrap: 'break-word' }}>
-                        <Input
-                          value={product.description || ''}
-                          onChange={(e) => handleProductUpdate(product.sequence, 'description', e.target.value)}
-                          className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80]"
-                        />
-                      </td>
-                      <td className="p-4 align-middle" style={{ overflowWrap: 'break-word' }}>
-                        <Button
-                          variant="destructive"
-                          size="sm"
-                          onClick={() => handleProductRemove(product.sequence)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </td>
-                    </tr>
-                  ))}
+                  {products.map((product) => {
+                    const productPreAssignments = preAssignments.filter(pa => pa.sequence === product.sequence);
+                    const totalAssigned = productPreAssignments
+                      .filter(pa => pa.quantity !== null)
+                      .reduce((sum, pa) => sum + (pa.quantity || 0), 0);
+
+                    return (
+                      <tr key={product.sequence} className="hover:bg-[#35353580] transition-colors border-[#6a6a6a80]">
+                        <td className="p-4 align-middle" style={{ overflowWrap: 'break-word' }}>
+                          <Input
+                            value={product.asin}
+                            onChange={(e) => handleProductUpdate(product.sequence, 'asin', e.target.value)}
+                            className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80]"
+                            disabled={!isOrderEditable}
+                          />
+                        </td>
+                        <td className="p-4 align-middle" style={{ overflowWrap: 'break-word' }}>
+                          {product.asin === 'NEW-ASIN' ? (
+                            <Input
+                              type="number"
+                              value={product.cost_price}
+                              onChange={(e) => handleProductUpdate(product.sequence, 'cost_price', e.target.value)}
+                              className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80]"
+                              disabled={!isOrderEditable}
+                            />
+                          ) : (
+                            <span className="text-gray-300">{product.cost_price}</span>
+                          )}
+                        </td>
+                        <td className="p-4 align-middle" style={{ overflowWrap: 'break-word' }}>
+                          <Input
+                            type="number"
+                            value={product.price}
+                            onChange={(e) => handleProductUpdate(product.sequence, 'price', e.target.value)}
+                            className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80]"
+                            disabled={!isOrderEditable}
+                          />
+                        </td>
+                        <td className="p-4 align-middle" style={{ overflowWrap: 'break-word' }}>
+                          <Input
+                            type="number"
+                            value={product.quantity}
+                            onChange={(e) => handleProductUpdate(product.sequence, 'quantity', e.target.value)}
+                            className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80]"
+                            disabled={!isOrderEditable}
+                          />
+                        </td>
+                        <td className="p-4 align-middle text-gray-300" style={{ overflowWrap: 'break-word' }}>
+                           {/* Make ROI editable */}
+                           <Input
+                             type="number"
+                             value={product.roi ?? ''} // Use empty string if roi is null/undefined
+                             onChange={(e) => handleProductUpdate(product.sequence, 'roi', e.target.value)}
+                             className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80]"
+                             disabled={!isOrderEditable}
+                             placeholder="N/A"
+                           />
+                        </td>
+                        <td className="p-4 align-middle" style={{ overflowWrap: 'break-word' }}>
+                          <Input
+                            value={product.description || ''}
+                            onChange={(e) => handleProductUpdate(product.sequence, 'description', e.target.value)}
+                            className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80]"
+                            disabled={!isOrderEditable}
+                          />
+                        </td>
+                        <td className="p-4 align-middle" style={{ overflowWrap: 'break-word' }}>
+                          <div className="flex flex-col gap-2">
+                            {productPreAssignments.length > 0 ? (
+                              productPreAssignments.map(pa => (
+                                <div key={pa.assignment_id} className="flex items-center gap-2">
+                                  <span>{pa.company_name} ({pa.quantity || 'Full'})</span>
+                                  <Button
+                                    variant="destructive"
+                                    size="sm"
+                                    onClick={() => handlePreAssignRemove(pa.assignment_id)}
+                                    disabled={!isOrderEditable}
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                              ))
+                            ) : (
+                              <span className="text-gray-400">None</span>
+                            )}
+                            <Dialog open={isDialogOpen && selectedSequence === product.sequence} onOpenChange={(open) => {
+                              if (open) openPreAssignDialog(product.sequence);
+                              else setIsDialogOpen(false);
+                            }}>
+                              <DialogTrigger asChild>
+                                <Button
+                                  className="bg-[#c8aa64] hover:bg-[#9d864e] text-[#242424] mt-2"
+                                  disabled={!isOrderEditable}
+                                >
+                                  Add Pre-Assignment
+                                </Button>
+                              </DialogTrigger>
+                              <DialogContent className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80]">
+                                <DialogHeader>
+                                  <DialogTitle>Pre-Assign Product (ASIN: {product.asin})</DialogTitle>
+                                </DialogHeader>
+                                <div className="space-y-4">
+                                  <div>
+                                    <label className="text-gray-300 font-medium block mb-2">Company</label>
+                                    <Select value={dialogCompanyId} onValueChange={setDialogCompanyId}>
+                                      <SelectTrigger className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80]">
+                                        <SelectValue placeholder="Select a company" />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        {companies.map(company => (
+                                          <SelectItem key={company.company_id} value={company.company_id.toString()}>
+                                            {company.name}
+                                          </SelectItem>
+                                        ))}
+                                      </SelectContent>
+                                    </Select>
+                                  </div>
+                                  <div>
+                                    <label className="text-gray-300 font-medium block mb-2">Quantity (optional, max: {product.quantity - totalAssigned})</label>
+                                    <Input
+                                      type="number"
+                                      value={dialogQuantity}
+                                      onChange={(e) => setDialogQuantity(e.target.value)}
+                                      className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80]"
+                                      placeholder="Leave blank for full remaining"
+                                      min="1"
+                                      max={product.quantity - totalAssigned}
+                                    />
+                                  </div>
+                                  <Button
+                                    onClick={handlePreAssign}
+                                    className="bg-[#c8aa64] hover:bg-[#9d864e] text-[#242424]"
+                                  >
+                                    Confirm
+                                  </Button>
+                                </div>
+                              </DialogContent>
+                            </Dialog>
+                          </div>
+                        </td>
+                        <td className="p-4 align-middle" style={{ overflowWrap: 'break-word' }}>
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            onClick={() => handleProductRemove(product.sequence)}
+                            disabled={!isOrderEditable}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
           )}
         </div>
+
+        {/* Allocation Results Table */}
+        {allocationResults.length > 0 && (
+          <div className="rounded-lg p-6 bg-gradient-to-br from-[#212121] via-[#0f0f0f] to-[#2b2b2b] shadow-lg w-full mt-8 overflow-x-auto">
+            <h2 className="text-xl font-semibold text-gray-300 mb-4">Allocation Results</h2>
+            <Table>
+              <TableHeader>
+                <TableRow className="hover:bg-transparent">
+                  <TableHead className="text-gray-300 h-12 px-4 text-left align-middle font-medium">ASIN</TableHead>
+                  <TableHead className="text-gray-300 h-12 px-4 text-left align-middle font-medium">Company</TableHead>
+                  <TableHead className="text-gray-300 h-12 px-4 text-left align-middle font-medium">Quantity</TableHead>
+                  <TableHead className="text-gray-300 h-12 px-4 text-left align-middle font-medium">ROI (%)</TableHead>
+                  <TableHead className="text-gray-300 h-12 px-4 text-left align-middle font-medium">Needs Review</TableHead>
+                  <TableHead className="text-gray-300 h-12 px-4 text-left align-middle font-medium">Created At</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {allocationResults.map((result) => (
+                  <TableRow key={result.id} className="hover:bg-[#35353580] transition-colors border-[#6a6a6a80]">
+                    <TableCell className="p-4 align-middle text-gray-300">{productAsinMap.get(result.sequence) || 'N/A'}</TableCell>
+                    <TableCell className="p-4 align-middle text-gray-300">{result.company?.name || 'Unknown'}</TableCell>
+                    <TableCell className="p-4 align-middle text-gray-300">{result.quantity}</TableCell>
+                    <TableCell className="p-4 align-middle text-gray-300">
+                      {result.roi !== null ? `${result.roi.toFixed(2)}%` : 'N/A'}
+                    </TableCell>
+                    <TableCell className="p-4 align-middle text-gray-300">{result.needs_review ? 'Yes' : 'No'}</TableCell>
+                     <TableCell className="p-4 align-middle text-gray-300">
+                        {new Date(result.created_at).toLocaleString()} {/* Format timestamp */}
+                      </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
       </div>
     </div>
   );
