@@ -3,7 +3,6 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@lib/supabase/client';
-import bcrypt from 'bcryptjs';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp';
@@ -20,78 +19,71 @@ export default function SignupPage() {
   const router = useRouter();
 
   const handleSignup = async () => {
+    setMessage(''); // Clear previous messages
+
+    // 1. Check Invite Code (Keep this)
     const { data: invite, error: inviteError } = await supabase
       .from('invitation_codes')
-      .select('invite_id, code, expired, used_by_user_id')
+      .select('invite_id') // Only need to know if it exists and is valid
       .eq('code', inviteCode)
       .eq('expired', false)
       .is('used_by_user_id', null)
       .single();
 
-    if (inviteError) {
-      console.error('Error fetching invite code:', inviteError);
-      setMessage('Error checking invitation code. Please try again.');
+    if (inviteError || !invite) {
+      console.error('Error fetching or validating invite code:', inviteError);
+      setMessage('Invalid, expired, or already used invitation code.');
       return;
     }
 
-    if (!invite) {
-      console.log(`Invite code check failed for code: "${inviteCode}"`);
-      console.log(`Query conditions: code=${inviteCode}, expired=false, used_by_user_id=null`);
-      setMessage('Invalid, expired, or already used invitation code');
-      return;
-    }
-
+    // 2. Sign up the user with Supabase Auth
     const { data: authData, error: authError } = await supabase.auth.signUp({
       email,
       password,
       options: {
-        emailRedirectTo: `${window.location.origin}/login`,
+        // Consider enabling email verification
+        // emailRedirectTo: `${window.location.origin}/login`,
       },
     });
 
     if (authError || !authData.user) {
-      setMessage(authError?.message || 'Signup failed');
+      setMessage(authError?.message || 'Signup failed during authentication.');
       return;
     }
 
-    const hashedPassword = await bcrypt.hash(password, 10);
-    const { data: companyData, error: companyError } = await supabase
-      .from('company')
-      .insert({ name: companyName, email })
-      .select('company_id')
-      .single();
-
-    if (companyError || !companyData) {
-      setMessage(companyError?.message || 'Failed to create company');
-      return;
-    }
-
-    const { error: userError } = await supabase.from('users').insert({
-      firstname,
-      lastname,
-      email,
-      password: hashedPassword,
-      company_id: companyData.company_id,
-      role: 'user',
+    // 3. Call the RPC function to create company, user profile, and update invite
+    // Note: Assumes you will create this SQL function in your Supabase dashboard
+    const { error: rpcError } = await supabase.rpc('handle_new_user_signup', {
+        p_user_id: authData.user.id,
+        p_email: email,
+        p_firstname: firstname,
+        p_lastname: lastname,
+        p_company_name: companyName,
+        p_invite_code: inviteCode,
     });
 
-    if (userError) {
-      setMessage(userError.message);
-      return;
+
+    if (rpcError) {
+        // IMPORTANT: Consider how to handle cleanup if RPC fails after auth user is created.
+        // This might involve a backend process or manual cleanup.
+        // Example (requires admin privileges, best in a separate function/trigger):
+        // try { await supabase.auth.admin.deleteUser(authData.user.id); } catch (e) { console.error("Failed to delete auth user after RPC error:", e); }
+        console.error("RPC Error:", rpcError);
+        setMessage(`Signup failed after authentication: ${rpcError.message}. Please contact support.`);
+        return;
     }
 
-    const { error: updateError } = await supabase
-      .from('invitation_codes')
-      .update({ expired: true, used_by_user_id: authData.user.id })
-      .eq('code', inviteCode);
 
-    if (updateError) {
-      setMessage('Failed to update invitation code');
-      return;
-    }
+    // If signup and RPC succeed
+    setMessage('Account created successfully! Please check your email to verify your account if required, then log in.');
+    // Redirect only after success, maybe conditionally based on email verification requirement
+    // router.push('/login');
 
-    setMessage('Account created successfully! Please log in.');
-    router.push('/login');
+    // Old logic removed:
+    // const hashedPassword = await bcrypt.hash(password, 10); <-- Removed (Auth handles hashing)
+    // const { data: companyData, error: companyError } = ... <-- Removed (Handled by RPC)
+    // const { error: userError } = await supabase.from('users').insert({...}) <-- Removed (Handled by RPC)
+    // const { error: updateError } = await supabase.from('invitation_codes').update({...}) <-- Removed (Handled by RPC)
   };
 
   return (
