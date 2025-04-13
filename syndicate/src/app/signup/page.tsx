@@ -28,7 +28,15 @@ export default function SignupPage() {
       .is('used_by_user_id', null)
       .single();
 
-    if (inviteError || !invite) {
+    if (inviteError) {
+      console.error('Error fetching invite code:', inviteError);
+      setMessage('Error checking invitation code. Please try again.');
+      return;
+    }
+
+    if (!invite) {
+      console.log(`Invite code check failed for code: "${inviteCode}"`);
+      console.log(`Query conditions: code=${inviteCode}, expired=false, used_by_user_id=null`);
       setMessage('Invalid, expired, or already used invitation code');
       return;
     }
