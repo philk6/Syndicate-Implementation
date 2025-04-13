@@ -41,7 +41,7 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-[#080808] p-4">
+    <div className="min-h-screen flex flex-col items-center justify-center bg-[#060606] p-4">
       <Image src="/syndicate_logo.jpeg" alt="Logo" width={519} height={519} className="w-32 h-auto mb-4" />
       <h1 className="text-2xl font-bold text-[#ffffff] text-center mb-6">Sign in to your account</h1>
       <div className="card">
