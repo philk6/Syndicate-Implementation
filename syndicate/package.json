@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "echo \"NODE_ENV: $NODE_ENV\" && echo \"SUPABASE_SERVICE_ROLE_KEY_SET: ${SUPABASE_SERVICE_ROLE_KEY:+true}\" && next build",
     "start": "next start",
     "lint": "next lint"
   },
