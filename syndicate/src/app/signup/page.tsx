@@ -54,7 +54,7 @@ export default function SignupPage() {
     // 3. Call the RPC function to create company, user profile, and update invite
     // Note: Assumes you will create this SQL function in your Supabase dashboard
     const { error: rpcError } = await supabase.rpc('handle_new_user_signup', {
-        p_user_id: authData.user.id,
+        p_user_id_text: authData.user.id,
         p_email: email,
         p_firstname: firstname,
         p_lastname: lastname,
