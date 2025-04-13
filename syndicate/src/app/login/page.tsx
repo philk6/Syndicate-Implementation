@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react'; // Added useEffect
-import { supabase } from '../../../lib/supabase';
+import { supabase } from '@lib/supabase/client';
 import { useAuth } from '../../../lib/auth';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation'; // Added useRouter

@@ -1,7 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { supabaseAdmin } from '../../../../../lib/supabase'; // Import the ADMIN Supabase client
+import { supabaseAdmin } from '@lib/supabase/admin'; // Use admin client via alias
 
 // Define the server action
 export async function calculateOrderAllocation(orderId: number): Promise<{ success: boolean; message: string }> {

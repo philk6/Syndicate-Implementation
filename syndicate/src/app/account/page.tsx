@@ -2,8 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { useAuth } from '../../../lib/auth';
-import { supabase } from '../../../lib/supabase';
+import { useAuth } from '@lib/auth';
+import { supabase } from '@lib/supabase/client';
 import bcrypt from 'bcryptjs';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';

@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server';
-import { supabase } from '../../../../lib/supabase';
-import { OrderProduct } from '../../../../lib/types';
+import { supabaseAdmin } from '@lib/supabase/admin';
+import { OrderProduct } from '@lib/types';
 
 export async function GET() {
   try {
-    const { data, error } = await supabase
+    const { data, error } = await supabaseAdmin
       .from('order_products')
       .select('*')
       .returns<OrderProduct[]>();

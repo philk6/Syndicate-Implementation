@@ -1,8 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useAuth } from '../../lib/auth';
-import { supabase } from '../../lib/supabase';
+import { useAuth } from '@lib/auth';
+import { supabase } from '@lib/supabase/client';
 import {
   Sidebar,
   SidebarContent,
@@ -19,6 +19,8 @@ import {
 import { NavUser } from '@/components/nav-user';
 import { useRouter, usePathname } from 'next/navigation'; // Added usePathname
 import { ShoppingCart, History, Settings, Users, Home } from 'lucide-react';
+// Removed unused Link import
+// import Link from 'next/link';
 
 // Sample data
 const data = {

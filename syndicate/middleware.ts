@@ -1,46 +1,55 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { supabaseServer } from './lib/supabase';
+import { createSupabaseServerClient } from '@lib/supabase/server';
 
 export async function middleware(req: NextRequest) {
-  const token = req.headers.get('Authorization')?.replace('Bearer ', '');
+  const res = NextResponse.next();
+  const token = req.headers.get('Authorization')?.replace('Bearer ', '') || req.cookies.get('sb-access-token')?.value;
 
-  const publicPaths = ['/login', '/signup'];
-  if (
-    publicPaths.includes(req.nextUrl.pathname) ||
-    req.nextUrl.pathname.startsWith('/api') ||
-    req.nextUrl.pathname.startsWith('/_next') ||
-    req.nextUrl.pathname === '/favicon.ico'
-  ) {
-    return NextResponse.next();
+  const supabase = createSupabaseServerClient(token);
+
+  const { data: { session } } = await supabase.auth.getSession();
+
+  const publicPaths = ['/login', '/signup', '/forgot-password'];
+
+  if (!session && !publicPaths.some(path => req.nextUrl.pathname.startsWith(path))) {
+    const url = req.nextUrl.clone();
+    url.pathname = '/login';
+    return NextResponse.redirect(url);
   }
 
-  if (!token) {
-    return NextResponse.redirect(new URL('/login', req.url));
+  if (session && (req.nextUrl.pathname === '/login' || req.nextUrl.pathname === '/signup')) {
+    const url = req.nextUrl.clone();
+    url.pathname = '/orders';
+    return NextResponse.redirect(url);
   }
 
-  const { data: { user }, error } = await supabaseServer(token).auth.getUser();
-
-  if (error || !user) {
-    return NextResponse.redirect(new URL('/login', req.url));
-  }
-
-  // Check if the request is for an admin route
   if (req.nextUrl.pathname.startsWith('/admin')) {
-    const { data: userData, error: userError } = await supabaseServer(token)
+    if (!session || !session.user) {
+      const url = req.nextUrl.clone();
+      url.pathname = '/login';
+      return NextResponse.redirect(url);
+    }
+
+    const { data: userData, error: userError } = await supabase
       .from('users')
       .select('role')
-      .eq('email', user.email) // Assuming email is unique and links auth user to users table
+      .eq('email', session.user.email)
       .single();
 
-    if (userError || userData?.role !== 'admin') {
-      return NextResponse.redirect(new URL('/dashboard', req.url));
+    if (userError || !userData || userData.role !== 'admin') {
+      console.warn('Admin access denied:', { user: session.user.email, error: userError?.message, role: userData?.role });
+      const url = req.nextUrl.clone();
+      url.pathname = '/unauthorized';
+      return NextResponse.redirect(url);
     }
   }
 
-  return NextResponse.next();
+  return res;
 }
 
 export const config = {
-  matcher: ['/((?!api|_next/static|_next/image|favicon.ico).*)'],
+  matcher: [
+    '/((?!api|_next/static|_next/image|favicon.ico|images|assets).*)',
+  ],
 };
