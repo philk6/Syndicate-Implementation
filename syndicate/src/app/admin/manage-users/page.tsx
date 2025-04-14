@@ -112,7 +112,8 @@ export default function ManageUsersPage() {
         .from('invitation_codes')
         .insert({
           code,
-          expired: false
+          expired: false,
+          created_user_id: createdUserId,
         })
         .select('code')
         .single();
