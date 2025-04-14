@@ -23,6 +23,17 @@ import {
   ChartTooltip,
   ChartTooltipContent,
 } from '@/components/ui/chart';
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogCancel,
+  AlertDialogAction,
+} from '@/components/ui/alert-dialog';
+import { Button } from '@/components/ui/button';
 import { Bar, BarChart, Pie, PieChart, CartesianGrid, XAxis, YAxis, Legend } from 'recharts';
 
 interface Order {
@@ -50,6 +61,7 @@ export default function UserDashboardPage() {
   const [investmentData, setInvestmentData] = useState<InvestmentDistribution[]>([]);
   const [recentOrders, setRecentOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isCompanyPopupOpen, setIsCompanyPopupOpen] = useState(false);
   const { isAuthenticated, loading: authLoading, user } = useAuth();
   const router = useRouter();
 
@@ -79,6 +91,13 @@ export default function UserDashboardPage() {
 
       const companyId = userData.company_id;
 
+      // Check if company_id is null and show popup
+      if (!companyId) {
+        setIsCompanyPopupOpen(true);
+        setLoading(false);
+        return; // Skip fetching dashboard data until company is linked
+      }
+
       // Fetch total orders and recent orders
       const { data: ordersData, error: ordersError } = await supabase
         .from('order_company')
@@ -88,42 +107,35 @@ export default function UserDashboardPage() {
       if (ordersError) {
         console.error('Error fetching orders:', ordersError);
       } else {
-        // Explicitly handle potential arrays from Supabase joins
         const orders = ordersData
           .map((oc) => {
-            // Treat oc.orders as potentially an array, get first element
             const orderData = Array.isArray(oc.orders) ? oc.orders[0] : oc.orders;
 
             if (!orderData) {
               console.warn(`Missing order data for order_company ${oc.order_id}`);
-              return null; // Skip if base order data is missing
+              return null;
             }
 
-            // Treat orderData.order_statuses as potentially an array, get first element
             const statusData = Array.isArray(orderData.order_statuses)
               ? orderData.order_statuses[0]
               : orderData.order_statuses;
 
-            // Construct the order object, ensuring compatibility with the Order interface
             const mappedOrder: Order = {
               order_id: oc.order_id as number,
               deadline: orderData.deadline as string,
               order_statuses: {
-                // Use statusData safely
                 description: statusData?.description ?? 'Unknown',
               },
-              // total_amount is optional in Order, handle null/undefined
               total_amount: orderData.total_amount ?? undefined,
             };
 
             return mappedOrder;
           })
-          .filter((order): order is Order => order !== null); // Filter out nulls and assert type
+          .filter((order): order is Order => order !== null);
 
         setTotalOrders(orders.length);
-        setRecentOrders(orders.slice(0, 5)); // Limit to 5 recent orders
+        setRecentOrders(orders.slice(0, 5));
 
-        // Order status distribution
         const statusCount = orders.reduce((acc: { [key: string]: number }, order) => {
           const status = order.order_statuses.description;
           acc[status] = (acc[status] || 0) + 1;
@@ -171,6 +183,11 @@ export default function UserDashboardPage() {
 
     fetchDashboardData();
   }, [isAuthenticated, authLoading, router, user]);
+
+  const handleRedirectToAccount = () => {
+    setIsCompanyPopupOpen(false);
+    router.push('/account');
+  };
 
   const chartConfig = {
     count: { label: 'Orders', color: '#c8aa64' },
@@ -295,6 +312,31 @@ export default function UserDashboardPage() {
             </Table>
           </CardContent>
         </Card>
+
+        {/* Company Check Popup */}
+        <AlertDialog open={isCompanyPopupOpen} onOpenChange={setIsCompanyPopupOpen}>
+          <AlertDialogContent className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80]">
+            <AlertDialogHeader>
+              <AlertDialogTitle>Add Company Information</AlertDialogTitle>
+              <AlertDialogDescription>
+                Your account is not linked to a company. Please add your company details to continue.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel className="bg-[#2b2b2b] text-gray-300 border-[#6a6a6a80] hover:bg-[#353535]">
+                Cancel
+              </AlertDialogCancel>
+              <AlertDialogAction asChild>
+                <Button
+                  onClick={handleRedirectToAccount}
+                  className="bg-[#c8aa64] hover:bg-[#9d864e] text-[#242424]"
+                >
+                  Go to Account
+                </Button>
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </div>
   );

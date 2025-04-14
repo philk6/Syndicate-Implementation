@@ -9,12 +9,14 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Check, Plus } from 'lucide-react';
 
 interface UserInfo {
   firstname: string;
   lastname: string;
   email: string;
-  company_id: number;
+  company_id: number | null;
 }
 
 interface CompanyInfo {
@@ -24,8 +26,9 @@ interface CompanyInfo {
 
 export default function AccountPage() {
   const [userInfo, setUserInfo] = useState<UserInfo | null>(null);
-  const [companyInfo, setCompanyInfo] = useState<CompanyInfo | null>(null);
+  const [companyInfo, setCompanyInfo] = useState<CompanyInfo>({ name: '', email: '' });
   const [password, setPassword] = useState('');
+  const [inviteCode, setInviteCode] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState('');
   const { isAuthenticated, loading: authLoading, user } = useAuth();
@@ -42,7 +45,6 @@ export default function AccountPage() {
     async function fetchData() {
       setLoading(true);
 
-      // Fetch user info
       const { data: userData, error: userError } = await supabase
         .from('users')
         .select('firstname, lastname, email, company_id')
@@ -58,18 +60,21 @@ export default function AccountPage() {
 
       setUserInfo(userData);
 
-      // Fetch company info
-      const { data: companyData, error: companyError } = await supabase
-        .from('company')
-        .select('name, email')
-        .eq('company_id', userData.company_id)
-        .single();
+      if (userData.company_id) {
+        const { data: companyData, error: companyError } = await supabase
+          .from('company')
+          .select('name, email')
+          .eq('company_id', userData.company_id)
+          .single();
 
-      if (companyError) {
-        console.error('Error fetching company data:', companyError);
-        setMessage('Failed to load company data');
+        if (companyError) {
+          console.error('Error fetching company data:', companyError);
+          setMessage('Failed to load company data');
+        } else {
+          setCompanyInfo(companyData);
+        }
       } else {
-        setCompanyInfo(companyData);
+        setCompanyInfo({ name: '', email: '' });
       }
 
       setLoading(false);
@@ -105,7 +110,6 @@ export default function AccountPage() {
     } else {
       setMessage('Account information updated successfully');
 
-      // Update Supabase auth email if changed
       if (userInfo.email !== user?.email) {
         const { error: authError } = await supabase.auth.updateUser({ email: userInfo.email });
         if (authError) {
@@ -114,7 +118,6 @@ export default function AccountPage() {
         }
       }
 
-      // Clear password field after update
       setPassword('');
     }
 
@@ -122,27 +125,139 @@ export default function AccountPage() {
   };
 
   const handleCompanyUpdate = async () => {
-    if (!companyInfo || !userInfo) return;
+    if (!userInfo || !companyInfo) return;
+    if (!companyInfo.name || !companyInfo.email) {
+      setMessage('Company name and email are required');
+      return;
+    }
 
     setLoading(true);
     setMessage('');
 
-    const { error: companyError } = await supabase
-      .from('company')
-      .update({
-        name: companyInfo.name,
-        email: companyInfo.email,
-      })
-      .eq('company_id', userInfo.company_id);
+    const { data: { user: authUser }, error: authError } = await supabase.auth.getUser();
+    if (authError || !authUser) {
+      console.error('Auth error:', authError);
+      setMessage('Authentication error. Please log in again.');
+      setLoading(false);
+      return;
+    }
 
-    if (companyError) {
-      console.error('Error updating company:', companyError);
-      setMessage('Failed to update company information');
+    if (userInfo.company_id) {
+      const { error: companyError } = await supabase
+        .from('company')
+        .update({
+          name: companyInfo.name,
+          email: companyInfo.email,
+        })
+        .eq('company_id', userInfo.company_id);
+
+      if (companyError) {
+        console.error('Error updating company:', companyError);
+        if (companyError.code === '23505') {
+          setMessage('A company with this email already exists');
+        } else {
+          setMessage(`Failed to update company: ${companyError.message}`);
+        }
+      } else {
+        setMessage('Company information updated successfully');
+      }
     } else {
-      setMessage('Company information updated successfully');
+      const { data, error: companyError } = await supabase
+        .rpc('create_company', {
+          p_name: companyInfo.name,
+          p_email: companyInfo.email,
+          p_user_id: authUser.id,
+        });
+
+      if (companyError) {
+        console.error('Error creating company:', companyError);
+        if (companyError.code === '23505') {
+          setMessage('A company with this email already exists');
+        } else {
+          setMessage(`Failed to create company: ${companyError.message}`);
+        }
+      } else {
+        const newCompanyId = data;
+        const { error: userError } = await supabase
+          .from('users')
+          .update({ company_id: newCompanyId })
+          .eq('user_id', authUser.id);
+
+        if (userError) {
+          console.error('Error linking company to user:', userError);
+          setMessage(`Failed to link company: ${userError.message}`);
+        } else {
+          setUserInfo({ ...userInfo, company_id: newCompanyId });
+          setMessage('Company created and linked successfully');
+        }
+      }
     }
 
     setLoading(false);
+  };
+
+  const generateInviteCode = async () => {
+    setMessage('');
+    setInviteCode(null);
+
+    if (!userInfo?.company_id) {
+      setMessage('You must be associated with a company to generate an invite code.');
+      return;
+    }
+
+    const { data: userData, error: userError } = await supabase
+      .from('users')
+      .select('user_id')
+      .eq('email', user?.email)
+      .single();
+
+    if (userError || !userData) {
+      console.error('Error fetching user ID:', userError);
+      setMessage('Failed to identify current user.');
+      return;
+    }
+
+    const createdUserId = userData.user_id;
+    const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    const maxAttempts = 5;
+    let attempts = 0;
+
+    while (attempts < maxAttempts) {
+      let code = '';
+      for (let i = 0; i < 5; i++) {
+        code += characters.charAt(Math.floor(Math.random() * characters.length));
+      }
+
+      const { data, error } = await supabase
+        .from('invitation_codes')
+        .insert({
+          code,
+          expired: false,
+          created_user_id: createdUserId,
+          invited_to_company: userInfo.company_id,
+        })
+        .select('code')
+        .single();
+
+      if (error) {
+        if (error.code === '23505') {
+          console.log(`Code ${code} already exists, retrying...`);
+          attempts++;
+          continue;
+        }
+        console.error('Error creating invite code:', error);
+        setMessage(`Failed to generate invite code: ${error.message}`);
+        return;
+      }
+
+      if (data) {
+        setInviteCode(data.code);
+        setMessage('Invite code generated successfully!');
+        return;
+      }
+    }
+
+    setMessage('Failed to generate a unique invite code after multiple attempts.');
   };
 
   if (loading) {
@@ -217,38 +332,65 @@ export default function AccountPage() {
         </Card>
 
         {/* Company Info Card */}
-        {companyInfo && (
+        <Card className="bg-gradient-to-br from-[#212121] via-[#0f0f0f] to-[#2b2b2b] border-[#6a6a6a80]">
+          <CardHeader>
+            <CardTitle className="text-gray-300">Company Information</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div>
+              <Label htmlFor="companyName" className="text-gray-300">Company Name</Label>
+              <Input
+                id="companyName"
+                value={companyInfo.name}
+                onChange={(e) => setCompanyInfo(prev => ({ ...prev, name: e.target.value }))}
+                className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80]"
+              />
+            </div>
+            <div>
+              <Label htmlFor="companyEmail" className="text-gray-300">Company Email</Label>
+              <Input
+                id="companyEmail"
+                type="email"
+                value={companyInfo.email}
+                onChange={(e) => setCompanyInfo(prev => ({ ...prev, email: e.target.value }))}
+                className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80]"
+              />
+            </div>
+            <Button
+              onClick={handleCompanyUpdate}
+              disabled={loading}
+              className="w-full bg-[#c8aa64] hover:bg-[#9d864e] text-[#242424]"
+            >
+              {userInfo && userInfo.company_id ? 'Save Company Info' : 'Add Company'}
+            </Button>
+          </CardContent>
+        </Card>
+
+        {/* Invite Code Card */}
+        {userInfo?.company_id && (
           <Card className="bg-gradient-to-br from-[#212121] via-[#0f0f0f] to-[#2b2b2b] border-[#6a6a6a80]">
             <CardHeader>
-              <CardTitle className="text-gray-300 Direkt">Company Information</CardTitle>
+              <CardTitle className="text-gray-300">Invite to Company</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div>
-                <Label htmlFor="companyName" className="text-gray-300">Company Name</Label>
-                <Input
-                  id="companyName"
-                  value={companyInfo.name}
-                  onChange={(e) => setCompanyInfo(prev => prev ? { ...prev, name: e.target.value } : null)}
-                  className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80]"
-                />
-              </div>
-              <div>
-                <Label htmlFor="companyEmail" className="text-gray-300">Company Email</Label>
-                <Input
-                  id="companyEmail"
-                  type="email"
-                  value={companyInfo.email}
-                  onChange={(e) => setCompanyInfo(prev => prev ? { ...prev, email: e.target.value } : null)}
-                  className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80]"
-                />
-              </div>
               <Button
-                onClick={handleCompanyUpdate}
+                onClick={generateInviteCode}
                 disabled={loading}
                 className="w-full bg-[#c8aa64] hover:bg-[#9d864e] text-[#242424]"
               >
-                Save Company Info
+                <Plus className="mr-2 h-4 w-4" />
+                Generate Invite Code
               </Button>
+              {inviteCode && (
+                <Alert className="bg-[#235c12] text-[#bfbfbf]">
+                  <Check className="h-4 w-4 text-[#bfbfbf]" />
+                  <AlertTitle>New Invite Code</AlertTitle>
+                  <AlertDescription>
+                    <span className="font-mono text-lg">{inviteCode}</span>
+                    <p className="mt-1">Share this code to invite users to your company.</p>
+                  </AlertDescription>
+                </Alert>
+              )}
             </CardContent>
           </Card>
         )}
