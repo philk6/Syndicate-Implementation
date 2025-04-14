@@ -13,35 +13,31 @@ export default function SignupPage() {
   const [lastname, setLastname] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [companyName, setCompanyName] = useState('');
   const [inviteCode, setInviteCode] = useState('');
   const [message, setMessage] = useState('');
   const router = useRouter();
 
   const handleSignup = async () => {
-    setMessage(''); // Clear previous messages
+    setMessage('');
 
-    // 1. Check Invite Code (Keep this)
     const { data: invite, error: inviteError } = await supabase
       .from('invitation_codes')
-      .select('invite_id') // Only need to know if it exists and is valid
+      .select('invite_id, invited_to_company')
       .eq('code', inviteCode)
       .eq('expired', false)
       .is('used_by_user_id', null)
       .single();
 
     if (inviteError || !invite) {
-      console.error('Error fetching or validating invite code:', inviteError);
+      console.error('Error fetching invite code:', inviteError);
       setMessage('Invalid, expired, or already used invitation code.');
       return;
     }
 
-    // 2. Sign up the user with Supabase Auth
     const { data: authData, error: authError } = await supabase.auth.signUp({
       email,
       password,
       options: {
-        // Consider enabling email verification
         // emailRedirectTo: `${window.location.origin}/login`,
       },
     });
@@ -51,39 +47,31 @@ export default function SignupPage() {
       return;
     }
 
-    // 3. Call the RPC function to create company, user profile, and update invite
-    // Note: Assumes you will create this SQL function in your Supabase dashboard
     const { error: rpcError } = await supabase.rpc('handle_new_user_signup', {
-        p_user_id_text: authData.user.id,
-        p_email: email,
-        p_firstname: firstname,
-        p_lastname: lastname,
-        p_company_name: companyName,
-        p_invite_code: inviteCode
+      p_user_id_text: authData.user.id,
+      p_email: email,
+      p_firstname: firstname,
+      p_lastname: lastname,
+      p_invite_code: inviteCode,
     });
 
-
     if (rpcError) {
-        // IMPORTANT: Consider how to handle cleanup if RPC fails after auth user is created.
-        // This might involve a backend process or manual cleanup.
-        // Example (requires admin privileges, best in a separate function/trigger):
-        // try { await supabase.auth.admin.deleteUser(authData.user.id); } catch (e) { console.error("Failed to delete auth user after RPC error:", e); }
-        console.error("RPC Error:", rpcError);
-        setMessage(`Signup failed after authentication: ${rpcError.message}. Please contact support.`);
-        return;
+      console.error('RPC Error:', rpcError);
+      setMessage(`Signup failed: ${rpcError.message}. Please try again or contact support.`);
+      try {
+        await fetch('/api/cleanup_orphaned_user', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: authData.user.id }),
+        });
+      } catch (e) {
+        console.error('Cleanup failed:', e);
+      }
+      return;
     }
 
-
-    // If signup and RPC succeed
-    setMessage('Account created successfully! Please check your email to verify your account if required, then log in.');
-    // Redirect only after success, maybe conditionally based on email verification requirement
-    // router.push('/login');
-
-    // Old logic removed:
-    // const hashedPassword = await bcrypt.hash(password, 10); <-- Removed (Auth handles hashing)
-    // const { data: companyData, error: companyError } = ... <-- Removed (Handled by RPC)
-    // const { error: userError } = await supabase.from('users').insert({...}) <-- Removed (Handled by RPC)
-    // const { error: updateError } = await supabase.from('invitation_codes').update({...}) <-- Removed (Handled by RPC)
+    setMessage('Account created successfully! Please check your email to verify your account, then log in.');
+    setTimeout(() => router.push('/login'), 1000);
   };
 
   return (
@@ -91,7 +79,6 @@ export default function SignupPage() {
       <div className="card">
         <h1 className="text-2xl font-bold text-[#ffffff] text-center">Sign Up</h1>
         <div className="">
-          {/* Flex container for First name and Last name */}
           <div className="flex flex-col sm:flex-row gap-4 mb-3">
             <div className="flex-1">
               <h3 className="input-label">First name</h3>
@@ -114,7 +101,6 @@ export default function SignupPage() {
               />
             </div>
           </div>
-
           <h3 className="input-label">Email</h3>
           <Input
             type="email"
@@ -131,15 +117,6 @@ export default function SignupPage() {
             onChange={(e) => setPassword(e.target.value)}
             className="mb-3 border-[#A7A7A7] text-[#FFFFFF] placeholder:text-[#A7A7A7]"
           />
-          <h3 className="input-label">Company name</h3>
-          <Input
-            type="text"
-            placeholder="Enter company name"
-            value={companyName}
-            onChange={(e) => setCompanyName(e.target.value)}
-            className="mb-3 border-[#A7A7A7] text-[#FFFFFF] placeholder:text-[#A7A7A7]"
-          />
-          {/* Divider Line */}
           <div className="border-t border-[#a7a7a7] my-4 mt-8"></div>
           <div className="text-center">
             <h3 className="input-label">Enter your invitation code</h3>
