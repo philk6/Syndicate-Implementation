@@ -21,6 +21,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Switch } from '@/components/ui/switch';
 import { Trash2, Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { calculateOrderAllocation } from './actions';
@@ -43,6 +44,7 @@ interface OrderProduct {
   description?: string;
   cost_price: number;
   roi?: number;
+  hide_price_and_quantity: boolean;
 }
 
 interface OrderStatus {
@@ -89,7 +91,7 @@ interface AllocationResult {
   roi: number | null;
   needs_review: boolean;
   created_at: string;
-  company: { name: string } | null; // Joined data
+  company: { name: string } | null;
 }
 
 // Reusable DatePicker Component
@@ -155,6 +157,7 @@ export default function AdminOrderManagementPage() {
   const [isPending, startTransition] = useTransition();
   const [feedbackMessage, setFeedbackMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [allocationResults, setAllocationResults] = useState<AllocationResult[]>([]);
+  const [hideAll, setHideAll] = useState<boolean>(false);
 
   useEffect(() => {
     if (!authLoading) {
@@ -180,7 +183,7 @@ export default function AdminOrderManagementPage() {
 
         const { data: productData, error: productError } = await supabase
           .from('order_products')
-          .select('sequence, order_id, asin, quantity, price, cost_price, description, roi')
+          .select('sequence, order_id, asin, quantity, price, cost_price, description, roi, hide_price_and_quantity')
           .eq('order_id', orderId);
 
         if (productError) {
@@ -260,17 +263,15 @@ export default function AdminOrderManagementPage() {
           setCompanyApplications([]);
         }
 
-        // Fetch allocation results
         const { data: allocationData, error: allocationError } = await supabase
           .from('allocation_results')
-          .select('*, company(name)') // Select all allocation fields and join company name
+          .select('*, company(name)')
           .eq('order_id', orderId);
 
         if (allocationError) {
           console.error('Error fetching allocation results:', allocationError);
         }
 
-        // Set all states
         setOrder(orderData);
         setProducts(productData || []);
         setStatuses(statusData || []);
@@ -280,7 +281,8 @@ export default function AdminOrderManagementPage() {
           company_id: pa.company_id,
           company_name: pa.company?.name ?? 'Unknown Company',
         })) || []);
-        setAllocationResults(allocationData || []); // Set allocation results state
+        setAllocationResults(allocationData || []);
+        setHideAll(productData?.every(p => p.hide_price_and_quantity) || false);
         setLoading(false);
       }
 
@@ -301,7 +303,7 @@ export default function AdminOrderManagementPage() {
     }
   };
 
-  const handleProductUpdate = async (sequence: number, field: keyof OrderProduct | 'roi', value: string | number) => {
+  const handleProductUpdate = async (sequence: number, field: keyof OrderProduct | 'roi' | 'hide_price_and_quantity', value: string | number | boolean) => {
     const updatedProduct = products.find(p => p.sequence === sequence);
     if (!updatedProduct) return;
 
@@ -316,6 +318,25 @@ export default function AdminOrderManagementPage() {
       console.error('Error updating product:', error);
     } else {
       setProducts(prev => prev.map(p => p.sequence === sequence ? { ...p, [field]: updatedValue } : p));
+      if (field === 'hide_price_and_quantity') {
+        setHideAll(products.every(p => p.sequence === sequence ? updatedValue : p.hide_price_and_quantity));
+      }
+    }
+  };
+
+  const handleHideAllToggle = async (checked: boolean) => {
+    setHideAll(checked);
+    setProducts(prev => prev.map(p => ({ ...p, hide_price_and_quantity: checked })));
+
+    const { error } = await supabase
+      .from('order_products')
+      .update({ hide_price_and_quantity: checked })
+      .eq('order_id', orderId);
+
+    if (error) {
+      console.error('Error updating hide_price_and_quantity for all products:', error);
+      setProducts(prev => prev.map(p => ({ ...p, hide_price_and_quantity: !checked })));
+      setHideAll(!checked);
     }
   };
 
@@ -331,6 +352,7 @@ export default function AdminOrderManagementPage() {
     } else {
       setProducts(prev => prev.filter(p => p.sequence !== sequence));
       setPreAssignments(prev => prev.filter(pa => pa.sequence !== sequence));
+      setHideAll(products.filter(p => p.sequence !== sequence).every(p => p.hide_price_and_quantity));
     }
   };
 
@@ -344,6 +366,7 @@ export default function AdminOrderManagementPage() {
       price: 0,
       description: 'New Product',
       cost_price: 0,
+      hide_price_and_quantity: hideAll,
     };
 
     const { error } = await supabase
@@ -382,7 +405,6 @@ export default function AdminOrderManagementPage() {
     const product = products.find(p => p.sequence === selectedSequence);
     if (!product) return;
 
-    // Calculate total assigned quantity for this product, excluding null (full) assignments
     const assignedQuantities = preAssignments
       .filter(pa => pa.sequence === selectedSequence && pa.quantity !== null)
       .reduce((sum, pa) => sum + (pa.quantity || 0), 0);
@@ -448,20 +470,17 @@ export default function AdminOrderManagementPage() {
   };
 
   const handleCalculateAllocation = () => {
-    setFeedbackMessage(null); // Clear previous feedback
+    setFeedbackMessage(null);
     startTransition(async () => {
       const result = await calculateOrderAllocation(orderId);
       setFeedbackMessage({ type: result.success ? 'success' : 'error', text: result.message });
 
       if (result.success) {
-        // On successful allocation AND status update, refresh the page data
         router.refresh();
       }
-      // No else needed, if it failed, we just show the error message
     });
   };
 
-  // Create a map for quick ASIN lookup
   const productAsinMap = new Map(products.map(p => [p.sequence, p.asin]));
 
   if (authLoading || loading) {
@@ -475,12 +494,11 @@ export default function AdminOrderManagementPage() {
       <div className="mx-auto">
         <Link href="/admin/orders" className="text-[#c8aa64] hover:text-[#9d864e] mr-4">← Back to Orders</Link>
         <h1 className="text-3xl font-bold text-[#bfbfbf]">Order Not Found</h1>
-        <p className="text-gray-400">The requested order does not exist or you don&apos;t have permission to view it.</p>
+        <p className="text-gray-400">The requested order does not exist or you don't have permission to view it.</p>
       </div>
     </div>
   );
 
-  // Calculate these values within the render logic so they update on re-renders
   const isOrderEditable = order.order_statuses.description.toLowerCase() !== 'closed';
   const currentStatusId = statuses.find(s => s.description === order.order_statuses.description)?.order_status_id;
 
@@ -489,32 +507,29 @@ export default function AdminOrderManagementPage() {
       <div className="w-full">
         <Link href="/admin/orders" className="text-[#c8aa64] hover:text-[#9d864e] mb-6 inline-block">← Back to Orders</Link>
         <div className="flex justify-between items-center mb-6">
-             <h1 className="text-3xl font-bold text-[#bfbfbf]">Manage Order #{order.order_id}</h1>
-             {/* Allocation Button - Disable if order is closed */}
-             <Button
-                onClick={handleCalculateAllocation}
-                disabled={isPending || !isOrderEditable} // Also disable if order is closed
-                className="bg-[#c8aa64] hover:bg-[#9d864e] text-[#242424] disabled:opacity-50"
-             >
-                {isPending ? 'Calculating...' : 'Calculate Order'}
-             </Button>
+          <h1 className="text-3xl font-bold text-[#bfbfbf]">Manage Order #{order.order_id}</h1>
+          <Button
+            onClick={handleCalculateAllocation}
+            disabled={isPending || !isOrderEditable}
+            className="bg-[#c8aa64] hover:bg-[#9d864e] text-[#242424] disabled:opacity-50"
+          >
+            {isPending ? 'Calculating...' : 'Calculate Order'}
+          </Button>
         </div>
 
-        {/* Feedback Message Area */}
         {feedbackMessage && (
-            <div className={`mb-4 p-3 rounded ${feedbackMessage.type === 'success' ? 'bg-green-900 text-green-200' : 'bg-red-900 text-red-200'}`}>
-                {feedbackMessage.text}
-            </div>
+          <div className={`mb-4 p-3 rounded ${feedbackMessage.type === 'success' ? 'bg-green-900 text-green-200' : 'bg-red-900 text-red-200'}`}>
+            {feedbackMessage.text}
+          </div>
         )}
 
-        {/* Order Details */}
         <div className="rounded-lg p-6 bg-gradient-to-br from-[#212121] via-[#0f0f0f] to-[#2b2b2b] shadow-lg w-full mb-8">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
               <label className="text-gray-300 font-medium block mb-2">Status</label>
               <Select
-                 value={currentStatusId ? currentStatusId.toString() : ''}
-                 onValueChange={handleStatusChange}
+                value={currentStatusId ? currentStatusId.toString() : ''}
+                onValueChange={handleStatusChange}
               >
                 <SelectTrigger className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80]">
                   <SelectValue placeholder="Select status" />
@@ -549,10 +564,17 @@ export default function AdminOrderManagementPage() {
                 onChange={(value) => handleOrderUpdate('label_upload_deadline', value)}
               />
             </div>
+            <div>
+              <label className="text-gray-300 font-medium block mb-2">Hide All Price and Quantity</label>
+              <Switch
+                checked={hideAll}
+                onCheckedChange={handleHideAllToggle}
+                disabled={!isOrderEditable}
+              />
+            </div>
           </div>
         </div>
 
-        {/* Company Applications */}
         <div className="rounded-lg p-6 bg-gradient-to-br from-[#212121] via-[#0f0f0f] to-[#2b2b2b] shadow-lg w-full mb-8">
           <h2 className="text-xl font-semibold text-gray-300 mb-4">Company Applications</h2>
           {companyApplications.length === 0 ? (
@@ -581,7 +603,6 @@ export default function AdminOrderManagementPage() {
           )}
         </div>
 
-        {/* Order Products with Pre-Assignments */}
         <div className="rounded-lg p-6 bg-gradient-to-br from-[#212121] via-[#0f0f0f] to-[#2b2b2b] shadow-lg w-full overflow-x-auto">
           <div className="flex justify-between items-center mb-4">
             <h2 className="text-xl font-semibold text-gray-300">Order Products</h2>
@@ -596,6 +617,7 @@ export default function AdminOrderManagementPage() {
               <table className="w-full border-collapse bg-transparent" style={{ tableLayout: 'fixed' }}>
                 <thead>
                   <tr className="border-[#2B2B2B] hover:bg-transparent">
+                    <th className="text-gray-300 w-[10%] h-12 px-4 text-left align-middle font-medium">Hide Price</th>
                     <th className="text-gray-300 w-[10%] h-12 px-4 text-left align-middle font-medium">ASIN</th>
                     <th className="text-gray-300 w-[10%] h-12 px-4 text-left align-middle font-medium">Cost Price</th>
                     <th className="text-gray-300 w-[10%] h-12 px-4 text-left align-middle font-medium">Price</th>
@@ -615,6 +637,13 @@ export default function AdminOrderManagementPage() {
 
                     return (
                       <tr key={product.sequence} className="hover:bg-[#35353580] transition-colors border-[#6a6a6a80]">
+                        <td className="p-4 align-middle" style={{ overflowWrap: 'break-word' }}>
+                          <Switch
+                            checked={product.hide_price_and_quantity}
+                            onCheckedChange={(checked) => handleProductUpdate(product.sequence, 'hide_price_and_quantity', checked)}
+                            disabled={!isOrderEditable}
+                          />
+                        </td>
                         <td className="p-4 align-middle" style={{ overflowWrap: 'break-word' }}>
                           <Input
                             value={product.asin}
@@ -655,15 +684,14 @@ export default function AdminOrderManagementPage() {
                           />
                         </td>
                         <td className="p-4 align-middle text-gray-300" style={{ overflowWrap: 'break-word' }}>
-                           {/* Make ROI editable */}
-                           <Input
-                             type="number"
-                             value={product.roi ?? ''} // Use empty string if roi is null/undefined
-                             onChange={(e) => handleProductUpdate(product.sequence, 'roi', e.target.value)}
-                             className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80]"
-                             disabled={!isOrderEditable}
-                             placeholder="N/A"
-                           />
+                          <Input
+                            type="number"
+                            value={product.roi ?? ''}
+                            onChange={(e) => handleProductUpdate(product.sequence, 'roi', e.target.value)}
+                            className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80]"
+                            disabled={!isOrderEditable}
+                            placeholder="N/A"
+                          />
                         </td>
                         <td className="p-4 align-middle" style={{ overflowWrap: 'break-word' }}>
                           <Input
@@ -766,7 +794,6 @@ export default function AdminOrderManagementPage() {
           )}
         </div>
 
-        {/* Allocation Results Table */}
         {allocationResults.length > 0 && (
           <div className="rounded-lg p-6 bg-gradient-to-br from-[#212121] via-[#0f0f0f] to-[#2b2b2b] shadow-lg w-full mt-8 overflow-x-auto">
             <h2 className="text-xl font-semibold text-gray-300 mb-4">Allocation Results</h2>
@@ -791,9 +818,9 @@ export default function AdminOrderManagementPage() {
                       {result.roi !== null ? `${result.roi.toFixed(2)}%` : 'N/A'}
                     </TableCell>
                     <TableCell className="p-4 align-middle text-gray-300">{result.needs_review ? 'Yes' : 'No'}</TableCell>
-                     <TableCell className="p-4 align-middle text-gray-300">
-                        {new Date(result.created_at).toLocaleString()} {/* Format timestamp */}
-                      </TableCell>
+                    <TableCell className="p-4 align-middle text-gray-300">
+                      {new Date(result.created_at).toLocaleString()}
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
