@@ -1104,6 +1104,3 @@ as permissive
 for update
 to authenticated
 using ((user_id = auth.uid()));
-
-
-
