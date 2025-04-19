@@ -7,14 +7,6 @@ import { supabase } from '@lib/supabase/client';
 import { PostgrestError } from '@supabase/supabase-js';
 import Link from 'next/link';
 import { Badge } from '@/components/ui/badge';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
 
 interface Order {
   order_id: number;
@@ -42,7 +34,6 @@ export default function HistoryOrderDetailPage() {
   const orderId = parseInt(params.order_id as string);
   const [order, setOrder] = useState<Order | null>(null);
   const [allocations, setAllocations] = useState<AllocationResult[]>([]);
-  const [companyId, setCompanyId] = useState<number | null>(null);
   const [maxInvestment, setMaxInvestment] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const { isAuthenticated, loading: authLoading, user } = useAuth();
@@ -71,7 +62,6 @@ export default function HistoryOrderDetailPage() {
         setLoading(false);
         return;
       }
-      setCompanyId(userData.company_id);
 
       // Fetch order details
       const { data: orderData, error: orderError } = await supabase
@@ -104,12 +94,14 @@ export default function HistoryOrderDetailPage() {
           `)
           .eq('order_id', orderId)
           .eq('company_id', userData.company_id)
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           .returns<any[]>();
 
         if (allocationError) {
           console.error('Error fetching allocation results:', allocationError.message, allocationError.details);
         } else {
           console.log('Raw allocation data:', allocationData); // Debug logging
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const processedAllocations = allocationData?.map((alloc: any) => ({
             ...alloc,
             order_products: alloc.order_products || { asin: 'Error', description: 'Missing product data', roi: null },
@@ -156,11 +148,11 @@ export default function HistoryOrderDetailPage() {
       <div className="mx-auto">
         <div className="flex items-center mb-6">
           <Link href="/history" className="text-blue-500 hover:text-blue-400 mr-4">
-            ← Back to History
+            &larr; Back to History
           </Link>
           <h1 className="text-3xl font-bold text-white">Order Not Found</h1>
         </div>
-        <p className="text-gray-400">The requested order does not exist or you don't have permission to view it.</p>
+        <p className="text-gray-400">The requested order does not exist or you don&apos;t have permission to view it.</p>
       </div>
     </div>
   );

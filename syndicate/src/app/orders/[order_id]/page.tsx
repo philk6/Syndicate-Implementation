@@ -278,7 +278,7 @@ export default function OrderDetailPage() {
           </Link>
           <h1 className="text-3xl font-bold text-white">Order Not Found</h1>
         </div>
-        <p className="text-gray-400">The requested order does not exist or you don't have permission to view it.</p>
+        <p className="text-gray-400">The requested order does not exist or you don&apos;t have permission to view it.</p>
       </div>
     </div>
   );
