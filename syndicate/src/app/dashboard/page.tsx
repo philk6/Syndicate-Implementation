@@ -66,6 +66,12 @@ interface ChartData {
   invested_amount: number;
 }
 
+interface AggregateAllocationResult {
+  time_period: string; // Assuming string, adjust if it's a Date object
+  total_profit: number | null;
+  total_invested_amount: number | null;
+}
+
 const chartConfig = {
   profit: {
     label: 'Profit',
@@ -225,7 +231,7 @@ export default function UserDashboardPage() {
         setChartData([]);
       } else {
         console.log('Raw chart data:', allocationData); // Debug logging
-        const processedData = allocationData.map((item: any) => ({
+        const processedData = allocationData.map((item: AggregateAllocationResult) => ({
           date: item.time_period,
           profit: item.total_profit || 0,
           invested_amount: item.total_invested_amount || 0,

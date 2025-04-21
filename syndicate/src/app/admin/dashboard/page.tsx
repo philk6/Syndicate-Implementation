@@ -33,6 +33,13 @@ interface DashboardMetrics {
   averageRoi: number | null;
 }
 
+interface RecentOrderQueryData {
+  order_id: number;
+  total_amount: number | null;
+  deadline: string;
+  order_statuses: { description: string } | null;
+}
+
 export default function AdminDashboardPage() {
   const [metrics, setMetrics] = useState<DashboardMetrics>({ totalOrders: 0, totalRevenue: 0, averageRoi: null });
   const [recentOrders, setRecentOrders] = useState<Order[]>([]);
@@ -98,7 +105,7 @@ export default function AdminDashboardPage() {
           order_statuses!order_status_id(description)
         `)
         .order('created_at', { ascending: false })
-        .limit(5) as { data: any[] | null, error: PostgrestError | null };
+        .limit(5) as { data: RecentOrderQueryData[] | null, error: PostgrestError | null };
 
       if (recentOrdersError) {
         console.error('Error fetching recent orders:', recentOrdersError.message);
