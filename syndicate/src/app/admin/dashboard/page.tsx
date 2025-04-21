@@ -3,6 +3,8 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../../../../lib/auth';
+import { supabase } from '../../../../lib/supabase/client';
+import { PostgrestError } from '@supabase/supabase-js';
 import {
   Card,
   CardContent,
@@ -17,48 +19,23 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import {
-  ChartContainer,
-  ChartTooltip,
-  ChartTooltipContent,
-} from '@/components/ui/chart';
-import { Bar, BarChart, Pie, PieChart, CartesianGrid, XAxis, YAxis, Legend } from 'recharts';
 
-// Dummy Data (replace with real data fetches if needed)
-const orderStatusData = [
-  { status: 'Open', count: 15 },
-  { status: 'Closed', count: 8 },
-  { status: 'Pending', count: 5 },
-];
+interface Order {
+  order_id: number;
+  status: string;
+  deadline: string;
+  total_amount: number;
+}
 
-const productDistributionData = [
-  { name: 'Company A', value: 40 },
-  { name: 'Company B', value: 30 },
-  { name: 'Company C', value: 20 },
-  { name: 'Unassigned', value: 10 },
-];
-
-const recentOrders = [
-  { order_id: 1, status: 'Open', deadline: '2025-04-15T00:00:00Z', total_amount: 1500 },
-  { order_id: 2, status: 'Closed', deadline: '2025-03-20T00:00:00Z', total_amount: 2000 },
-  { order_id: 3, status: 'Pending', deadline: '2025-04-10T00:00:00Z', total_amount: 800 },
-];
-
-// Chart Configurations
-const orderChartConfig = {
-  count: {
-    label: 'Orders',
-    color: '#c8aa64', // Gold color from your theme
-  },
-};
-
-const productChartConfig = {
-  value: {
-    label: 'Products',
-  },
-};
+interface DashboardMetrics {
+  totalOrders: number;
+  totalRevenue: number;
+  averageRoi: number | null;
+}
 
 export default function AdminDashboardPage() {
+  const [metrics, setMetrics] = useState<DashboardMetrics>({ totalOrders: 0, totalRevenue: 0, averageRoi: null });
+  const [recentOrders, setRecentOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const { isAuthenticated, loading: authLoading, user } = useAuth();
   const router = useRouter();
@@ -71,8 +48,80 @@ export default function AdminDashboardPage() {
       return;
     }
 
-    // Simulate data fetch (replace with real Supabase calls if desired)
-    setTimeout(() => setLoading(false), 500); // Dummy delay
+    async function fetchDashboardData() {
+      setLoading(true);
+
+      // Fetch total orders
+      const { count: totalOrders, error: ordersError } = await supabase
+        .from('orders')
+        .select('*', { count: 'exact', head: true });
+
+      if (ordersError) {
+        console.error('Error fetching total orders:', ordersError.message);
+      }
+
+      // Fetch total revenue (sum of total_amount from orders)
+      const { data: revenueData, error: revenueError } = await supabase
+        .from('orders')
+        .select('total_amount')
+        .not('total_amount', 'is', null);
+
+      const totalRevenue = revenueData
+        ? revenueData.reduce((sum, order) => sum + order.total_amount, 0)
+        : 0;
+
+      if (revenueError) {
+        console.error('Error fetching total revenue:', revenueError.message);
+      }
+
+      // Fetch average ROI from order_company
+      const { data: roiData, error: roiError } = await supabase
+        .from('order_company')
+        .select('roi')
+        .not('roi', 'is', null);
+
+      const averageRoi = roiData && roiData.length > 0
+        ? roiData.reduce((sum, record) => sum + (record.roi || 0), 0) / roiData.length
+        : null;
+
+      if (roiError) {
+        console.error('Error fetching average ROI:', roiError.message);
+      }
+
+      // Fetch recent orders (limit to 5 for display)
+      const { data: ordersData, error: recentOrdersError } = await supabase
+        .from('orders')
+        .select(`
+          order_id,
+          total_amount,
+          deadline,
+          order_statuses!order_status_id(description)
+        `)
+        .order('created_at', { ascending: false })
+        .limit(5) as { data: any[] | null, error: PostgrestError | null };
+
+      if (recentOrdersError) {
+        console.error('Error fetching recent orders:', recentOrdersError.message);
+      } else if (ordersData) {
+        const processedOrders = ordersData.map(order => ({
+          order_id: order.order_id,
+          status: order.order_statuses?.description || 'N/A',
+          deadline: order.deadline,
+          total_amount: order.total_amount || 0,
+        }));
+        setRecentOrders(processedOrders);
+      }
+
+      setMetrics({
+        totalOrders: totalOrders || 0,
+        totalRevenue,
+        averageRoi,
+      });
+
+      setLoading(false);
+    }
+
+    fetchDashboardData();
   }, [isAuthenticated, authLoading, router, user]);
 
   if (loading) {
@@ -97,8 +146,8 @@ export default function AdminDashboardPage() {
               <CardTitle className="text-gray-300">Total Orders</CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-2xl font-bold text-[#c8aa64]">28</p>
-              <p className="text-sm text-gray-400">+5% from last month</p>
+              <p className="text-2xl font-bold text-[#c8aa64]">{metrics.totalOrders}</p>
+              <p className="text-sm text-gray-400">All orders processed</p>
             </CardContent>
           </Card>
           <Card className="bg-gradient-to-br from-[#212121] via-[#0f0f0f] to-[#2b2b2b] border-[#6a6a6a80]">
@@ -106,64 +155,19 @@ export default function AdminDashboardPage() {
               <CardTitle className="text-gray-300">Total Revenue</CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-2xl font-bold text-[#c8aa64]">$45,678</p>
-              <p className="text-sm text-gray-400">+12% from last month</p>
+              <p className="text-2xl font-bold text-[#c8aa64]">${metrics.totalRevenue.toLocaleString()}</p>
+              <p className="text-sm text-gray-400">Sum of order amounts</p>
             </CardContent>
           </Card>
           <Card className="bg-gradient-to-br from-[#212121] via-[#0f0f0f] to-[#2b2b2b] border-[#6a6a6a80]">
             <CardHeader>
-              <CardTitle className="text-gray-300">Active Companies</CardTitle>
+              <CardTitle className="text-gray-300">Average ROI</CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-2xl font-bold text-[#c8aa64]">12</p>
-              <p className="text-sm text-gray-400">+2 this month</p>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Charts */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-          {/* Bar Chart: Orders by Status */}
-          <Card className="bg-gradient-to-br from-[#212121] via-[#0f0f0f] to-[#2b2b2b] border-[#6a6a6a80]">
-            <CardHeader>
-              <CardTitle className="text-gray-300">Orders by Status</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ChartContainer config={orderChartConfig} className="h-[300px]">
-                <BarChart data={orderStatusData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#6a6a6a80" />
-                  <XAxis dataKey="status" stroke="#d1d5db" />
-                  <YAxis stroke="#d1d5db" />
-                  <ChartTooltip content={<ChartTooltipContent />} />
-                  <Bar dataKey="count" fill="#c8aa64" radius={4} />
-                </BarChart>
-              </ChartContainer>
-            </CardContent>
-          </Card>
-
-          {/* Pie Chart: Product Distribution by Company */}
-          <Card className="bg-gradient-to-br from-[#212121] via-[#0f0f0f] to-[#2b2b2b] border-[#6a6a6a80]">
-            <CardHeader>
-              <CardTitle className="text-gray-300">Product Distribution by Company</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ChartContainer config={productChartConfig} className="h-[300px]">
-                <PieChart>
-                  <Pie
-                    data={productDistributionData}
-                    dataKey="value"
-                    nameKey="name"
-                    cx="50%"
-                    cy="50%"
-                    outerRadius={80}
-                    fill="#c8aa64"
-                    label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
-                    labelLine={false}
-                  />
-                  <ChartTooltip content={<ChartTooltipContent />} />
-                  <Legend />
-                </PieChart>
-              </ChartContainer>
+              <p className="text-2xl font-bold text-[#c8aa64]">
+                {metrics.averageRoi != null ? metrics.averageRoi.toFixed(2) : 'N/A'}
+              </p>
+              <p className="text-sm text-gray-400">Across all company investments</p>
             </CardContent>
           </Card>
         </div>
@@ -184,14 +188,22 @@ export default function AdminDashboardPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {recentOrders.map((order) => (
-                  <TableRow key={order.order_id} className="hover:bg-[#35353580] transition-colors border-[#2b2b2b]">
-                    <TableCell className="text-gray-200">{order.order_id}</TableCell>
-                    <TableCell className="text-gray-200">{order.status}</TableCell>
-                    <TableCell className="text-gray-200">{new Date(order.deadline).toLocaleString()}</TableCell>
-                    <TableCell className="text-gray-200">${order.total_amount.toLocaleString()}</TableCell>
+                {recentOrders.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={4} className="text-gray-400 text-center">
+                      No recent orders found.
+                    </TableCell>
                   </TableRow>
-                ))}
+                ) : (
+                  recentOrders.map((order) => (
+                    <TableRow key={order.order_id} className="hover:bg-[#35353580] transition-colors border-[#2b2b2b]">
+                      <TableCell className="text-gray-200">{order.order_id}</TableCell>
+                      <TableCell className="text-gray-200">{order.status}</TableCell>
+                      <TableCell className="text-gray-200">{new Date(order.deadline).toLocaleString()}</TableCell>
+                      <TableCell className="text-gray-200">${order.total_amount.toLocaleString()}</TableCell>
+                    </TableRow>
+                  ))
+                )}
               </TableBody>
             </Table>
           </CardContent>

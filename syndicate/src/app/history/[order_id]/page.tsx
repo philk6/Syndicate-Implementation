@@ -20,13 +20,18 @@ interface AllocationResult {
   order_id: number;
   sequence: number;
   quantity: number;
-  needs_review: boolean;
   created_at: string;
   order_products: {
     asin: string;
     description: string | null;
-    roi: number | null; // ROI from order_products
+    roi: number | null;
   };
+}
+
+interface OrderCompany {
+  max_investment: number;
+  roi: number | null;
+  needs_review: boolean;
 }
 
 export default function HistoryOrderDetailPage() {
@@ -34,7 +39,7 @@ export default function HistoryOrderDetailPage() {
   const orderId = parseInt(params.order_id as string);
   const [order, setOrder] = useState<Order | null>(null);
   const [allocations, setAllocations] = useState<AllocationResult[]>([]);
-  const [maxInvestment, setMaxInvestment] = useState<number | null>(null);
+  const [orderCompany, setOrderCompany] = useState<OrderCompany | null>(null);
   const [loading, setLoading] = useState(true);
   const { isAuthenticated, loading: authLoading, user } = useAuth();
   const router = useRouter();
@@ -84,7 +89,6 @@ export default function HistoryOrderDetailPage() {
             order_id,
             sequence,
             quantity,
-            needs_review,
             created_at,
             order_products!allocation_results_order_id_sequence_fkey (
               asin,
@@ -100,22 +104,21 @@ export default function HistoryOrderDetailPage() {
         if (allocationError) {
           console.error('Error fetching allocation results:', allocationError.message, allocationError.details);
         } else {
-          console.log('Raw allocation data:', allocationData); // Debug logging
+          console.log('Raw allocation data:', allocationData);
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const processedAllocations = allocationData?.map((alloc: any) => ({
             ...alloc,
             order_products: alloc.order_products || { asin: 'Error', description: 'Missing product data', roi: null },
-            // ROI is now sourced from order_products
           })) || [];
           setAllocations(processedAllocations as AllocationResult[]);
         }
       }
 
-      // Fetch existing max_investment from order_company
+      // Fetch order_company data (max_investment, roi, needs_review)
       if (userData.company_id) {
         const { data: companyOrderData, error: companyOrderError } = await supabase
           .from('order_company')
-          .select('max_investment')
+          .select('max_investment, roi, needs_review')
           .eq('order_id', orderId)
           .eq('company_id', userData.company_id)
           .single();
@@ -123,7 +126,11 @@ export default function HistoryOrderDetailPage() {
         if (companyOrderError && companyOrderError.code !== 'PGRST116') {
           console.error('Error fetching order company data:', companyOrderError.message, companyOrderError.details);
         } else if (companyOrderData) {
-          setMaxInvestment(companyOrderData.max_investment);
+          setOrderCompany({
+            max_investment: companyOrderData.max_investment,
+            roi: companyOrderData.roi,
+            needs_review: companyOrderData.needs_review,
+          });
         }
       }
 
@@ -148,11 +155,11 @@ export default function HistoryOrderDetailPage() {
       <div className="mx-auto">
         <div className="flex items-center mb-6">
           <Link href="/history" className="text-blue-500 hover:text-blue-400 mr-4">
-            &larr; Back to History
+            ← Back to History
           </Link>
           <h1 className="text-3xl font-bold text-white">Order Not Found</h1>
         </div>
-        <p className="text-gray-400">The requested order does not exist or you don&apos;t have permission to view it.</p>
+        <p className="text-gray-400">The requested order does not exist or you don't have permission to view it.</p>
       </div>
     </div>
   );
@@ -189,6 +196,18 @@ export default function HistoryOrderDetailPage() {
                 <span className="font-medium">Label Upload Deadline</span>
                 <span>{new Date(order.label_upload_deadline).toLocaleString()}</span>
               </div>
+              {orderCompany && (
+                <>
+                  <div className="flex flex-col">
+                    <span className="font-medium">Average ROI</span>
+                    <span>{orderCompany.roi != null ? orderCompany.roi.toFixed(2) : '-'}</span>
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="font-medium">Needs Review</span>
+                    <span>{orderCompany.needs_review ? 'Yes' : 'No'}</span>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -204,7 +223,7 @@ export default function HistoryOrderDetailPage() {
                   <tr className="border-[#2B2B2B] hover:bg-transparent">
                     <th className="text-gray-300 w-[15%] h-12 px-4 text-left align-middle font-medium">ASIN</th>
                     <th className="text-gray-300 w-[15%] h-12 px-4 text-left align-middle font-medium">Quantity</th>
-                    <th className="text-gray-300 w-[15%] h-12 px-4 text-left align-middle font-medium">ROI</th>
+                    <th className="text-gray-300 w-[15%] h-12 px-4 text-left align-middle font-medium">Product ROI</th>
                     <th className="text-gray-300 w-[15%] h-12 px-4 text-left align-middle font-medium">Needs Review</th>
                     <th className="text-gray-300 w-[25%] h-12 px-4 text-left align-middle font-medium">Description</th>
                   </tr>
@@ -222,7 +241,7 @@ export default function HistoryOrderDetailPage() {
                         {allocation.order_products.roi != null ? allocation.order_products.roi.toFixed(2) : '-'}
                       </td>
                       <td className="text-gray-200 p-4 align-middle" style={{ overflowWrap: 'break-word' }}>
-                        {allocation.needs_review ? 'Yes' : 'No'}
+                        {orderCompany?.needs_review ? 'Yes' : 'No'}
                       </td>
                       <td className="text-gray-200 p-4 align-middle" style={{ overflowWrap: 'break-word' }}>
                         {allocation.order_products.description || '-'}
@@ -235,13 +254,13 @@ export default function HistoryOrderDetailPage() {
           )}
         </div>
 
-        {maxInvestment !== null && (
+        {orderCompany != null && orderCompany.max_investment != null && (
           <div className="mb-4 flex flex-col items-end mt-14">
             <label className="text-gray-300 font-medium block mb-2">
               Maximum Investment ($)
             </label>
             <div className="text-gray-200 bg-[#1f1f1f] border border-[#6a6a6a80] rounded px-3 py-2 w-full max-w-xs">
-              {maxInvestment.toLocaleString()}
+              {orderCompany.max_investment.toLocaleString()}
             </div>
           </div>
         )}
