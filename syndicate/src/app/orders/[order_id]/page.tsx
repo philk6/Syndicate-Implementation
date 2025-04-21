@@ -30,6 +30,7 @@ interface OrderProduct {
   price: number;
   description?: string;
   hide_price_and_quantity: boolean;
+  roi: number | null;
 }
 
 export default function OrderDetailPage() {
@@ -93,12 +94,18 @@ export default function OrderDetailPage() {
       // Fetch order products
       const { data: productData, error: productError } = await supabase
         .from('order_products')
-        .select('sequence, order_id, asin, quantity, price, description, hide_price_and_quantity')
+        .select('sequence, order_id, asin, quantity, price, description, hide_price_and_quantity, roi')
         .eq('order_id', orderId);
 
       if (productError) {
         console.error('Error fetching order products:', productError);
       }
+
+      // Normalize roi to ensure it's a number or null
+      setProducts(productData?.map(product => ({
+        ...product,
+        roi: typeof product.roi === 'number' ? product.roi : null,
+      })) || []);
 
       // Fetch existing max_investment from order_company
       if (userData.company_id) {
@@ -163,7 +170,6 @@ export default function OrderDetailPage() {
       }
 
       setOrder(orderData);
-      setProducts(productData || []);
       setLoading(false);
     }
 
@@ -352,8 +358,9 @@ export default function OrderDetailPage() {
                     <th className="text-gray-300 w-[15%] h-12 px-4 text-left align-middle font-medium">Min Ungated Amount</th>
                     <th className="text-gray-300 w-[15%] h-12 px-4 text-left align-middle font-medium">Price</th>
                     <th className="text-gray-300 w-[15%] h-12 px-4 text-left align-middle font-medium">Quantity</th>
+                    <th className="text-gray-300 w-[15%] h-12 px-4 text-left align-middle font-medium">ROI (%)</th>
                     {products.some(p => p.description) && (
-                      <th className="text-gray-300 w-[25%] h-12 px-4 text-left align-middle font-medium">Description</th>
+                      <th className="text-gray-300 w-[15%] h-12 px-4 text-left align-middle font-medium">Description</th>
                     )}
                   </tr>
                 </thead>
@@ -386,6 +393,9 @@ export default function OrderDetailPage() {
                       </td>
                       <td className="text-gray-200 p-4 align-middle" style={{ overflowWrap: 'break-word' }}>
                         {product.hide_price_and_quantity ? '-' : product.quantity}
+                      </td>
+                      <td className="text-gray-200 p-4 align-middle" style={{ overflowWrap: 'break-word' }}>
+                        {typeof product.roi === 'number' && !product.hide_price_and_quantity ? `${product.roi.toFixed(2)}%` : '-'}
                       </td>
                       {product.description && (
                         <td className="text-gray-200 p-4 align-middle" style={{ overflowWrap: 'break-word' }}>{product.description}</td>

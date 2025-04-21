@@ -367,6 +367,7 @@ export default function AdminOrderManagementPage() {
       description: 'New Product',
       cost_price: 0,
       hide_price_and_quantity: hideAll,
+      roi: 0,
     };
 
     const { error } = await supabase
@@ -683,7 +684,7 @@ export default function AdminOrderManagementPage() {
                             disabled={!isOrderEditable}
                           />
                         </td>
-                        <td className="p-4 align-middle text-gray-300" style={{ overflowWrap: 'break-word' }}>
+                        <td className="p-4 align-middle" style={{ overflowWrap: 'break-word' }}>
                           <Input
                             type="number"
                             value={product.roi ?? ''}
@@ -803,8 +804,6 @@ export default function AdminOrderManagementPage() {
                   <TableHead className="text-gray-300 h-12 px-4 text-left align-middle font-medium">ASIN</TableHead>
                   <TableHead className="text-gray-300 h-12 px-4 text-left align-middle font-medium">Company</TableHead>
                   <TableHead className="text-gray-300 h-12 px-4 text-left align-middle font-medium">Quantity</TableHead>
-                  <TableHead className="text-gray-300 h-12 px-4 text-left align-middle font-medium">ROI (%)</TableHead>
-                  <TableHead className="text-gray-300 h-12 px-4 text-left align-middle font-medium">Needs Review</TableHead>
                   <TableHead className="text-gray-300 h-12 px-4 text-left align-middle font-medium">Created At</TableHead>
                 </TableRow>
               </TableHeader>
@@ -814,10 +813,6 @@ export default function AdminOrderManagementPage() {
                     <TableCell className="p-4 align-middle text-gray-300">{productAsinMap.get(result.sequence) || 'N/A'}</TableCell>
                     <TableCell className="p-4 align-middle text-gray-300">{result.company?.name || 'Unknown'}</TableCell>
                     <TableCell className="p-4 align-middle text-gray-300">{result.quantity}</TableCell>
-                    <TableCell className="p-4 align-middle text-gray-300">
-                      {result.roi !== null ? `${result.roi.toFixed(2)}%` : 'N/A'}
-                    </TableCell>
-                    <TableCell className="p-4 align-middle text-gray-300">{result.needs_review ? 'Yes' : 'No'}</TableCell>
                     <TableCell className="p-4 align-middle text-gray-300">
                       {new Date(result.created_at).toLocaleString()}
                     </TableCell>
