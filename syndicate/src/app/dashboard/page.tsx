@@ -303,7 +303,7 @@ export default function UserDashboardPage() {
               </CardDescription>
             </div>
             <Select value={timeFrame} onValueChange={(value: string) => setTimeFrame(value as '7d' | '30d' | '3m' | '1y')}>
-              <SelectTrigger className="w-[160px] rounded-lg sm:ml-auto" aria-label="Select time range">
+              <SelectTrigger className="w-[160px] rounded-lg sm:ml-auto border-[#6a6a6a80]" aria-label="Select time range">
                 <SelectValue placeholder="Last 30 days" />
               </SelectTrigger>
               <SelectContent className="rounded-xl">
