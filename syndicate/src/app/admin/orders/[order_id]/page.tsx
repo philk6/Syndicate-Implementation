@@ -506,7 +506,10 @@ export default function AdminOrderManagementPage() {
   return (
     <div className="min-h-screen bg-background p-6 w-full">
       <div className="w-full">
-        <Link href="/admin/orders" className="text-[#c8aa64] hover:text-[#9d864e] mb-6 inline-block">← Back to Orders</Link>
+        <div className="flex items-center mb-6">
+          <Link href="/admin/orders" className="text-[#c8aa64] hover:text-[#9d864e] mr-4">← Back to Orders</Link>
+          <Link href={`/admin/orders/${orderId}/receipts`} className="text-[#c8aa64] hover:text-[#9d864e] mr-4">Manage Receipts</Link>
+        </div>
         <div className="flex justify-between items-center mb-6">
           <h1 className="text-3xl font-bold text-[#bfbfbf]">Manage Order #{order.order_id}</h1>
           <Button
