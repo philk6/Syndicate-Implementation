@@ -6,7 +6,7 @@ import { useAuth } from '@lib/auth';
 import { supabase } from '@lib/supabase/client';
 import { PostgrestError } from '@supabase/supabase-js';
 import Link from 'next/link';
-import { CalendarIcon } from 'lucide-react';
+import { CalendarIcon, Download, Trash2, Plus } from 'lucide-react';
 import {
   Table,
   TableBody,
@@ -22,9 +22,9 @@ import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Switch } from '@/components/ui/switch';
-import { Trash2, Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { calculateOrderAllocation } from './actions';
+import { utils, write } from 'xlsx';
 
 interface Order {
   order_id: number;
@@ -92,6 +92,7 @@ interface AllocationResult {
   needs_review: boolean;
   created_at: string;
   company: { name: string } | null;
+  order_products: { asin: string; price: number; cost_price: number; description: string | null } | null;
 }
 
 // Reusable DatePicker Component
@@ -265,7 +266,7 @@ export default function AdminOrderManagementPage() {
 
         const { data: allocationData, error: allocationError } = await supabase
           .from('allocation_results')
-          .select('*, company(name)')
+          .select('*, company(name), order_products(asin, price, cost_price, description)')
           .eq('order_id', orderId);
 
         if (allocationError) {
@@ -477,12 +478,50 @@ export default function AdminOrderManagementPage() {
       setFeedbackMessage({ type: result.success ? 'success' : 'error', text: result.message });
 
       if (result.success) {
+        const { data: allocationData } = await supabase
+          .from('allocation_results')
+          .select('*, company(name), order_products(asin, price, cost_price, description)')
+          .eq('order_id', orderId);
+        setAllocationResults(allocationData || []);
         router.refresh();
       }
     });
   };
 
-  const productAsinMap = new Map(products.map(p => [p.sequence, p.asin]));
+  const handleDownloadAllocationResults = () => {
+    // Prepare data for Excel
+    const exportData = allocationResults.map(result => ({
+      ASIN: result.order_products?.asin || 'N/A',
+      Company: result.company?.name || 'Unknown',
+      Quantity: result.quantity,
+      Price: result.order_products?.price ?? 'N/A',
+      'Cost Price': result.order_products?.cost_price ?? 'N/A',
+      Description: result.order_products?.description || 'N/A',
+    }));
+
+    // Create worksheet
+    const ws = utils.json_to_sheet(exportData, {
+      header: ['ASIN', 'Company', 'Quantity', 'Price', 'Cost Price', 'Description'],
+    });
+
+    // Create workbook
+    const wb = utils.book_new();
+    utils.book_append_sheet(wb, ws, 'Allocation Results');
+
+    // Generate Excel file
+    const excelBuffer = write(wb, { bookType: 'xlsx', type: 'array' });
+
+    // Create Blob and trigger download
+    const blob = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Order_${orderId}_Allocation_Results.xlsx`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
+  };
 
   if (authLoading || loading) {
     return <div className="min-h-screen bg-[#14130F] p-6 flex items-center justify-center"><p className="text-gray-400">Loading...</p></div>;
@@ -495,7 +534,7 @@ export default function AdminOrderManagementPage() {
       <div className="mx-auto">
         <Link href="/admin/orders" className="text-[#c8aa64] hover:text-[#9d864e] mr-4">← Back to Orders</Link>
         <h1 className="text-3xl font-bold text-[#bfbfbf]">Order Not Found</h1>
-        <p className="text-gray-400">The requested order does not exist or you don&apos;t have permission to view it.</p>
+        <p className="text-gray-400">The requested order does not exist or you don't have permission to view it.</p>
       </div>
     </div>
   );
@@ -797,25 +836,36 @@ export default function AdminOrderManagementPage() {
 
         {allocationResults.length > 0 && (
           <div className="rounded-lg p-6 bg-gradient-to-br from-[#212121] via-[#0f0f0f] to-[#2b2b2b] shadow-lg w-full mt-8 overflow-x-auto">
-            <h2 className="text-xl font-semibold text-gray-300 mb-4">Allocation Results</h2>
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-semibold text-gray-300">Allocation Results</h2>
+              <Button
+                onClick={handleDownloadAllocationResults}
+                className="bg-[#c8aa64] hover:bg-[#9d864e] text-[#242424]"
+              >
+                <Download className="mr-2 h-4 w-4" />
+                Download Allocation Results
+              </Button>
+            </div>
             <Table>
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
                   <TableHead className="text-gray-300 h-12 px-4 text-left align-middle font-medium">ASIN</TableHead>
                   <TableHead className="text-gray-300 h-12 px-4 text-left align-middle font-medium">Company</TableHead>
                   <TableHead className="text-gray-300 h-12 px-4 text-left align-middle font-medium">Quantity</TableHead>
-                  <TableHead className="text-gray-300 h-12 px-4 text-left align-middle font-medium">Created At</TableHead>
+                  <TableHead className="text-gray-300 h-12 px-4 text-left align-middle font-medium">Price</TableHead>
+                  <TableHead className="text-gray-300 h-12 px-4 text-left align-middle font-medium">Cost Price</TableHead>
+                  <TableHead className="text-gray-300 h-12 px-4 text-left align-middle font-medium">Description</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {allocationResults.map((result) => (
                   <TableRow key={result.id} className="hover:bg-[#35353580] transition-colors border-[#6a6a6a80]">
-                    <TableCell className="p-4 align-middle text-gray-300">{productAsinMap.get(result.sequence) || 'N/A'}</TableCell>
+                    <TableCell className="p-4 align-middle text-gray-300">{result.order_products?.asin || 'N/A'}</TableCell>
                     <TableCell className="p-4 align-middle text-gray-300">{result.company?.name || 'Unknown'}</TableCell>
                     <TableCell className="p-4 align-middle text-gray-300">{result.quantity}</TableCell>
-                    <TableCell className="p-4 align-middle text-gray-300">
-                      {new Date(result.created_at).toLocaleString()}
-                    </TableCell>
+                    <TableCell className="p-4 align-middle text-gray-300">{result.order_products?.price ? `$${result.order_products.price.toFixed(2)}` : 'N/A'}</TableCell>
+                    <TableCell className="p-4 align-middle text-gray-300">{result.order_products?.cost_price ? `$${result.order_products.cost_price.toFixed(2)}` : 'N/A'}</TableCell>
+                    <TableCell className="p-4 align-middle text-gray-300">{result.order_products?.description || 'N/A'}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
