@@ -1,7 +1,7 @@
 DO $$
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'user_role') THEN
-        create type "public"."user_role" as enum ('user', 'admin');
+create type "public"."user_role" as enum ('user', 'admin');
     END IF;
 END
 $$;

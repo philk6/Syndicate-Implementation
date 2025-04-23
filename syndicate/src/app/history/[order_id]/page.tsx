@@ -7,6 +7,9 @@ import { supabase } from '@lib/supabase/client';
 import { PostgrestError } from '@supabase/supabase-js';
 import Link from 'next/link';
 import { Badge } from '@/components/ui/badge';
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import { Table, TableHeader, TableBody, TableCell, TableRow, TableHead } from '@/components/ui/table';
+import { Button } from '@/components/ui/button';
 
 interface Order {
   order_id: number;
@@ -14,6 +17,7 @@ interface Order {
   deadline: string;
   label_upload_deadline: string;
   order_statuses: { description: string };
+  needs_review: boolean;
 }
 
 interface AllocationResult {
@@ -34,12 +38,20 @@ interface OrderCompany {
   needs_review: boolean;
 }
 
+interface Receipt {
+  receipt_id: number;
+  file_name: string;
+  file_path: string;
+  uploaded_at: string;
+}
+
 export default function HistoryOrderDetailPage() {
   const params = useParams();
   const orderId = parseInt(params.order_id as string);
   const [order, setOrder] = useState<Order | null>(null);
   const [allocations, setAllocations] = useState<AllocationResult[]>([]);
   const [orderCompany, setOrderCompany] = useState<OrderCompany | null>(null);
+  const [receipts, setReceipts] = useState<Receipt[]>([]);
   const [loading, setLoading] = useState(true);
   const { isAuthenticated, loading: authLoading, user } = useAuth();
   const router = useRouter();
@@ -134,12 +146,41 @@ export default function HistoryOrderDetailPage() {
         }
       }
 
+      // Fetch receipts for this company and order
+      if (userData.company_id) {
+        const { data: receiptData, error: receiptError } = await supabase
+          .from('order_receipts')
+          .select('receipt_id, file_name, file_path, uploaded_at')
+          .eq('order_id', orderId)
+          .eq('company_id', userData.company_id);
+
+        if (receiptError) {
+          console.error('Error fetching receipts:', receiptError.message);
+        } else {
+          setReceipts(receiptData || []);
+        }
+      }
+
       setOrder(orderData);
       setLoading(false);
     }
 
     fetchData();
   }, [orderId, isAuthenticated, authLoading, router, user]);
+
+  const handleDownloadReceipt = async (filePath: string /*, fileName: string */) => {
+    const { data, error } = await supabase.storage
+      .from('receipts')
+      .createSignedUrl(filePath, 60);
+
+    if (error) {
+      console.error('Error generating signed URL:', error);
+      alert('Failed to generate receipt view URL.');
+    } else {
+      // Open in new tab
+      window.open(data.signedUrl, '_blank');
+    }
+  };
 
   if (loading) {
     return (
@@ -212,6 +253,45 @@ export default function HistoryOrderDetailPage() {
           </div>
         </div>
 
+        {/* Receipts Card - Moved Here */}
+        <Card className="mb-8 bg-gradient-to-br from-[#212121] via-[#0f0f0f] to-[#2b2b2b] border-transparent">
+          <CardHeader>
+            <CardTitle className="text-xl font-semibold text-gray-300">Receipts</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {receipts.length === 0 ? (
+              <p className="text-gray-400">No receipts available for this order.</p>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead className="text-gray-300">File Name</TableHead>
+                    <TableHead className="text-gray-300">Uploaded At</TableHead>
+                    <TableHead className="text-gray-300">Action</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {receipts.map((receipt) => (
+                    <TableRow key={receipt.receipt_id} className="hover:bg-[#35353580] transition-colors border-[#6a6a6a80]">
+                      <TableCell className="text-gray-200">{receipt.file_name}</TableCell>
+                      <TableCell className="text-gray-200">{new Date(receipt.uploaded_at).toLocaleString()}</TableCell>
+                      <TableCell className="text-gray-200">
+                        <Button
+                          onClick={() => handleDownloadReceipt(receipt.file_path)}
+                          className="bg-[#c8aa64] hover:bg-[#9d864e] text-[#242424]"
+                        >
+                          View / Download
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Allocations Table */}
         <div className="rounded-lg p-6 bg-gradient-to-br from-[#212121] via-[#0f0f0f] to-[#2b2b2b] shadow-lg w-full overflow-x-auto">
           <h2 className="text-xl font-semibold text-gray-300 mb-4">Your Allocations</h2>
           {allocations.length === 0 ? (
