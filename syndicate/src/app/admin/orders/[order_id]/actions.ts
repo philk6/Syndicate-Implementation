@@ -15,6 +15,7 @@ export async function calculateOrderAllocation(orderId: number) {
       .eq('order_id', orderId);
 
     if (productsError || !products) {
+      console.error('Products fetch error:', productsError);
       return { success: false, message: 'Failed to fetch products' };
     }
 
@@ -25,6 +26,7 @@ export async function calculateOrderAllocation(orderId: number) {
       .eq('order_id', orderId);
 
     if (preAssignmentsError) {
+      console.error('Pre-assignments fetch error:', preAssignmentsError);
       return { success: false, message: 'Failed to fetch pre-assignments' };
     }
 
@@ -35,17 +37,44 @@ export async function calculateOrderAllocation(orderId: number) {
       .eq('order_id', orderId);
 
     if (applicationsError || !applications) {
+      console.error('Applications fetch error:', applicationsError);
       return { success: false, message: 'Failed to fetch applications' };
     }
 
+    // Fetch discounted prices
+    const { data: discountedPrices, error: discountedPricesError } = await supabase
+      .from('order_products_company')
+      .select('sequence, company_id, discounted_price')
+      .eq('order_id', orderId)
+      .not('discounted_price', 'is', null);
+
+    if (discountedPricesError) {
+      console.error('Discounted prices fetch error:', discountedPricesError);
+      return { success: false, message: 'Failed to fetch discounted prices' };
+    }
+
+    // Create a lookup for discounted prices
+    const discountLookup: { [key: string]: number } = {};
+    for (const dp of discountedPrices) {
+      const key = `${dp.sequence}-${dp.company_id}`;
+      discountLookup[key] = dp.discounted_price;
+    }
+
     // Clear existing allocation results
-    await supabase
+    const { error: deleteError } = await supabase
       .from('allocation_results')
       .delete()
       .eq('order_id', orderId);
 
-    // Example allocation logic (simplified)
+    if (deleteError) {
+      console.error('Delete allocation results error:', deleteError);
+      return { success: false, message: 'Failed to clear existing allocation results' };
+    }
+
+    // Allocation logic
     const allocationResults = [];
+    const companyAllocations: { [companyId: number]: { totalProfit: number; totalInvested: number } } = {};
+
     for (const product of products) {
       let remainingQuantity = product.quantity;
       const sequence = product.sequence;
@@ -56,17 +85,27 @@ export async function calculateOrderAllocation(orderId: number) {
         const qty = pa.quantity ?? remainingQuantity;
         if (qty > remainingQuantity) continue;
 
+        // Use discounted price if available, otherwise use original price
+        const key = `${sequence}-${pa.company_id}`;
+        const effectivePrice = discountLookup[key] ?? product.price;
+        const investedAmount = effectivePrice * qty;
+        const profit = (product.roi / 100) * investedAmount;
+
         allocationResults.push({
           order_id: orderId,
           sequence,
           company_id: pa.company_id,
           quantity: qty,
-          roi: product.roi,
-          needs_review: false,
-          price: product.price,
-          cost_price: product.cost_price,
-          description: product.description,
+          profit,
+          invested_amount: investedAmount,
         });
+
+        // Track for company-level ROI
+        if (!companyAllocations[pa.company_id]) {
+          companyAllocations[pa.company_id] = { totalProfit: 0, totalInvested: 0 };
+        }
+        companyAllocations[pa.company_id].totalProfit += profit;
+        companyAllocations[pa.company_id].totalInvested += investedAmount;
 
         remainingQuantity -= qty;
         if (remainingQuantity <= 0) break;
@@ -75,32 +114,68 @@ export async function calculateOrderAllocation(orderId: number) {
       // Allocate remaining to applicants
       for (const app of applications) {
         if (remainingQuantity <= 0) break;
-        const qty = Math.min(remainingQuantity, Math.floor(app.max_investment / product.price));
+
+        // Use discounted price if available, otherwise use original price
+        const key = `${sequence}-${app.company_id}`;
+        const effectivePrice = discountLookup[key] ?? product.price;
+        const qty = Math.min(remainingQuantity, Math.floor(app.max_investment / effectivePrice));
         if (qty <= 0) continue;
+
+        const investedAmount = effectivePrice * qty;
+        const profit = (product.roi / 100) * investedAmount;
 
         allocationResults.push({
           order_id: orderId,
           sequence,
           company_id: app.company_id,
           quantity: qty,
-          roi: product.roi,
-          needs_review: false,
-          price: product.price,
-          cost_price: product.cost_price,
-          description: product.description,
+          profit,
+          invested_amount: investedAmount,
         });
+
+        // Track for company-level ROI
+        if (!companyAllocations[app.company_id]) {
+          companyAllocations[app.company_id] = { totalProfit: 0, totalInvested: 0 };
+        }
+        companyAllocations[app.company_id].totalProfit += profit;
+        companyAllocations[app.company_id].totalInvested += investedAmount;
 
         remainingQuantity -= qty;
       }
     }
 
     // Insert allocation results
+    console.log('Allocation results payload:', allocationResults);
     const { error: insertError } = await supabase
       .from('allocation_results')
       .insert(allocationResults);
 
     if (insertError) {
+      console.error('Insert allocation results error:', insertError);
       return { success: false, message: 'Failed to save allocation results' };
+    }
+
+    // Calculate and upsert company-level ROI and needs_review
+    const companyUpsertData = Object.entries(companyAllocations).map(([companyId, { totalProfit, totalInvested }]) => {
+      const roi = totalInvested > 0 ? (totalProfit / totalInvested) * 100 : 0; // Store ROI as percentage
+      const needsReview = roi < 30 && totalInvested > 0; // Threshold in percentage
+      return {
+        order_id: orderId,
+        company_id: parseInt(companyId),
+        max_investment: applications.find(app => app.company_id === parseInt(companyId))?.max_investment || 0,
+        roi,
+        needs_review: needsReview,
+      };
+    });
+
+    console.log('Order company upsert payload:', companyUpsertData);
+    const { error: companyInsertError } = await supabase
+      .from('order_company')
+      .upsert(companyUpsertData, { onConflict: 'order_id,company_id' });
+
+    if (companyInsertError) {
+      console.error('Insert order company error:', companyInsertError);
+      return { success: false, message: 'Failed to save company allocation data' };
     }
 
     return { success: true, message: 'Allocation calculated successfully' };

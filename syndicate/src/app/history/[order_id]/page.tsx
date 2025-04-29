@@ -17,7 +17,6 @@ interface Order {
   deadline: string;
   label_upload_deadline: string;
   order_statuses: { description: string };
-  needs_review: boolean;
 }
 
 interface AllocationResult {
@@ -25,17 +24,21 @@ interface AllocationResult {
   sequence: number;
   quantity: number;
   created_at: string;
+  profit: number;
+  invested_amount: number;
   order_products: {
     asin: string;
     description: string | null;
-    roi: number | null;
+    price: number;
   };
+  discounted_price: number | null;
 }
 
 interface OrderCompany {
   max_investment: number;
   roi: number | null;
   needs_review: boolean;
+  has_discounts: boolean;
 }
 
 interface Receipt {
@@ -93,44 +96,12 @@ export default function HistoryOrderDetailPage() {
         return;
       }
 
-      // Fetch allocation results for this company
-      if (userData.company_id) {
-        const { data: allocationData, error: allocationError } = await supabase
-          .from('allocation_results')
-          .select(`
-            order_id,
-            sequence,
-            quantity,
-            created_at,
-            order_products!allocation_results_order_id_sequence_fkey (
-              asin,
-              description,
-              roi
-            )
-          `)
-          .eq('order_id', orderId)
-          .eq('company_id', userData.company_id)
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          .returns<any[]>();
-
-        if (allocationError) {
-          console.error('Error fetching allocation results:', allocationError.message, allocationError.details);
-        } else {
-          console.log('Raw allocation data:', allocationData);
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const processedAllocations = allocationData?.map((alloc: any) => ({
-            ...alloc,
-            order_products: alloc.order_products || { asin: 'Error', description: 'Missing product data', roi: null },
-          })) || [];
-          setAllocations(processedAllocations as AllocationResult[]);
-        }
-      }
-
-      // Fetch order_company data (max_investment, roi, needs_review)
+      // Fetch order_company data (max_investment, roi, needs_review, has_discounts)
+      let hasDiscounts = false;
       if (userData.company_id) {
         const { data: companyOrderData, error: companyOrderError } = await supabase
           .from('order_company')
-          .select('max_investment, roi, needs_review')
+          .select('max_investment, roi, needs_review, has_discounts')
           .eq('order_id', orderId)
           .eq('company_id', userData.company_id)
           .single();
@@ -142,7 +113,84 @@ export default function HistoryOrderDetailPage() {
             max_investment: companyOrderData.max_investment,
             roi: companyOrderData.roi,
             needs_review: companyOrderData.needs_review,
+            has_discounts: companyOrderData.has_discounts,
           });
+          hasDiscounts = companyOrderData.has_discounts;
+        }
+      }
+
+      // Fetch allocation results for this company
+      if (userData.company_id) {
+        const { data: allocationData, error: allocationError } = await supabase
+          .from('allocation_results')
+          .select(`
+            order_id,
+            sequence,
+            company_id,
+            quantity,
+            created_at,
+            profit,
+            invested_amount,
+            order_products!allocation_results_order_id_sequence_fkey (
+              asin,
+              description,
+              price
+            )
+          `)
+          .eq('order_id', orderId)
+          .eq('company_id', userData.company_id)
+          .returns<any[]>();
+
+        if (allocationError) {
+          console.error('Error fetching allocation results:', allocationError.message, allocationError.details);
+        } else {
+          console.log('Allocation data:', allocationData);
+
+          // Fetch order_products_company data only if has_discounts is true
+          let opcData: any[] = [];
+          if (hasDiscounts) {
+            const { data, error: opcError } = await supabase
+              .from('order_products_company')
+              .select('sequence, company_id, discounted_price')
+              .eq('order_id', orderId)
+              .eq('company_id', userData.company_id)
+              .not('discounted_price', 'is', null);
+
+            if (opcError) {
+              console.error('Error fetching order_products_company:', opcError.message, opcError.details);
+            } else {
+              opcData = data || [];
+              console.log('Order products company data:', opcData);
+            }
+          } else {
+            console.log('No discounts for this company (has_discounts = false)');
+          }
+
+          // Merge discounted_price into allocation results
+          const discountMap: { [key: string]: number } = {};
+          opcData.forEach((opc: any) => {
+            // Ensure sequence and company_id are strings for consistent key
+            const sequence = String(opc.sequence);
+            const companyId = String(opc.company_id);
+            discountMap[`${sequence}-${companyId}`] = opc.discounted_price;
+          });
+
+          console.log('Discount map:', discountMap);
+
+          const processedAllocations = allocationData?.map((alloc: any) => {
+            // Ensure sequence and company_id are strings for lookup
+            const sequence = String(alloc.sequence);
+            const companyId = String(alloc.company_id);
+            const discountedPrice = discountMap[`${sequence}-${companyId}`] || null;
+            return {
+              ...alloc,
+              order_products: alloc.order_products || { asin: 'Error', description: 'Missing product data', price: 0 },
+              discounted_price: discountedPrice,
+            };
+          }) || [];
+
+          console.log('Processed allocations:', processedAllocations);
+          setAllocations(processedAllocations as AllocationResult[]);
         }
       }
 
@@ -168,7 +216,7 @@ export default function HistoryOrderDetailPage() {
     fetchData();
   }, [orderId, isAuthenticated, authLoading, router, user]);
 
-  const handleDownloadReceipt = async (filePath: string /*, fileName: string */) => {
+  const handleDownloadReceipt = async (filePath: string) => {
     const { data, error } = await supabase.storage
       .from('receipts')
       .createSignedUrl(filePath, 60);
@@ -177,7 +225,6 @@ export default function HistoryOrderDetailPage() {
       console.error('Error generating signed URL:', error);
       alert('Failed to generate receipt view URL.');
     } else {
-      // Open in new tab
       window.open(data.signedUrl, '_blank');
     }
   };
@@ -200,7 +247,7 @@ export default function HistoryOrderDetailPage() {
           </Link>
           <h1 className="text-3xl font-bold text-white">Order Not Found</h1>
         </div>
-        <p className="text-gray-400">The requested order does not exist or you don&apos;t have permission to view it.</p>
+        <p className="text-gray-400">The requested order does not exist or you don't have permission to view it.</p>
       </div>
     </div>
   );
@@ -241,7 +288,7 @@ export default function HistoryOrderDetailPage() {
                 <>
                   <div className="flex flex-col">
                     <span className="font-medium">Average ROI</span>
-                    <span>{orderCompany.roi != null ? orderCompany.roi.toFixed(2) : '-'}</span>
+                    <span>{orderCompany.roi != null ? `${(orderCompany.roi).toFixed(2)}` : '-'}</span>
                   </div>
                   <div className="flex flex-col">
                     <span className="font-medium">Needs Review</span>
@@ -253,7 +300,6 @@ export default function HistoryOrderDetailPage() {
           </div>
         </div>
 
-        {/* Receipts Card - Moved Here */}
         <Card className="mb-8 bg-gradient-to-br from-[#212121] via-[#0f0f0f] to-[#2b2b2b] border-transparent">
           <CardHeader>
             <CardTitle className="text-xl font-semibold text-gray-300">Receipts</CardTitle>
@@ -291,7 +337,6 @@ export default function HistoryOrderDetailPage() {
           </CardContent>
         </Card>
 
-        {/* Allocations Table */}
         <div className="rounded-lg p-6 bg-gradient-to-br from-[#212121] via-[#0f0f0f] to-[#2b2b2b] shadow-lg w-full overflow-x-auto">
           <h2 className="text-xl font-semibold text-gray-300 mb-4">Your Allocations</h2>
           {allocations.length === 0 ? (
@@ -302,32 +347,50 @@ export default function HistoryOrderDetailPage() {
                 <thead>
                   <tr className="border-[#2B2B2B] hover:bg-transparent">
                     <th className="text-gray-300 w-[15%] h-12 px-4 text-left align-middle font-medium">ASIN</th>
-                    <th className="text-gray-300 w-[15%] h-12 px-4 text-left align-middle font-medium">Quantity</th>
-                    <th className="text-gray-300 w-[15%] h-12 px-4 text-left align-middle font-medium">Product ROI</th>
-                    <th className="text-gray-300 w-[15%] h-12 px-4 text-left align-middle font-medium">Needs Review</th>
-                    <th className="text-gray-300 w-[25%] h-12 px-4 text-left align-middle font-medium">Description</th>
+                    <th className="text-gray-300 w-[10%] h-12 px-4 text-left align-middle font-medium">Quantity</th>
+                    <th className="text-gray-300 w-[15%] h-12 px-4 text-left align-middle font-medium">Price</th>
+                    <th className="text-gray-300 w-[15%] h-12 px-4 text-left align-middle font-medium">Profit</th>
+                    <th className="text-gray-300 w-[30%] h-12 px-4 text-left align-middle font-medium">Description</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {allocations.map((allocation) => (
-                    <tr key={`${allocation.order_id}-${allocation.sequence}`} className="hover:bg-[#35353580] transition-colors border-[#6a6a6a80]">
-                      <td className="text-gray-200 p-4 align-middle" style={{ overflowWrap: 'break-word' }}>
-                        {allocation.order_products.asin}
-                      </td>
-                      <td className="text-gray-200 p-4 align-middle" style={{ overflowWrap: 'break-word' }}>
-                        {allocation.quantity}
-                      </td>
-                      <td className="text-gray-200 p-4 align-middle" style={{ overflowWrap: 'break-word' }}>
-                        {allocation.order_products.roi != null ? allocation.order_products.roi.toFixed(2) : '-'}
-                      </td>
-                      <td className="text-gray-200 p-4 align-middle" style={{ overflowWrap: 'break-word' }}>
-                        {orderCompany?.needs_review ? 'Yes' : 'No'}
-                      </td>
-                      <td className="text-gray-200 p-4 align-middle" style={{ overflowWrap: 'break-word' }}>
-                        {allocation.order_products.description || '-'}
-                      </td>
-                    </tr>
-                  ))}
+                  {allocations.map((allocation) => {
+                    const discountedPrice = allocation.discounted_price;
+                    const originalPrice = allocation.order_products.price;
+                    const discountPercentage = discountedPrice != null && originalPrice > 0
+                      ? ((originalPrice - discountedPrice) / originalPrice * 100).toFixed(1)
+                      : null;
+                    return (
+                      <tr key={`${allocation.order_id}-${allocation.sequence}`} className="hover:bg-[#35353580] transition-colors border-[#6a6a6a80]">
+                        <td className="text-gray-200 p-4 align-middle" style={{ overflowWrap: 'break-word' }}>
+                          {allocation.order_products.asin}
+                        </td>
+                        <td className="text-gray-200 p-4 align-middle" style={{ overflowWrap: 'break-word' }}>
+                          {allocation.quantity}
+                        </td>
+                        <td className="text-gray-200 p-4 align-middle" style={{ overflowWrap: 'break-word' }}>
+                          {discountedPrice != null ? (
+                            <div className="flex items-center gap-2">
+                              <span>${discountedPrice.toFixed(2)}</span>
+                              {discountPercentage != null && (
+                                <Badge variant="secondary" className="bg-green-900 text-green-200">
+                                  -{discountPercentage}%
+                                </Badge>
+                              )}
+                            </div>
+                          ) : (
+                            `$${originalPrice.toFixed(2)}`
+                          )}
+                        </td>
+                        <td className="text-gray-200 p-4 align-middle" style={{ overflowWrap: 'break-word' }}>
+                          {allocation.profit != null ? `$${allocation.profit.toFixed(2)}` : '-'}
+                        </td>
+                        <td className="text-gray-200 p-4 align-middle" style={{ overflowWrap: 'break-word' }}>
+                          {allocation.order_products.description || '-'}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

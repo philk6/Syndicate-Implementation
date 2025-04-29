@@ -6,7 +6,7 @@ import { useAuth } from '@lib/auth';
 import { supabase } from '@lib/supabase/client';
 import { PostgrestError } from '@supabase/supabase-js';
 import Link from 'next/link';
-import { CalendarIcon, Download, Trash2, Plus } from 'lucide-react';
+import { CalendarIcon, Download, Trash2, Plus, Percent } from 'lucide-react';
 import {
   Table,
   TableBody,
@@ -95,6 +95,16 @@ interface AllocationResult {
   order_products: { asin: string; price: number; cost_price: number; description: string | null } | null;
 }
 
+interface Discount {
+  order_id: number;
+  sequence: number;
+  company_id: number;
+  company_name: string;
+  asin: string;
+  original_price: number;
+  discounted_price: number | null;
+}
+
 // Reusable DatePicker Component
 function DatePicker({
   value,
@@ -153,6 +163,12 @@ export default function AdminOrderManagementPage() {
   const [selectedSequence, setSelectedSequence] = useState<number | null>(null);
   const [dialogCompanyId, setDialogCompanyId] = useState<string>('');
   const [dialogQuantity, setDialogQuantity] = useState<string>('');
+  const [isDiscountDialogOpen, setIsDiscountDialogOpen] = useState(false);
+  const [discountCompanyId, setDiscountCompanyId] = useState<string>('');
+  const [discountSequence, setDiscountSequence] = useState<string>('');
+  const [discountPrice, setDiscountPrice] = useState<string>('');
+  const [discountPercentage, setDiscountPercentage] = useState<string>('');
+  const [discounts, setDiscounts] = useState<Discount[]>([]);
   const { isAuthenticated, loading: authLoading, user } = useAuth();
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -273,6 +289,33 @@ export default function AdminOrderManagementPage() {
           console.error('Error fetching allocation results:', allocationError);
         }
 
+        const { data: discountData, error: discountError } = await supabase
+          .from('order_products_company')
+          .select(`
+            order_id,
+            sequence,
+            company_id,
+            company:company_id(name),
+            discounted_price,
+            order_products!order_products_company_order_id_sequence_fkey(asin, price)
+          `)
+          .eq('order_id', orderId)
+          .not('discounted_price', 'is', null);
+
+        if (discountError) {
+          console.error('Error fetching discounts:', discountError);
+        } else {
+          setDiscounts(discountData?.map(d => ({
+            order_id: d.order_id,
+            sequence: d.sequence,
+            company_id: d.company_id,
+            company_name: d.company?.[0]?.name || 'Unknown',
+            asin: d.order_products?.[0]?.asin || 'Unknown',
+            original_price: d.order_products?.[0]?.price || 0,
+            discounted_price: d.discounted_price,
+          })) || []);
+        }
+
         setOrder(orderData);
         setProducts(productData || []);
         setStatuses(statusData || []);
@@ -353,6 +396,7 @@ export default function AdminOrderManagementPage() {
     } else {
       setProducts(prev => prev.filter(p => p.sequence !== sequence));
       setPreAssignments(prev => prev.filter(pa => pa.sequence !== sequence));
+      setDiscounts(prev => prev.filter(d => d.sequence !== sequence));
       setHideAll(products.filter(p => p.sequence !== sequence).every(p => p.hide_price_and_quantity));
     }
   };
@@ -489,7 +533,6 @@ export default function AdminOrderManagementPage() {
   };
 
   const handleDownloadAllocationResults = () => {
-    // Prepare data for Excel
     const exportData = allocationResults.map(result => ({
       ASIN: result.order_products?.asin || 'N/A',
       Company: result.company?.name || 'Unknown',
@@ -499,19 +542,14 @@ export default function AdminOrderManagementPage() {
       Description: result.order_products?.description || 'N/A',
     }));
 
-    // Create worksheet
     const ws = utils.json_to_sheet(exportData, {
       header: ['ASIN', 'Company', 'Quantity', 'Price', 'Cost Price', 'Description'],
     });
 
-    // Create workbook
     const wb = utils.book_new();
     utils.book_append_sheet(wb, ws, 'Allocation Results');
 
-    // Generate Excel file
     const excelBuffer = write(wb, { bookType: 'xlsx', type: 'array' });
-
-    // Create Blob and trigger download
     const blob = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -521,6 +559,154 @@ export default function AdminOrderManagementPage() {
     a.click();
     document.body.removeChild(a);
     window.URL.revokeObjectURL(url);
+  };
+
+  const openDiscountDialog = (sequence?: number, companyId?: number, discountedPrice?: number | null) => {
+    setDiscountSequence(sequence?.toString() || '');
+    setDiscountCompanyId(companyId?.toString() || '');
+    setDiscountPrice(discountedPrice?.toString() || '');
+    setDiscountPercentage('');
+    setIsDiscountDialogOpen(true);
+  };
+
+  const handleDiscountSave = async () => {
+    if (!discountCompanyId || !discountSequence) {
+      alert('Please select a company and product.');
+      return;
+    }
+
+    const company_id = parseInt(discountCompanyId);
+    const sequence = parseInt(discountSequence);
+    const discounted_price = parseFloat(discountPrice) || null;
+
+    if (discounted_price !== null) {
+      const product = products.find(p => p.sequence === sequence);
+      if (!product) {
+        alert('Invalid product selected.');
+        return;
+      }
+      if (discounted_price >= product.price) {
+        alert('Discounted price must be less than the original price.');
+        return;
+      }
+      if (discounted_price <= 0) {
+        alert('Discounted price must be greater than zero.');
+        return;
+      }
+    }
+
+    const { error: opcError } = await supabase
+      .from('order_products_company')
+      .upsert({
+        order_id: orderId,
+        sequence,
+        company_id,
+        discounted_price,
+        ungated: false,
+        quantity: 0,
+      }, {
+        onConflict: 'order_id,sequence,company_id',
+      });
+
+    if (opcError) {
+      console.error('Error saving discount:', opcError);
+      alert('Failed to save discount.');
+      return;
+    }
+
+    const { error: ocError } = await supabase
+      .from('order_company')
+      .update({ has_discounts: discounted_price !== null })
+      .eq('order_id', orderId)
+      .eq('company_id', company_id);
+
+    if (ocError) {
+      console.error('Error updating has_discounts:', ocError);
+      alert('Failed to update discount status.');
+      return;
+    }
+
+    const product = products.find(p => p.sequence === sequence);
+    const company = companies.find(c => c.company_id === company_id);
+
+    setDiscounts(prev => {
+      const existing = prev.find(d => d.sequence === sequence && d.company_id === company_id);
+      if (existing) {
+        return prev.map(d =>
+          d.sequence === sequence && d.company_id === company_id
+            ? { ...d, discounted_price, original_price: product?.price || 0 }
+            : d
+        );
+      }
+      return [
+        ...prev,
+        {
+          order_id: orderId,
+          sequence,
+          company_id,
+          company_name: company?.name || 'Unknown',
+          asin: product?.asin || 'Unknown',
+          original_price: product?.price || 0,
+          discounted_price,
+        },
+      ];
+    });
+
+    setIsDiscountDialogOpen(false);
+    setDiscountCompanyId('');
+    setDiscountSequence('');
+    setDiscountPrice('');
+    setDiscountPercentage('');
+  };
+
+  const handleDiscountPercentageChange = (value: string) => {
+    setDiscountPercentage(value);
+    const product = products.find(p => p.sequence === parseInt(discountSequence));
+    if (product && value) {
+      const percentage = parseFloat(value);
+      const discountedPrice = product.price * (1 - percentage / 100);
+      setDiscountPrice(discountedPrice.toFixed(2));
+    } else {
+      setDiscountPrice('');
+    }
+  };
+
+  const handleDiscountDelete = async (sequence: number, company_id: number) => {
+    const { error: opcError } = await supabase
+      .from('order_products_company')
+      .update({ discounted_price: null })
+      .eq('order_id', orderId)
+      .eq('sequence', sequence)
+      .eq('company_id', company_id);
+
+    if (opcError) {
+      console.error('Error deleting discount:', opcError);
+      alert('Failed to delete discount.');
+      return;
+    }
+
+    const { data: remainingDiscounts } = await supabase
+      .from('order_products_company')
+      .select('discounted_price')
+      .eq('order_id', orderId)
+      .eq('company_id', company_id)
+      .not('discounted_price', 'is', null);
+
+    const has_discounts = remainingDiscounts && remainingDiscounts.length > 0;
+
+    const { error: ocError } = await supabase
+      .from('order_company')
+      .update({ has_discounts })
+      .eq('order_id', orderId)
+      .eq('company_id', company_id);
+
+    if (ocError) {
+      console.error('Error updating has_discounts:', ocError);
+      alert('Failed to update discount status.');
+      return;
+    }
+
+    setDiscounts(prev => prev.filter(d => !(d.sequence === sequence && d.company_id === company_id)));
   };
 
   if (authLoading || loading) {
@@ -646,12 +832,82 @@ export default function AdminOrderManagementPage() {
           )}
         </div>
 
+        <div className="rounded-lg p-6 bg-gradient-to-br from-[#212121] via-[#0f0f0f] to-[#2b2b2b] shadow-lg w-full mb-8">
+          <h2 className="text-xl font-semibold text-gray-300 mb-4">Configured Discounts</h2>
+          {discounts.length === 0 ? (
+            <p className="text-gray-400">No discounts configured for this order.</p>
+          ) : (
+            <div className="w-full overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead className="text-gray-300 h-12 px-4 text-left align-middle font-medium">Company</TableHead>
+                    <TableHead className="text-gray-300 h-12 px-4 text-left align-middle font-medium">ASIN</TableHead>
+                    <TableHead className="text-gray-300 h-12 px-4 text-left align-middle font-medium">Original Price</TableHead>
+                    <TableHead className="text-gray-300 h-12 px-4 text-left align-middle font-medium">Discounted Price</TableHead>
+                    <TableHead className="text-gray-300 h-12 px-4 text-left align-middle font-medium">Discount %</TableHead>
+                    <TableHead className="text-gray-300 h-12 px-4 text-left align-middle font-medium">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {discounts.map((discount) => {
+                    const discountPercentage = discount.discounted_price
+                      ? ((discount.original_price - discount.discounted_price) / discount.original_price * 100).toFixed(1)
+                      : '0';
+                    return (
+                      <TableRow key={`${discount.sequence}-${discount.company_id}`} className="hover:bg-[#35353580] transition-colors border-[#6a6a6a80]">
+                        <TableCell className="p-4 align-middle text-gray-300">{discount.company_name}</TableCell>
+                        <TableCell className="p-4 align-middle text-gray-300">{discount.asin}</TableCell>
+                        <TableCell className="p-4 align-middle text-gray-300">${discount.original_price.toFixed(2)}</TableCell>
+                        <TableCell className="p-4 align-middle text-gray-300">
+                          {discount.discounted_price ? `$${discount.discounted_price.toFixed(2)}` : 'N/A'}
+                        </TableCell>
+                        <TableCell className="p-4 align-middle text-gray-300">{discountPercentage}%</TableCell>
+                        <TableCell className="p-4 align-middle text-gray-300">
+                          <Button
+                            className="bg-[#c8aa64] hover:bg-[#9d864e] text-[#242424] mr-2"
+                            onClick={() => openDiscountDialog(discount.sequence, discount.company_id, discount.discounted_price)}
+                            disabled={!isOrderEditable}
+                          >
+                            Edit
+                          </Button>
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            onClick={() => handleDiscountDelete(discount.sequence, discount.company_id)}
+                            disabled={!isOrderEditable}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </div>
+
         <div className="rounded-lg p-6 bg-gradient-to-br from-[#212121] via-[#0f0f0f] to-[#2b2b2b] shadow-lg w-full overflow-x-auto">
           <div className="flex justify-between items-center mb-4">
             <h2 className="text-xl font-semibold text-gray-300">Order Products</h2>
-            <Button onClick={handleProductAdd} className="bg-[#c8aa64] hover:bg-[#9d864e] text-[#242424]" disabled={!isOrderEditable}>
+            <div className="flex gap-2">
+              <Button
+                onClick={() => openDiscountDialog()}
+                className="bg-[#c8aa64] hover:bg-[#9d864e] text-[#242424]"
+                disabled={!isOrderEditable}
+              >
+                <Percent className="mr-2 h-4 w-4" /> Configure Discounts
+              </Button>
+              <Button
+                onClick={handleProductAdd}
+                className="bg-[#c8aa64] hover:bg-[#9d864e] text-[#242424]"
+                disabled={!isOrderEditable}
+              >
               <Plus className="mr-2 h-4 w-4" /> Add Product
             </Button>
+            </div>
           </div>
           {products.length === 0 ? (
             <p className="text-gray-400">No products found.</p>
@@ -835,6 +1091,99 @@ export default function AdminOrderManagementPage() {
               </table>
             </div>
           )}
+
+          <Dialog open={isDiscountDialogOpen} onOpenChange={setIsDiscountDialogOpen}>
+            <DialogContent className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80]">
+              <DialogHeader>
+                <DialogTitle>Configure Discount</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div>
+                  <label className="text-gray-300 font-medium block mb-2">Company</label>
+                  <Select value={discountCompanyId} onValueChange={setDiscountCompanyId}>
+                    <SelectTrigger className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80]">
+                      <SelectValue placeholder="Select a company" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {companyApplications.map(company => (
+                        <SelectItem key={company.company_id} value={company.company_id.toString()}>
+                          {company.company_name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <label className="text-gray-300 font-medium block mb-2">Product (ASIN)</label>
+                  <Select value={discountSequence} onValueChange={setDiscountSequence}>
+                    <SelectTrigger className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80]">
+                      <SelectValue placeholder="Select a product" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {products.map(product => (
+                        <SelectItem key={product.sequence} value={product.sequence.toString()}>
+                          {product.asin}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <label className="text-gray-300 font-medium block mb-2">Original Price</label>
+                  <Input
+                    type="number"
+                    value={products.find(p => p.sequence === parseInt(discountSequence))?.price.toFixed(2) || ''}
+                    className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80]"
+                    disabled
+                  />
+                </div>
+                <div>
+                  <label className="text-gray-300 font-medium block mb-2">Discounted Price</label>
+                  <Input
+                    type="number"
+                    value={discountPrice}
+                    onChange={(e) => {
+                      setDiscountPrice(e.target.value);
+                      setDiscountPercentage('');
+                    }}
+                    className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80]"
+                    placeholder="Enter discounted price"
+                    step="0.01"
+                    min="0"
+                  />
+                </div>
+                <div>
+                  <label className="text-gray-300 font-medium block mb-2">Discount Percentage</label>
+                  <Select value={discountPercentage} onValueChange={handleDiscountPercentageChange}>
+                    <SelectTrigger className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80]">
+                      <SelectValue placeholder="Select discount percentage" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {['5', '10', '20', '25', '30', '40', '50'].map(percentage => (
+                        <SelectItem key={percentage} value={percentage}>
+                          {percentage}%
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    onClick={handleDiscountSave}
+                    className="bg-[#c8aa64] hover:bg-[#9d864e] text-[#242424]"
+                  >
+                    Save
+                  </Button>
+                  <Button
+                    onClick={() => setIsDiscountDialogOpen(false)}
+                    className="bg-gray-600 hover:bg-gray-500 text-gray-200"
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
         </div>
 
         {allocationResults.length > 0 && (
