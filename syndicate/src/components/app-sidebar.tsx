@@ -19,6 +19,7 @@ import {
 import { NavUser } from '@/components/nav-user';
 import { useRouter, usePathname } from 'next/navigation';
 import { ShoppingCart, History, Settings, Users, Home } from 'lucide-react';
+import Link from 'next/link';
 
 const data = {
   versions: ['1.0.1', '1.1.0-alpha', '2.0.0-beta1'],
@@ -109,12 +110,12 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton size="lg" asChild>
-              <a href="#">
+              <Link href="/">
                 <div className="flex flex-col gap-0.5 leading-none">
                   <span className="text-[#c8aa64] font-bold">The Syndicate - Buyers Portal</span>
                   <span className="text-[#bfbfbf]">v0.0.1 Alpha</span>
                 </div>
-              </a>
+              </Link>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
@@ -133,10 +134,10 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                   {item.items.map((subItem) => (
                     <SidebarMenuItem key={subItem.title}>
                       <SidebarMenuButton asChild isActive={pathname === subItem.url}>
-                        <a href={subItem.url}>
+                        <Link href={subItem.url}>
                           {subItem.icon && <subItem.icon className="mr-2 h-4 w-4" />}
                           <span>{subItem.title}</span>
-                        </a>
+                        </Link>
                       </SidebarMenuButton>
                     </SidebarMenuItem>
                   ))}

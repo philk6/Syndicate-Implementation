@@ -1,6 +1,6 @@
 'use client';
 
-import { ReactNode } from 'react';
+import { ReactNode, useEffect } from 'react';
 import { usePathname } from 'next/navigation';
 import { AppSidebar } from '@/components/app-sidebar';
 import {
@@ -14,14 +14,20 @@ export function ClientLayoutWithConditionalSidebar({ children }: { children: Rea
   const pathname = usePathname();
   const isAuthPage = pathname === '/login' || pathname === '/signup';
 
+  // Listen for route changes to force re-rendering
+  useEffect(() => {
+    console.log('Route changed to:', pathname);
+  }, [pathname]);
+
   // For login and signup pages, render without sidebar
   if (isAuthPage) {
     return <main className="flex-1 w-full">{children}</main>;
   }
 
   // For all other pages, render with sidebar
+  // Use key={pathname} to force the entire layout to re-render when route changes
   return (
-    <SidebarProvider>
+    <SidebarProvider key={pathname}>
       <AppSidebar />
       <SidebarInset>
         <header className="flex h-16 shrink-0 items-center gap-2 border-b px-4">
