@@ -40,21 +40,36 @@ export async function calculateOrderAllocation(orderId: number) {
     const result = await response.json();
     console.log('Backend allocation result:', result);
 
-    // Verify the allocation results in the database
-    const { data: allocationResults, error: fetchError } = await supabase
+    // Fetch allocation results from the database
+    const { data: allocationResults, error: fetchAllocError } = await supabase
       .from('allocation_results')
       .select('order_id, sequence, company_id, quantity, invested_amount, profit')
       .eq('order_id', orderId);
 
-    if (fetchError) {
-      console.error('Fetch allocation results error:', fetchError);
+    if (fetchAllocError) {
+      console.error('Fetch allocation results error:', fetchAllocError);
       return { success: false, message: 'Failed to fetch allocation results' };
     }
+
+    // Fetch company ROI from order_company
+    const { data: companyRoiData, error: fetchRoiError } = await supabase
+      .from('order_company')
+      .select('company_id, max_investment, roi, needs_review')
+      .eq('order_id', orderId);
+
+    if (fetchRoiError) {
+      console.error('Fetch order_company error:', fetchRoiError);
+      return { success: false, message: 'Failed to fetch company ROI data' };
+    }
+
+    console.log('Fetched allocation results:', allocationResults);
+    console.log('Fetched company ROI data:', companyRoiData);
 
     return {
       success: true,
       message: 'Allocation calculated successfully',
       allocations: allocationResults,
+      company_roi: companyRoiData,
     };
   } catch (error) {
     console.error('Error in calculateOrderAllocation:', error);
