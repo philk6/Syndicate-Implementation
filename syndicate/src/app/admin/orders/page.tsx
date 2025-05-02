@@ -19,7 +19,19 @@ import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
-import { Upload } from 'lucide-react';
+import { Upload, Trash2 } from 'lucide-react';
+import { Checkbox } from '@/components/ui/checkbox';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { toast, Toaster } from 'sonner';
 import Link from 'next/link';
 
 interface Order {
@@ -27,20 +39,19 @@ interface Order {
   leadtime: number;
   deadline: string;
   label_upload_deadline: string;
-  order_statuses: { description: string } | null; // Allow null for new uploads
+  order_statuses: { description: string } | null;
 }
 
-// Define interface for rows read from Excel
 interface ExcelRow {
   'Status': string;
-  'Deadline': string; // Parsed as string due to dateNF
-  'Label Upload Deadline': string; // Parsed as string
+  'Deadline': string;
+  'Label Upload Deadline': string;
   'Lead Time (days)': number;
   'ASIN': string;
   'Price': number;
   'Quantity': number;
-  'Description'?: string; // Optional column
-  [key: string]: string | number | undefined; // Allow for other potential columns
+  'Description'?: string;
+  [key: string]: string | number | undefined;
 }
 
 export default function AdminOrdersPage() {
@@ -50,20 +61,19 @@ export default function AdminOrdersPage() {
   const [uploadMessage, setUploadMessage] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [statuses, setStatuses] = useState<{ order_status_id: number; description: string }[]>([]);
+  const [selectedOrders, setSelectedOrders] = useState<number[]>([]);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const { isAuthenticated, loading: authLoading, user } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
     if (authLoading) return;
-
     if (!isAuthenticated || user?.role !== 'admin') {
       router.push('/login');
       return;
     }
-
     async function fetchData() {
       setLoadingOrders(true);
-
       const { data: ordersData, error: ordersError } = await supabase
         .from('orders')
         .select(`
@@ -75,28 +85,23 @@ export default function AdminOrdersPage() {
         `)
         .order('order_id', { ascending: false })
         .order('deadline', { ascending: true }) as { data: Order[] | null, error: PostgrestError | null };
-
       if (ordersError) {
         console.error('Error fetching orders:', ordersError);
       } else {
         setOrders(ordersData || []);
       }
-
       const { data: statusData, error: statusError } = await supabase
         .from('order_statuses')
         .select('order_status_id, description');
-
       if (statusError) {
         console.error('Error fetching statuses:', statusError);
       } else {
         setStatuses(statusData || []);
       }
-
       setLoadingOrders(false);
     }
-
     fetchData();
-  }, [isAuthenticated, authLoading, router, user]);
+  }, [isAuthenticated, authLoading, router, user?.role]);
 
   const calculateProgress = (deadline: string): number => {
     const now = new Date();
@@ -120,7 +125,6 @@ export default function AdminOrdersPage() {
     defaultDeadline.setDate(defaultDeadline.getDate() + 7);
     const defaultLabelDeadline = new Date();
     defaultLabelDeadline.setDate(defaultLabelDeadline.getDate() + 14);
-
     const { data, error } = await supabase
       .from('orders')
       .insert({
@@ -132,10 +136,9 @@ export default function AdminOrdersPage() {
       })
       .select('order_id')
       .single();
-
     if (error) {
       console.error('Error creating order:', error);
-      alert('Failed to create new order. Please try again.');
+      toast.error('Failed to create new order. Please try again.');
     } else if (data) {
       router.push(`/admin/orders/${data.order_id}`);
     }
@@ -154,42 +157,33 @@ export default function AdminOrdersPage() {
       setUploadMessage('Please select a file to upload.');
       return;
     }
-
     setUploadMessage('');
     const reader = new FileReader();
     reader.onload = async (e) => {
       const data = new Uint8Array(e.target?.result as ArrayBuffer);
-      const workbook = read(data, { type: 'array', dateNF: 'yyyy-mm-dd' }); // Enable date parsing
+      const workbook = read(data, { type: 'array', dateNF: 'yyyy-mm-dd' });
       const sheet = workbook.Sheets['Order'];
       if (!sheet) {
         setUploadMessage('Sheet "Order" not found in the file');
         return;
       }
-
-      // Define the type for the rows read from the excel sheet
-      const rows: ExcelRow[] = utils.sheet_to_json(sheet, { raw: false, dateNF: 'yyyy-mm-dd' }); // Convert dates to strings
+      const rows: ExcelRow[] = utils.sheet_to_json(sheet, { raw: false, dateNF: 'yyyy-mm-dd' });
       if (rows.length === 0) {
         setUploadMessage('No data found in the file');
         return;
       }
-
       const firstRow = rows[0];
       const status = statuses.find(s => s.description === firstRow['Status']);
       if (!status) {
         setUploadMessage(`Invalid status: ${firstRow['Status']}`);
         return;
       }
-
-      // Ensure dates are in ISO format
       const deadline = new Date(firstRow['Deadline']).toISOString();
       const labelUploadDeadline = new Date(firstRow['Label Upload Deadline']).toISOString();
-
       if (isNaN(new Date(deadline).getTime()) || isNaN(new Date(labelUploadDeadline).getTime())) {
         setUploadMessage('Invalid date format in Deadline or Label Upload Deadline');
         return;
       }
-
-      // Create the order
       const { data: orderData, error: orderError } = await supabase
         .from('orders')
         .insert({
@@ -201,13 +195,10 @@ export default function AdminOrdersPage() {
         })
         .select('order_id')
         .single();
-
       if (orderError || !orderData) {
         setUploadMessage('Failed to create order: ' + orderError?.message);
         return;
       }
-
-      // Create product lines
       const productsToInsert = rows.map((row, index) => ({
         order_id: orderData.order_id,
         sequence: index + 1,
@@ -217,11 +208,9 @@ export default function AdminOrdersPage() {
         quantity: row['Quantity'],
         description: row['Description'] || '',
       }));
-
       const { error: productsError } = await supabase
         .from('order_products')
         .insert(productsToInsert);
-
       if (productsError) {
         setUploadMessage('Failed to create product lines: ' + productsError.message);
         await supabase.from('orders').delete().eq('order_id', orderData.order_id);
@@ -241,6 +230,89 @@ export default function AdminOrdersPage() {
     reader.readAsArrayBuffer(selectedFile);
   };
 
+  const handleSelectOrder = (orderId: number) => {
+    setSelectedOrders(prev =>
+      prev.includes(orderId)
+        ? prev.filter(id => id !== orderId)
+        : [...prev, orderId]
+    );
+  };
+
+  const handleDeleteOrders = async () => {
+    if (selectedOrders.length === 0) return;
+  
+    try {
+      // Step 1: Delete dependent records from related tables for each selected order
+      const deletePromises = selectedOrders.map(async (orderId) => {
+        // Delete from order_products_company (depends on order_products)
+        const { error: productsCompanyError } = await supabase
+          .from('order_products_company')
+          .delete()
+          .eq('order_id', orderId);
+        if (productsCompanyError) {
+          throw new Error(`Failed to delete order_products_company for order ${orderId}: ${productsCompanyError.message}`);
+        }
+  
+        // Delete from order_pre_assignments (depends on order_products)
+        const { error: preAssignmentsError } = await supabase
+          .from('order_pre_assignments')
+          .delete()
+          .eq('order_id', orderId);
+        if (preAssignmentsError) {
+          throw new Error(`Failed to delete order_pre_assignments for order ${orderId}: ${preAssignmentsError.message}`);
+        }
+  
+        // Delete from allocation_results (depends on order_products)
+        const { error: allocationError } = await supabase
+          .from('allocation_results')
+          .delete()
+          .eq('order_id', orderId);
+        if (allocationError) {
+          throw new Error(`Failed to delete allocation_results for order ${orderId}: ${allocationError.message}`);
+        }
+  
+        // Delete from order_products (now safe, as dependent records are gone)
+        const { error: productsError } = await supabase
+          .from('order_products')
+          .delete()
+          .eq('order_id', orderId);
+        if (productsError) {
+          throw new Error(`Failed to delete order_products for order ${orderId}: ${productsError.message}`);
+        }
+  
+        // Delete from order_company
+        const { error: companyError } = await supabase
+          .from('order_company')
+          .delete()
+          .eq('order_id', orderId);
+        if (companyError) {
+          throw new Error(`Failed to delete order_company for order ${orderId}: ${companyError.message}`);
+        }
+  
+        // Finally, delete the order
+        const { error: orderError } = await supabase
+          .from('orders')
+          .delete()
+          .eq('order_id', orderId);
+        if (orderError) {
+          throw new Error(`Failed to delete order ${orderId}: ${orderError.message}`);
+        }
+      });
+  
+      // Execute all deletions
+      await Promise.all(deletePromises);
+  
+      // Update state to remove deleted orders
+      setOrders((prev) => prev.filter((order) => !selectedOrders.includes(order.order_id)));
+      setSelectedOrders([]);
+      setIsDeleteDialogOpen(false);
+      toast.success('Selected orders deleted successfully.');
+    } catch (err) {
+      console.error('Error deleting orders:', err);
+      toast.error(`Failed to delete orders: ${(err as Error).message}`);
+    }
+  };
+
   if (authLoading || loadingOrders) {
     return (
       <div className="min-h-screen bg-[#14130F] p-6 flex items-center justify-center">
@@ -253,6 +325,7 @@ export default function AdminOrdersPage() {
 
   return (
     <div className="min-h-screen bg-background p-6">
+      <Toaster richColors position="bottom-right" closeButton={true} duration={3000}/>
       <div className="mx-auto">
         <div className="flex justify-between items-center mb-6">
           <h1 className="text-3xl font-bold text-[#d1d5db]">Admin - All Orders</h1>
@@ -301,6 +374,14 @@ export default function AdminOrdersPage() {
                 </div>
               </DialogContent>
             </Dialog>
+            <Button
+              variant="destructive"
+              onClick={() => setIsDeleteDialogOpen(true)}
+              disabled={selectedOrders.length === 0}
+              className="bg-red-600 hover:bg-red-500 text-white"
+            >
+              <Trash2 className="mr-2 h-4 w-4" /> Delete Selected
+            </Button>
           </div>
         </div>
         <div className="card max-w-full border-[#2b2b2b] border-solid border">
@@ -310,6 +391,15 @@ export default function AdminOrdersPage() {
             <Table>
               <TableHeader>
                 <TableRow className="border-[#2b2b2b] bg-transparent hover:bg-transparent">
+                  <TableHead className="text-gray-300 w-[5%]">
+                    <Checkbox
+                      checked={selectedOrders.length === orders.length && orders.length > 0}
+                      onCheckedChange={(checked) => {
+                        setSelectedOrders(checked ? orders.map(order => order.order_id) : []);
+                      }}
+                      className="h-4 w-4 text-[#c8aa64] bg-[#0d0d0d] border-[#a7a7a7] rounded"
+                    />
+                  </TableHead>
                   <TableHead className="text-gray-300">Order ID</TableHead>
                   <TableHead className="text-gray-300">Status</TableHead>
                   <TableHead className="text-gray-300">Lead Time (days)</TableHead>
@@ -324,6 +414,13 @@ export default function AdminOrdersPage() {
                     key={order.order_id}
                     className="hover:bg-[#35353580] transition-colors border-[#2b2b2b]"
                   >
+                    <TableCell>
+                      <Checkbox
+                        checked={selectedOrders.includes(order.order_id)}
+                        onCheckedChange={() => handleSelectOrder(order.order_id)}
+                        className="h-4 w-4 text-[#c8aa64] bg-[#0d0d0d] border-[#a7a7a7] rounded"
+                      />
+                    </TableCell>
                     <TableCell className="text-gray-200">{order.order_id}</TableCell>
                     <TableCell className="text-gray-200">
                       <Badge variant="outline" className="bg-[#c8aa64] text-[#242424]">
@@ -353,6 +450,25 @@ export default function AdminOrdersPage() {
             </Table>
           )}
         </div>
+        <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+          <AlertDialogContent className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80]">
+            <AlertDialogHeader>
+              <AlertDialogTitle>Are you sure you want to delete the selected orders?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This action cannot be undone. Deleting these orders will remove all associated data, including products, pre-assignments, company applications, and allocation results.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel className="bg-gray-600 hover:bg-gray-500 text-gray-200">Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleDeleteOrders}
+                className="bg-red-600 hover:bg-red-500 text-white"
+              >
+                Delete
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </div>
   );

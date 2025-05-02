@@ -1,4 +1,10 @@
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'user_role') THEN
 create type "public"."user_role" as enum ('user', 'admin');
+    END IF;
+END
+$$;
 
 create sequence "public"."allocation_results_id_seq";
 
@@ -1104,6 +1110,3 @@ as permissive
 for update
 to authenticated
 using ((user_id = auth.uid()));
-
-
-

@@ -17,12 +17,10 @@ import {
   SidebarFooter,
 } from '@/components/ui/sidebar';
 import { NavUser } from '@/components/nav-user';
-import { useRouter, usePathname } from 'next/navigation'; // Added usePathname
+import { useRouter, usePathname } from 'next/navigation';
 import { ShoppingCart, History, Settings, Users, Home } from 'lucide-react';
-// Removed unused Link import
-// import Link from 'next/link';
+import Link from 'next/link';
 
-// Sample data
 const data = {
   versions: ['1.0.1', '1.1.0-alpha', '2.0.0-beta1'],
   navMain: [
@@ -47,10 +45,10 @@ const data = {
 };
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
-  const { isAuthenticated, user } = useAuth(); // Removed unused loading and logout
+  const { isAuthenticated, user } = useAuth();
   const [userData, setUserData] = useState({ name: 'User', email: '', avatar: '/syndicate_logo.jpeg' });
   const router = useRouter();
-  const pathname = usePathname(); // Get current path
+  const pathname = usePathname();
 
   useEffect(() => {
     async function fetchUserData() {
@@ -101,7 +99,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
-    router.push('/login'); // Redirect to login page after logout
+    router.push('/login');
   };
 
   if (!isAuthenticated) return null;
@@ -112,40 +110,46 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton size="lg" asChild>
-              <a href="#">
+              <Link href="/">
                 <div className="flex flex-col gap-0.5 leading-none">
                   <span className="text-[#c8aa64] font-bold">The Syndicate - Buyers Portal</span>
                   <span className="text-[#bfbfbf]">v0.0.1 Alpha</span>
                 </div>
-              </a>
+              </Link>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarHeader>
       <SidebarContent>
-        {data.navMain.map((item) => (
-          <SidebarGroup key={item.title}>
-            <SidebarGroupLabel>{item.title}</SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                {item.items.map((subItem) => (
-                  <SidebarMenuItem key={subItem.title}>
-                    <SidebarMenuButton asChild isActive={pathname === subItem.url}>
-                      <a href={subItem.url}>
-                        {subItem.icon && <subItem.icon className="mr-2 h-4 w-4" />}
-                        <span>{subItem.title}</span>
-                      </a>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                ))}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        ))}
+        {data.navMain.map((item) => {
+          // Only render Admin Panel for admin users
+          if (item.title === 'Admin Panel' && user?.role !== 'admin') {
+            return null;
+          }
+          return (
+            <SidebarGroup key={item.title}>
+              <SidebarGroupLabel>{item.title}</SidebarGroupLabel>
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  {item.items.map((subItem) => (
+                    <SidebarMenuItem key={subItem.title}>
+                      <SidebarMenuButton asChild isActive={pathname === subItem.url}>
+                        <Link href={subItem.url}>
+                          {subItem.icon && <subItem.icon className="mr-2 h-4 w-4" />}
+                          <span>{subItem.title}</span>
+                        </Link>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  ))}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+          );
+        })}
       </SidebarContent>
       <SidebarRail />
       <SidebarFooter>
-        <NavUser user={userData} onLogout={handleLogout} /> {/* Pass handleLogout instead of logout */}
+        <NavUser user={userData} onLogout={handleLogout} />
       </SidebarFooter>
     </Sidebar>
   );

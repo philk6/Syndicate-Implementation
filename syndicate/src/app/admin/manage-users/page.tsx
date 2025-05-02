@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@lib/auth';
 import { supabase } from '@lib/supabase/client';
@@ -34,6 +34,35 @@ export default function ManageUsersPage() {
   const { isAuthenticated, loading: authLoading, user } = useAuth();
   const router = useRouter();
 
+  // Memoized function to fetch users
+  const fetchUsers = useCallback(async () => {
+    const { data, error } = await supabase
+      .from('users')
+      .select(`
+        user_id,
+        email,
+        firstname,
+        lastname,
+        role,
+        company (name)
+      `)
+      .order('user_id', { ascending: true });
+
+    if (error) {
+      console.error('Error fetching users:', error);
+      setMessage('Failed to load users.');
+    } else {
+      // Transform data to match the User interface, especially the company field
+      const transformedUsers = (data || []).map(user => ({
+        ...user,
+        // Supabase relational selects return an array, take the first element if it exists
+        company: Array.isArray(user.company) && user.company.length > 0 ? user.company[0] : null,
+      }));
+      setUsers(transformedUsers);
+    }
+    setLoading(false);
+  }, []);
+
   useEffect(() => {
     if (authLoading) return;
 
@@ -47,38 +76,11 @@ export default function ManageUsersPage() {
       return;
     }
 
-    async function fetchUsers() {
-      const { data, error } = await supabase
-        .from('users')
-        .select(`
-          user_id,
-          email,
-          firstname,
-          lastname,
-          role,
-          company (name)
-        `)
-        .order('user_id', { ascending: true });
-
-      if (error) {
-        console.error('Error fetching users:', error);
-        setMessage('Failed to load users.');
-      } else {
-        // Transform data to match the User interface, especially the company field
-        const transformedUsers = (data || []).map(user => ({
-          ...user,
-          // Supabase relational selects return an array, take the first element if it exists
-          company: Array.isArray(user.company) && user.company.length > 0 ? user.company[0] : null,
-        }));
-        setUsers(transformedUsers);
-      }
-      setLoading(false);
-    }
-
     fetchUsers();
-  }, [isAuthenticated, authLoading, router, user]);
+  }, [isAuthenticated, authLoading, router, user?.role, fetchUsers]);
 
-  const generateInviteCode = async () => {
+  // Memoized function to generate invite code with optimistic UI updates
+  const generateInviteCode = useCallback(async () => {
     setMessage(''); // Clear previous message
 
     // Fetch the current user's user_id from the users table
@@ -102,44 +104,50 @@ export default function ManageUsersPage() {
     const maxAttempts = 5;
     let attempts = 0;
 
-    while (attempts < maxAttempts) {
-      let code = '';
-      for (let i = 0; i < 5; i++) { // Assuming schema updated to varchar(5)
-        code += characters.charAt(Math.floor(Math.random() * characters.length));
-      }
-
-      const { data, error } = await supabase
-        .from('invitation_codes')
-        .insert({
-          code,
-          expired: false,
-          created_user_id: createdUserId,
-        })
-        .select('code')
-        .single();
-
-      if (error) {
-        if (error.code === '23505') { // Unique constraint violation
-          console.log(`Code ${code} already exists, retrying...`);
-          attempts++;
-          continue;
+    try {
+      while (attempts < maxAttempts) {
+        let code = '';
+        for (let i = 0; i < 5; i++) { // Assuming schema updated to varchar(5)
+          code += characters.charAt(Math.floor(Math.random() * characters.length));
         }
-        console.error('Error creating invite code:', error);
-        setMessage(`Failed to generate invite code: ${error.message}`);
-        setInviteCode(null); // Reset invite code on error
-        return;
+
+        const { data, error } = await supabase
+          .from('invitation_codes')
+          .insert({
+            code,
+            expired: false,
+            created_user_id: createdUserId,
+          })
+          .select('code')
+          .single();
+
+        if (error) {
+          if (error.code === '23505') { // Unique constraint violation
+            console.log(`Code ${code} already exists, retrying...`);
+            attempts++;
+            continue;
+          }
+          console.error('Error creating invite code:', error);
+          setMessage(`Failed to generate invite code: ${error.message}`);
+          setInviteCode(null); // Reset invite code on error
+          return;
+        }
+
+        if (data) {
+          setInviteCode(data.code); // Set the new code
+          setMessage('Invite code generated successfully!');
+          return;
+        }
       }
 
-      if (data) {
-        setInviteCode(data.code); // Set the new code
-        setMessage('Invite code generated successfully!');
-        return;
-      }
+      setMessage('Failed to generate a unique invite code after multiple attempts.');
+      setInviteCode(null); // Reset invite code on failure
+    } catch (error) {
+      console.error('Unexpected error:', error);
+      setMessage('An unexpected error occurred');
+      setInviteCode(null);
     }
-
-    setMessage('Failed to generate a unique invite code after multiple attempts.');
-    setInviteCode(null); // Reset invite code on failure
-  };
+  }, [user?.email]);
 
   if (authLoading || loading) {
     return (
