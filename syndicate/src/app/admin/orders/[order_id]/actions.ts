@@ -115,6 +115,9 @@ export async function calculateOrderAllocation(orderId: number) {
       for (const app of applications) {
         if (remainingQuantity <= 0) break;
 
+        // Skip if company already has a pre-assignment for this sequence
+        if (productPreAssignments.some(pa => pa.company_id === app.company_id)) continue;
+
         // Use discounted price if available, otherwise use original price
         const key = `${sequence}-${app.company_id}`;
         const effectivePrice = discountLookup[key] ?? product.price;
@@ -144,15 +147,44 @@ export async function calculateOrderAllocation(orderId: number) {
       }
     }
 
-    // Insert allocation results
-    console.log('Allocation results payload:', allocationResults);
-    const { error: insertError } = await supabase
-      .from('allocation_results')
-      .insert(allocationResults);
+    // Validate for duplicate keys
+    const keySet = new Set<string>();
+    for (const result of allocationResults) {
+      const key = `${result.order_id}-${result.sequence}-${result.company_id}`;
+      if (keySet.has(key)) {
+        console.error(`Duplicate allocation key detected: order_id=${result.order_id}, sequence=${result.sequence}, company_id=${result.company_id}`);
+        return { success: false, message: `Duplicate allocation key: order_id=${result.order_id}, sequence=${result.sequence}, company_id=${result.company_id}` };
+      }
+      keySet.add(key);
+    }
 
-    if (insertError) {
-      console.error('Insert allocation results error:', insertError);
-      return { success: false, message: 'Failed to save allocation results' };
+    // Insert allocation results using UPSERT
+    console.log('Allocation results payload:', allocationResults);
+    for (const result of allocationResults) {
+      const { error: upsertError } = await supabase
+        .from('allocation_results')
+        .upsert(
+          {
+            order_id: result.order_id,
+            sequence: result.sequence,
+            company_id: result.company_id,
+            quantity: result.quantity,
+            invested_amount: result.invested_amount,
+            profit: result.profit,
+            roi: null, // ROI is calculated at company level
+            needs_review: false,
+            created_at: new Date().toISOString(),
+          },
+          {
+            onConflict: 'order_id,sequence,company_id',
+            ignoreDuplicates: false,
+          }
+        );
+
+      if (upsertError) {
+        console.error(`Upsert error for allocation result: order_id=${result.order_id}, sequence=${result.sequence}, company_id=${result.company_id}`, upsertError);
+        return { success: false, message: `Failed to save allocation result: ${upsertError.message}` };
+      }
     }
 
     // Calculate and upsert company-level ROI and needs_review
