@@ -101,7 +101,7 @@ export default function AdminOrdersPage() {
       setLoadingOrders(false);
     }
     fetchData();
-  }, [isAuthenticated, authLoading, router, user]);
+  }, [isAuthenticated, authLoading, router, user?.role]);
 
   const calculateProgress = (deadline: string): number => {
     const now = new Date();

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@lib/auth';
 import { supabase } from '@lib/supabase/client';
@@ -46,6 +46,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { debounce } from 'lodash';
 
 interface Order {
   order_id: number;
@@ -92,6 +93,53 @@ export default function UserDashboardPage() {
   const [isCompanyPopupOpen, setIsCompanyPopupOpen] = useState(false);
   const { isAuthenticated, loading: authLoading, user } = useAuth();
   const router = useRouter();
+
+  // Memoize the fetchChartData function to ensure stable identity
+  const fetchChartData = useCallback(async (companyId: number, timeFrame: '7d' | '30d' | '3m' | '1y') => {
+    // Determine the start date and date truncation based on time frame
+    const now = new Date();
+    let startDate: Date;
+    let dateTrunc: string;
+    switch (timeFrame) {
+      case '7d':
+        startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        dateTrunc = 'day';
+        break;
+      case '30d':
+        startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+        dateTrunc = 'day';
+        break;
+      case '3m':
+        startDate = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+        dateTrunc = 'week';
+        break;
+      case '1y':
+        startDate = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
+        dateTrunc = 'month';
+        break;
+    }
+
+    // Fetch allocation_results with profit and invested_amount
+    const { data: allocationData, error: allocationError } = await supabase
+      .rpc('aggregate_allocations_by_time', {
+        p_company_id: companyId,
+        p_date_trunc: dateTrunc,
+        p_start_date: startDate.toISOString(),
+      });
+
+    if (allocationError) {
+      console.error('Error fetching chart data:', allocationError.message, allocationError.details);
+      setChartData([]);
+    } else {
+      console.log('Raw chart data:', allocationData); // Debug logging
+      const processedData = allocationData.map((item: AggregateAllocationResult) => ({
+        date: item.time_period,
+        profit: item.total_profit || 0,
+        invested_amount: item.total_invested_amount || 0,
+      }));
+      setChartData(processedData);
+    }
+  }, []);
 
   useEffect(() => {
     if (authLoading) return;
@@ -194,59 +242,18 @@ export default function UserDashboardPage() {
       setLoading(false);
     }
 
-    async function fetchChartData(companyId: number, timeFrame: '7d' | '30d' | '3m' | '1y') {
-      // Determine the start date and date truncation based on time frame
-      const now = new Date();
-      let startDate: Date;
-      let dateTrunc: string;
-      switch (timeFrame) {
-        case '7d':
-          startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-          dateTrunc = 'day';
-          break;
-        case '30d':
-          startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-          dateTrunc = 'day';
-          break;
-        case '3m':
-          startDate = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
-          dateTrunc = 'week';
-          break;
-        case '1y':
-          startDate = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
-          dateTrunc = 'month';
-          break;
-      }
-
-      // Fetch allocation_results with profit and invested_amount
-      const { data: allocationData, error: allocationError } = await supabase
-        .rpc('aggregate_allocations_by_time', {
-          p_company_id: companyId,
-          p_date_trunc: dateTrunc,
-          p_start_date: startDate.toISOString(),
-        });
-
-      if (allocationError) {
-        console.error('Error fetching chart data:', allocationError.message, allocationError.details);
-        setChartData([]);
-      } else {
-        console.log('Raw chart data:', allocationData); // Debug logging
-        const processedData = allocationData.map((item: AggregateAllocationResult) => ({
-          date: item.time_period,
-          profit: item.total_profit || 0,
-          invested_amount: item.total_invested_amount || 0,
-        }));
-        setChartData(processedData);
-      }
-    }
-
     fetchDashboardData();
-  }, [isAuthenticated, authLoading, router, user, timeFrame]);
+  }, [isAuthenticated, authLoading, router, user?.email, timeFrame, fetchChartData]);
 
   const handleRedirectToAccount = () => {
     setIsCompanyPopupOpen(false);
     router.push('/account');
   };
+
+  // Create a debounced version of the timeFrame setter 
+  const handleTimeFrameChange = debounce((value: string) => {
+    setTimeFrame(value as '7d' | '30d' | '3m' | '1y');
+  }, 300);
 
   if (loading) {
     return (
@@ -302,7 +309,10 @@ export default function UserDashboardPage() {
                 Showing total profit and invested amount for the selected time range
               </CardDescription>
             </div>
-            <Select value={timeFrame} onValueChange={(value: string) => setTimeFrame(value as '7d' | '30d' | '3m' | '1y')}>
+            <Select 
+              value={timeFrame} 
+              onValueChange={handleTimeFrameChange}
+            >
               <SelectTrigger className="w-[160px] rounded-lg sm:ml-auto border-[#6a6a6a80]" aria-label="Select time range">
                 <SelectValue placeholder="Last 30 days" />
               </SelectTrigger>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@lib/auth';
 import { supabase } from '@lib/supabase/client';
@@ -30,6 +30,30 @@ export default function OrdersPage() {
   const { isAuthenticated, loading } = useAuth();
   const router = useRouter();
 
+  // Memoized function to fetch orders
+  const fetchOrders = useCallback(async () => {
+    const { data, error } = await supabase
+      .from('orders')
+      .select(`
+        order_id,
+        leadtime,
+        deadline,
+        label_upload_deadline,
+        order_statuses!order_status_id (description)
+      `)
+      .neq('order_status_id', 3) // Filter out order_status_id = 3
+      .not('order_statuses.description', 'eq', 'Draft') // Filter out 'Draft'
+      .order('deadline', { ascending: true }) as { data: Order[] | null, error: PostgrestError | null };
+
+    if (error) {
+      console.error('Error fetching orders:', error);
+    } else {
+      console.log('Fetched orders:', data);
+      setOrders(data || []);
+    }
+    setLoadingOrders(false);
+  }, []);
+
   useEffect(() => {
     if (loading) return;
 
@@ -38,37 +62,16 @@ export default function OrdersPage() {
       return;
     }
 
-    async function fetchOrders() {
-      const { data, error } = await supabase
-        .from('orders')
-        .select(`
-          order_id,
-          leadtime,
-          deadline,
-          label_upload_deadline,
-          order_statuses!order_status_id (description)
-        `)
-        .neq('order_status_id', 3) // Filter out order_status_id = 3
-        .not('order_statuses.description', 'eq', 'Draft') // Filter out 'Draft'
-        .order('deadline', { ascending: true }) as { data: Order[] | null, error: PostgrestError | null };
-
-      if (error) {
-        console.error('Error fetching orders:', error);
-      } else {
-        console.log('Fetched orders:', data);
-        setOrders(data || []);
-      }
-      setLoadingOrders(false);
-    }
-
     fetchOrders();
-  }, [isAuthenticated, loading, router]);
+  }, [isAuthenticated, loading, router, fetchOrders]);
 
-  const handleOrderClick = (orderId: number) => {
+  // Memoized function to handle order navigation
+  const handleOrderClick = useCallback((orderId: number) => {
     router.push(`/orders/${orderId}`);
-  };
+  }, [router]);
 
-  const calculateProgress = (deadline: string): number => {
+  // Memoized function to calculate progress
+  const calculateProgress = useCallback((deadline: string): number => {
     const now = new Date();
     const deadlineDate = new Date(deadline + 'Z'); // Treat as UTC
     if (isNaN(deadlineDate.getTime())) {
@@ -83,7 +86,34 @@ export default function OrdersPage() {
     } else {
       return 0;
     }
-  };
+  }, []);
+
+  // Memoize the render of orders table rows to prevent unnecessary re-renders
+  const orderRows = useMemo(() => 
+    orders.map((order) => (
+      <TableRow
+        key={order.order_id}
+        className="hover:bg-[#35353580] transition-colors focus:ring-[#35353580] border-[#2b2b2b] cursor-pointer"
+        onClick={() => handleOrderClick(order.order_id)}
+      >
+        <TableCell className="text-gray-200">{order.order_id}</TableCell>
+        <TableCell className="text-gray-200">
+          <Badge variant="outline" className="bg-[#c8aa64] text-[#242424]">
+            {order.order_statuses?.description || 'N/A'}
+          </Badge>
+        </TableCell>
+        <TableCell className="text-gray-200">{order.leadtime}</TableCell>
+        <TableCell className="text-gray-200">
+          {new Date(order.deadline).toLocaleString()}
+          <Progress value={calculateProgress(order.deadline)} />
+        </TableCell>
+        <TableCell className="text-gray-200">
+          {new Date(order.label_upload_deadline).toLocaleString()}
+          <Progress value={calculateProgress(order.label_upload_deadline)} />
+        </TableCell>
+      </TableRow>
+    )), 
+  [orders, handleOrderClick, calculateProgress]);
 
   if (!isAuthenticated) return null;
 
@@ -108,29 +138,7 @@ export default function OrdersPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {orders.map((order) => (
-                  <TableRow
-                    key={order.order_id}
-                    className="hover:bg-[#35353580] transition-colors focus:ring-[#35353580] border-[#2b2b2b] cursor-pointer"
-                    onClick={() => handleOrderClick(order.order_id)}
-                  >
-                    <TableCell className="text-gray-200">{order.order_id}</TableCell>
-                    <TableCell className="text-gray-200">
-                      <Badge variant="outline" className="bg-[#c8aa64] text-[#242424]">
-                        {order.order_statuses?.description || 'N/A'}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-gray-200">{order.leadtime}</TableCell>
-                    <TableCell className="text-gray-200">
-                      {new Date(order.deadline).toLocaleString()}
-                      <Progress value={calculateProgress(order.deadline)} />
-                    </TableCell>
-                    <TableCell className="text-gray-200">
-                      {new Date(order.label_upload_deadline).toLocaleString()}
-                      <Progress value={calculateProgress(order.label_upload_deadline)} />
-                    </TableCell>
-                  </TableRow>
-                ))}
+                {orderRows}
               </TableBody>
             </Table>
           )}
