@@ -171,8 +171,6 @@ export async function calculateOrderAllocation(orderId: number) {
             quantity: result.quantity,
             invested_amount: result.invested_amount,
             profit: result.profit,
-            roi: null, // ROI is calculated at company level
-            needs_review: false,
             created_at: new Date().toISOString(),
           },
           {
@@ -189,8 +187,9 @@ export async function calculateOrderAllocation(orderId: number) {
 
     // Calculate and upsert company-level ROI and needs_review
     const companyUpsertData = Object.entries(companyAllocations).map(([companyId, { totalProfit, totalInvested }]) => {
-      const roi = totalInvested > 0 ? (totalProfit / totalInvested) * 100 : 0; // Store ROI as percentage
-      const needsReview = roi < 30 && totalInvested > 0; // Threshold in percentage
+      const roi = totalInvested > 0 ? totalProfit / totalInvested : 0;
+      const needsReview = roi < 0.30 && totalInvested > 0; // Align with algorithm.py threshold
+
       return {
         order_id: orderId,
         company_id: parseInt(companyId),
