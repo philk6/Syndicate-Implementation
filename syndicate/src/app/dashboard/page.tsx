@@ -9,6 +9,7 @@ import {
   CardContent,
   CardHeader,
   CardTitle,
+  CardDescription,
 } from '@/components/ui/card';
 import {
   Table,
@@ -18,11 +19,6 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import {
-  ChartContainer,
-  ChartTooltip,
-  ChartTooltipContent,
-} from '@/components/ui/chart';
 import {
   AlertDialog,
   AlertDialogContent,
@@ -34,7 +30,22 @@ import {
   AlertDialogAction,
 } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
-import { Bar, BarChart, Pie, PieChart, CartesianGrid, XAxis, YAxis, Legend } from 'recharts';
+import {
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+  ChartLegend,
+  ChartLegendContent,
+  type ChartConfig,
+} from '@/components/ui/chart';
+import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from 'recharts';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 interface Order {
   order_id: number;
@@ -43,23 +54,40 @@ interface Order {
   total_amount?: number;
 }
 
-interface OrderStatusCount {
-  status: string;
-  count: number;
+interface DashboardMetrics {
+  totalOrders: number;
+  totalInvestment: number;
+  averageRoi: number | null;
 }
 
-interface InvestmentDistribution {
-  order_id: number;
-  value: number;
+interface ChartData {
+  date: string;
+  profit: number;
+  invested_amount: number;
 }
+
+interface AggregateAllocationResult {
+  time_period: string; // Assuming string, adjust if it's a Date object
+  total_profit: number | null;
+  total_invested_amount: number | null;
+}
+
+const chartConfig = {
+  profit: {
+    label: 'Profit',
+    color: '#c8aa64',
+  },
+  invested_amount: {
+    label: 'Invested Amount',
+    color: '#6a6a6a',
+  },
+} satisfies ChartConfig;
 
 export default function UserDashboardPage() {
-  const [totalOrders, setTotalOrders] = useState(0);
-  const [totalInvestment, setTotalInvestment] = useState(0);
-  const [ungatedProducts, setUngatedProducts] = useState(0);
-  const [orderStatusData, setOrderStatusData] = useState<OrderStatusCount[]>([]);
-  const [investmentData, setInvestmentData] = useState<InvestmentDistribution[]>([]);
+  const [metrics, setMetrics] = useState<DashboardMetrics>({ totalOrders: 0, totalInvestment: 0, averageRoi: null });
   const [recentOrders, setRecentOrders] = useState<Order[]>([]);
+  const [chartData, setChartData] = useState<ChartData[]>([]);
+  const [timeFrame, setTimeFrame] = useState<'7d' | '30d' | '3m' | '1y'>('30d');
   const [loading, setLoading] = useState(true);
   const [isCompanyPopupOpen, setIsCompanyPopupOpen] = useState(false);
   const { isAuthenticated, loading: authLoading, user } = useAuth();
@@ -84,7 +112,7 @@ export default function UserDashboardPage() {
         .single();
 
       if (userError || !userData) {
-        console.error('Error fetching user data:', userError);
+        console.error('Error fetching user data:', userError?.message);
         setLoading(false);
         return;
       }
@@ -95,19 +123,25 @@ export default function UserDashboardPage() {
       if (!companyId) {
         setIsCompanyPopupOpen(true);
         setLoading(false);
-        return; // Skip fetching dashboard data until company is linked
+        return;
       }
 
-      // Fetch total orders and recent orders
-      const { data: ordersData, error: ordersError } = await supabase
+      // Fetch order_company data (orders, investment, ROI)
+      const { data: orderCompanyData, error: orderCompanyError } = await supabase
         .from('order_company')
-        .select('order_id, orders(deadline, order_statuses(description), total_amount)')
+        .select(`
+          order_id,
+          max_investment,
+          roi,
+          orders(deadline, order_statuses(description), total_amount)
+        `)
         .eq('company_id', companyId);
 
-      if (ordersError) {
-        console.error('Error fetching orders:', ordersError);
+      if (orderCompanyError) {
+        console.error('Error fetching order_company data:', orderCompanyError.message);
       } else {
-        const orders = ordersData
+        // Process orders
+        const orders = orderCompanyData
           .map((oc) => {
             const orderData = Array.isArray(oc.orders) ? oc.orders[0] : oc.orders;
 
@@ -133,65 +167,85 @@ export default function UserDashboardPage() {
           })
           .filter((order): order is Order => order !== null);
 
-        setTotalOrders(orders.length);
+        // Calculate total orders
+        const totalOrders = orders.length;
+
+        // Calculate total investment
+        const totalInvestment = orderCompanyData.reduce(
+          (sum, item) => sum + (item.max_investment || 0),
+          0
+        );
+
+        // Calculate average ROI
+        const validRois = orderCompanyData
+          .filter(item => item.roi != null)
+          .map(item => item.roi as number);
+        const averageRoi = validRois.length > 0
+          ? validRois.reduce((sum, roi) => sum + roi, 0) / validRois.length
+          : null;
+
+        setMetrics({ totalOrders, totalInvestment, averageRoi });
         setRecentOrders(orders.slice(0, 5));
-
-        const statusCount = orders.reduce((acc: { [key: string]: number }, order) => {
-          const status = order.order_statuses.description;
-          acc[status] = (acc[status] || 0) + 1;
-          return acc;
-        }, {});
-        setOrderStatusData(
-          Object.entries(statusCount).map(([status, count]) => ({ status, count }))
-        );
       }
 
-      // Fetch total investment
-      const { data: investmentData, error: investmentError } = await supabase
-        .from('order_company')
-        .select('order_id, max_investment')
-        .eq('company_id', companyId);
-
-      if (investmentError) {
-        console.error('Error fetching investment:', investmentError);
-      } else {
-        const total = investmentData.reduce((sum, item) => sum + (item.max_investment || 0), 0);
-        setTotalInvestment(total);
-        setInvestmentData(
-          investmentData.map(item => ({
-            order_id: item.order_id,
-            value: item.max_investment || 0,
-          }))
-        );
-      }
-
-      // Fetch ungated products
-      const { data: productsData, error: productsError } = await supabase
-        .from('order_products_company')
-        .select('ungated')
-        .eq('company_id', companyId);
-
-      if (productsError) {
-        console.error('Error fetching products:', productsError);
-      } else {
-        const ungatedCount = productsData.filter(p => p.ungated).length;
-        setUngatedProducts(ungatedCount);
-      }
+      // Fetch chart data (profit and invested_amount)
+      await fetchChartData(companyId, timeFrame);
 
       setLoading(false);
     }
 
+    async function fetchChartData(companyId: number, timeFrame: '7d' | '30d' | '3m' | '1y') {
+      // Determine the start date and date truncation based on time frame
+      const now = new Date();
+      let startDate: Date;
+      let dateTrunc: string;
+      switch (timeFrame) {
+        case '7d':
+          startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+          dateTrunc = 'day';
+          break;
+        case '30d':
+          startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+          dateTrunc = 'day';
+          break;
+        case '3m':
+          startDate = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+          dateTrunc = 'week';
+          break;
+        case '1y':
+          startDate = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
+          dateTrunc = 'month';
+          break;
+      }
+
+      // Fetch allocation_results with profit and invested_amount
+      const { data: allocationData, error: allocationError } = await supabase
+        .rpc('aggregate_allocations_by_time', {
+          p_company_id: companyId,
+          p_date_trunc: dateTrunc,
+          p_start_date: startDate.toISOString(),
+        });
+
+      if (allocationError) {
+        console.error('Error fetching chart data:', allocationError.message, allocationError.details);
+        setChartData([]);
+      } else {
+        console.log('Raw chart data:', allocationData); // Debug logging
+        const processedData = allocationData.map((item: AggregateAllocationResult) => ({
+          date: item.time_period,
+          profit: item.total_profit || 0,
+          invested_amount: item.total_invested_amount || 0,
+        }));
+        setChartData(processedData);
+      }
+    }
+
     fetchDashboardData();
-  }, [isAuthenticated, authLoading, router, user]);
+  }, [isAuthenticated, authLoading, router, user, timeFrame]);
 
   const handleRedirectToAccount = () => {
     setIsCompanyPopupOpen(false);
     router.push('/account');
-  };
-
-  const chartConfig = {
-    count: { label: 'Orders', color: '#c8aa64' },
-    value: { label: 'Investment' },
   };
 
   if (loading) {
@@ -216,7 +270,7 @@ export default function UserDashboardPage() {
               <CardTitle className="text-gray-300">Your Orders</CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-2xl font-bold text-[#c8aa64]">{totalOrders}</p>
+              <p className="text-2xl font-bold text-[#c8aa64]">{metrics.totalOrders}</p>
             </CardContent>
           </Card>
           <Card className="bg-gradient-to-br from-[#212121] via-[#0f0f0f] to-[#2b2b2b] border-[#6a6a6a80]">
@@ -224,65 +278,107 @@ export default function UserDashboardPage() {
               <CardTitle className="text-gray-300">Total Investment</CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-2xl font-bold text-[#c8aa64]">${totalInvestment.toLocaleString()}</p>
+              <p className="text-2xl font-bold text-[#c8aa64]">${metrics.totalInvestment.toLocaleString()}</p>
             </CardContent>
           </Card>
           <Card className="bg-gradient-to-br from-[#212121] via-[#0f0f0f] to-[#2b2b2b] border-[#6a6a6a80]">
             <CardHeader>
-              <CardTitle className="text-gray-300">Ungated Products</CardTitle>
+              <CardTitle className="text-gray-300">Average ROI</CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-2xl font-bold text-[#c8aa64]">{ungatedProducts}</p>
+              <p className="text-2xl font-bold text-[#c8aa64]">
+                {metrics.averageRoi != null ? metrics.averageRoi.toFixed(2) : 'N/A'}
+              </p>
             </CardContent>
           </Card>
         </div>
 
-        {/* Charts */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-          {/* Bar Chart: Orders by Status */}
-          <Card className="bg-gradient-to-br from-[#212121] via-[#0f0f0f] to-[#2b2b2b] border-[#6a6a6a80]">
-            <CardHeader>
-              <CardTitle className="text-gray-300">Your Orders by Status</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ChartContainer config={chartConfig} className="h-[300px]">
-                <BarChart data={orderStatusData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#6a6a6a80" />
-                  <XAxis dataKey="status" stroke="#d1d5db" />
-                  <YAxis stroke="#d1d5db" />
-                  <ChartTooltip content={<ChartTooltipContent />} />
-                  <Bar dataKey="count" fill="#c8aa64" radius={4} />
-                </BarChart>
-              </ChartContainer>
-            </CardContent>
-          </Card>
-
-          {/* Pie Chart: Investment Distribution by Order */}
-          <Card className="bg-gradient-to-br from-[#212121] via-[#0f0f0f] to-[#2b2b2b] border-[#6a6a6a80]">
-            <CardHeader>
-              <CardTitle className="text-gray-300">Investment Distribution by Order</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ChartContainer config={chartConfig} className="h-[300px]">
-                <PieChart>
-                  <Pie
-                    data={investmentData}
-                    dataKey="value"
-                    nameKey="order_id"
-                    cx="50%"
-                    cy="50%"
-                    outerRadius={80}
-                    fill="#c8aa64"
-                    label={({ order_id, percent }) => `Order ${order_id} (${(percent * 100).toFixed(0)}%)`}
-                    labelLine={false}
-                  />
-                  <ChartTooltip content={<ChartTooltipContent />} />
-                  <Legend />
-                </PieChart>
-              </ChartContainer>
-            </CardContent>
-          </Card>
-        </div>
+        {/* Area Chart: Profit and Investment Over Time */}
+        <Card className="bg-gradient-to-br from-[#212121] via-[#0f0f0f] to-[#2b2b2b] border-[#6a6a6a80] mb-8">
+          <CardHeader className="flex items-center gap-2 space-y-0 border-b py-5 sm:flex-row">
+            <div className="grid flex-1 gap-1 text-center sm:text-left">
+              <CardTitle>Profit and Investment Over Time</CardTitle>
+              <CardDescription>
+                Showing total profit and invested amount for the selected time range
+              </CardDescription>
+            </div>
+            <Select value={timeFrame} onValueChange={(value: string) => setTimeFrame(value as '7d' | '30d' | '3m' | '1y')}>
+              <SelectTrigger className="w-[160px] rounded-lg sm:ml-auto border-[#6a6a6a80]" aria-label="Select time range">
+                <SelectValue placeholder="Last 30 days" />
+              </SelectTrigger>
+              <SelectContent className="rounded-xl">
+                <SelectItem value="7d" className="rounded-lg">Last 7 days</SelectItem>
+                <SelectItem value="30d" className="rounded-lg">Last 30 days</SelectItem>
+                <SelectItem value="3m" className="rounded-lg">Last 3 months</SelectItem>
+                <SelectItem value="1y" className="rounded-lg">Last 1 year</SelectItem>
+              </SelectContent>
+            </Select>
+          </CardHeader>
+          <CardContent className="px-2 pt-4 sm:px-6 sm:pt-6">
+            <ChartContainer config={chartConfig} className="aspect-auto h-[250px] w-full">
+              <AreaChart data={chartData}>
+                <defs>
+                  <linearGradient id="fillProfit" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#c8aa64" stopOpacity={0.8} />
+                    <stop offset="95%" stopColor="#c8aa64" stopOpacity={0.1} />
+                  </linearGradient>
+                  <linearGradient id="fillInvested" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#6a6a6a" stopOpacity={0.8} />
+                    <stop offset="95%" stopColor="#6a6a6a" stopOpacity={0.1} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid vertical={false} stroke="#6a6a6a80" />
+                <XAxis
+                  dataKey="date"
+                  tickLine={false}
+                  axisLine={false}
+                  tickMargin={8}
+                  minTickGap={32}
+                  tickFormatter={(value) => {
+                    const date = new Date(value);
+                    return date.toLocaleDateString('en-US', {
+                      month: 'short',
+                      day: 'numeric',
+                    });
+                  }}
+                />
+                <YAxis stroke="#d1d5db" />
+                <ChartTooltip
+                  cursor={false}
+                  content={
+                    <ChartTooltipContent
+                      labelFormatter={(value) => {
+                        return new Date(value).toLocaleDateString('en-US', {
+                          month: 'short',
+                          day: 'numeric',
+                        });
+                      }}
+                      indicator="dot"
+                    />
+                  }
+                />
+                <Area
+                  dataKey="profit"
+                  type="natural"
+                  fill="url(#fillProfit)"
+                  stroke="#c8aa64"
+                  stackId="a"
+                />
+                <Area
+                  dataKey="invested_amount"
+                  type="natural"
+                  fill="url(#fillInvested)"
+                  stroke="#6a6a6a"
+                  stackId="a"
+                />
+                <ChartLegend content={<ChartLegendContent />} />
+              </AreaChart>
+            </ChartContainer>
+            {chartData.length === 0 && (
+              <p className="text-gray-400 text-center mt-4">No data available for the selected time range.</p>
+            )}
+          </CardContent>
+        </Card>
 
         {/* Recent Orders Table */}
         <Card className="bg-gradient-to-br from-[#212121] via-[#0f0f0f] to-[#2b2b2b] border-[#6a6a6a80]">
@@ -300,14 +396,22 @@ export default function UserDashboardPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {recentOrders.map((order) => (
-                  <TableRow key={order.order_id} className="hover:bg-[#35353580] transition-colors border-[#2b2b2b]">
-                    <TableCell className="text-gray-200">{order.order_id}</TableCell>
-                    <TableCell className="text-gray-200">{order.order_statuses.description}</TableCell>
-                    <TableCell className="text-gray-200">{new Date(order.deadline).toLocaleString()}</TableCell>
-                    <TableCell className="text-gray-200">${(order.total_amount || 0).toLocaleString()}</TableCell>
+                {recentOrders.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={4} className="text-gray-400 text-center">
+                      No recent orders found.
+                    </TableCell>
                   </TableRow>
-                ))}
+                ) : (
+                  recentOrders.map((order) => (
+                    <TableRow key={order.order_id} className="hover:bg-[#35353580] transition-colors border-[#2b2b2b]">
+                      <TableCell className="text-gray-200">{order.order_id}</TableCell>
+                      <TableCell className="text-gray-200">{order.order_statuses.description}</TableCell>
+                      <TableCell className="text-gray-200">{new Date(order.deadline).toLocaleString()}</TableCell>
+                      <TableCell className="text-gray-200">${(order.total_amount || 0).toLocaleString()}</TableCell>
+                    </TableRow>
+                  ))
+                )}
               </TableBody>
             </Table>
           </CardContent>

@@ -29,6 +29,8 @@ interface OrderProduct {
   quantity: number;
   price: number;
   description?: string;
+  hide_price_and_quantity: boolean;
+  roi: number | null;
 }
 
 export default function OrderDetailPage() {
@@ -37,7 +39,7 @@ export default function OrderDetailPage() {
   const [order, setOrder] = useState<Order | null>(null);
   const [products, setProducts] = useState<OrderProduct[]>([]);
   const [ungatedStatus, setUngatedStatus] = useState<Record<number, boolean>>({});
-  const [ungatedMinAmounts, setUngatedMinAmounts] = useState<Record<number, number | null>>({}); // New state for ungated_min_amount
+  const [ungatedMinAmounts, setUngatedMinAmounts] = useState<Record<number, number | null>>({});
   const [companyId, setCompanyId] = useState<number | null>(null);
   const [maxInvestment, setMaxInvestment] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
@@ -92,12 +94,18 @@ export default function OrderDetailPage() {
       // Fetch order products
       const { data: productData, error: productError } = await supabase
         .from('order_products')
-        .select('sequence, order_id, asin, quantity, price, description')
+        .select('sequence, order_id, asin, quantity, price, description, hide_price_and_quantity, roi')
         .eq('order_id', orderId);
 
       if (productError) {
         console.error('Error fetching order products:', productError);
       }
+
+      // Normalize roi to ensure it's a number or null
+      setProducts(productData?.map(product => ({
+        ...product,
+        roi: typeof product.roi === 'number' ? product.roi : null,
+      })) || []);
 
       // Fetch existing max_investment from order_company
       if (userData.company_id) {
@@ -119,7 +127,7 @@ export default function OrderDetailPage() {
       if (userData.company_id) {
         const { data: ungatedData, error: ungatedError } = await supabase
           .from('order_products_company')
-          .select('sequence, ungated, ungated_min_amount') // Added ungated_min_amount
+          .select('sequence, ungated, ungated_min_amount')
           .eq('order_id', orderId)
           .eq('company_id', userData.company_id);
 
@@ -162,7 +170,6 @@ export default function OrderDetailPage() {
       }
 
       setOrder(orderData);
-      setProducts(productData || []);
       setLoading(false);
     }
 
@@ -186,7 +193,7 @@ export default function OrderDetailPage() {
         company_id: companyId,
         ungated: checked,
         quantity: products.find(p => p.sequence === sequence)?.quantity || 0,
-        ungated_min_amount: checked ? ungatedMinAmounts[sequence] : null, // Include current value if checked
+        ungated_min_amount: checked ? ungatedMinAmounts[sequence] : null,
       }, {
         onConflict: 'order_id, sequence, company_id'
       });
@@ -202,26 +209,6 @@ export default function OrderDetailPage() {
 
     const newMinAmount = value ? parseInt(value) : null;
     setUngatedMinAmounts(prev => ({ ...prev, [sequence]: newMinAmount }));
-
-    // Optionally save immediately (uncomment if desired)
-    /*
-    const { error } = await supabase
-      .from('order_products_company')
-      .upsert({
-        order_id: orderId,
-        sequence,
-        company_id: companyId,
-        ungated: ungatedStatus[sequence] || false,
-        quantity: products.find(p => p.sequence === sequence)?.quantity || 0,
-        ungated_min_amount: newMinAmount,
-      }, {
-        onConflict: 'order_id, sequence, company_id'
-      });
-
-    if (error) {
-      console.error('Error updating ungated_min_amount:', error);
-    }
-    */
   };
 
   const handleMaxInvestmentChange = async (value: string) => {
@@ -256,7 +243,7 @@ export default function OrderDetailPage() {
         company_id: companyId,
         quantity: product.quantity,
         ungated: ungatedStatus[product.sequence] || false,
-        ungated_min_amount: ungatedStatus[product.sequence] ? ungatedMinAmounts[product.sequence] : null, // Include ungated_min_amount
+        ungated_min_amount: ungatedStatus[product.sequence] ? ungatedMinAmounts[product.sequence] : null,
       }));
 
       const { error } = await supabase
@@ -371,7 +358,10 @@ export default function OrderDetailPage() {
                     <th className="text-gray-300 w-[15%] h-12 px-4 text-left align-middle font-medium">Min Ungated Amount</th>
                     <th className="text-gray-300 w-[15%] h-12 px-4 text-left align-middle font-medium">Price</th>
                     <th className="text-gray-300 w-[15%] h-12 px-4 text-left align-middle font-medium">Quantity</th>
-                    {products[0].description && <th className="text-gray-300 w-[25%] h-12 px-4 text-left align-middle font-medium">Description</th>}
+                    <th className="text-gray-300 w-[15%] h-12 px-4 text-left align-middle font-medium">ROI (%)</th>
+                    {products.some(p => p.description) && (
+                      <th className="text-gray-300 w-[15%] h-12 px-4 text-left align-middle font-medium">Description</th>
+                    )}
                   </tr>
                 </thead>
                 <tbody>
@@ -398,9 +388,18 @@ export default function OrderDetailPage() {
                           disabled={!ungatedStatus[product.sequence] || hasSubmitted || isOrderClosed}
                         />
                       </td>
-                      <td className="text-gray-200 p-4 align-middle" style={{ overflowWrap: 'break-word' }}>${product.price}</td>
-                      <td className="text-gray-200 p-4 align-middle" style={{ overflowWrap: 'break-word' }}>{product.quantity}</td>
-                      {product.description && <td className="text-gray-200 p-4 align-middle" style={{ overflowWrap: 'break-word' }}>{product.description}</td>}
+                      <td className="text-gray-200 p-4 align-middle" style={{ overflowWrap: 'break-word' }}>
+                        {product.hide_price_and_quantity ? '-' : `$${product.price}`}
+                      </td>
+                      <td className="text-gray-200 p-4 align-middle" style={{ overflowWrap: 'break-word' }}>
+                        {product.hide_price_and_quantity ? '-' : product.quantity}
+                      </td>
+                      <td className="text-gray-200 p-4 align-middle" style={{ overflowWrap: 'break-word' }}>
+                        {typeof product.roi === 'number' && !product.hide_price_and_quantity ? `${product.roi.toFixed(2)}%` : '-'}
+                      </td>
+                      {product.description && (
+                        <td className="text-gray-200 p-4 align-middle" style={{ overflowWrap: 'break-word' }}>{product.description}</td>
+                      )}
                     </tr>
                   ))}
                 </tbody>
