@@ -242,9 +242,36 @@ export default function AdminOrdersPage() {
     if (selectedOrders.length === 0) return;
   
     try {
-      // Step 1: Delete dependent records from related tables
+      // Step 1: Delete dependent records from related tables for each selected order
       const deletePromises = selectedOrders.map(async (orderId) => {
-        // Delete from order_products
+        // Delete from order_products_company (depends on order_products)
+        const { error: productsCompanyError } = await supabase
+          .from('order_products_company')
+          .delete()
+          .eq('order_id', orderId);
+        if (productsCompanyError) {
+          throw new Error(`Failed to delete order_products_company for order ${orderId}: ${productsCompanyError.message}`);
+        }
+  
+        // Delete from order_pre_assignments (depends on order_products)
+        const { error: preAssignmentsError } = await supabase
+          .from('order_pre_assignments')
+          .delete()
+          .eq('order_id', orderId);
+        if (preAssignmentsError) {
+          throw new Error(`Failed to delete order_pre_assignments for order ${orderId}: ${preAssignmentsError.message}`);
+        }
+  
+        // Delete from allocation_results (depends on order_products)
+        const { error: allocationError } = await supabase
+          .from('allocation_results')
+          .delete()
+          .eq('order_id', orderId);
+        if (allocationError) {
+          throw new Error(`Failed to delete allocation_results for order ${orderId}: ${allocationError.message}`);
+        }
+  
+        // Delete from order_products (now safe, as dependent records are gone)
         const { error: productsError } = await supabase
           .from('order_products')
           .delete()
@@ -260,33 +287,6 @@ export default function AdminOrdersPage() {
           .eq('order_id', orderId);
         if (companyError) {
           throw new Error(`Failed to delete order_company for order ${orderId}: ${companyError.message}`);
-        }
-  
-        // Delete from order_pre_assignments
-        const { error: preAssignmentsError } = await supabase
-          .from('order_pre_assignments')
-          .delete()
-          .eq('order_id', orderId);
-        if (preAssignmentsError) {
-          throw new Error(`Failed to delete order_pre_assignments for order ${orderId}: ${preAssignmentsError.message}`);
-        }
-  
-        // Delete from order_products_company
-        const { error: productsCompanyError } = await supabase
-          .from('order_products_company')
-          .delete()
-          .eq('order_id', orderId);
-        if (productsCompanyError) {
-          throw new Error(`Failed to delete order_products_company for order ${orderId}: ${productsCompanyError.message}`);
-        }
-  
-        // Delete from allocation_results
-        const { error: allocationError } = await supabase
-          .from('allocation_results')
-          .delete()
-          .eq('order_id', orderId);
-        if (allocationError) {
-          throw new Error(`Failed to delete allocation_results for order ${orderId}: ${allocationError.message}`);
         }
   
         // Finally, delete the order
