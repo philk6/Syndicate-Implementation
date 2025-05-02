@@ -2,11 +2,13 @@
   "dependencies": {
     "@supabase/auth-helpers-nextjs": "^0.10.0",
     "@supabase/ssr": "^0.6.1",
-    "@types/lodash": "^4.17.16",
     "date-fns": "3.0.0",
     "lodash": "^4.17.21",
     "lru-cache": "^11.1.0",
     "react-day-picker": "^8.10.1",
     "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@types/lodash": "^4.17.16"
   }
 }
