@@ -34,6 +34,11 @@ interface AllocationResult {
   discounted_price: number | null;
 }
 
+// Type for the raw allocation data from the Supabase query
+interface AllocationResultFromQuery extends AllocationResult {
+  company_id: number;
+}
+
 interface OrderCompany {
   max_investment: number;
   roi: number | null;
@@ -46,6 +51,13 @@ interface Receipt {
   file_name: string;
   file_path: string;
   uploaded_at: string;
+}
+
+// Type for order_products_company data
+interface OrderProductCompanyData {
+  sequence: number;
+  company_id: number;
+  discounted_price: number | null;
 }
 
 export default function HistoryOrderDetailPage() {
@@ -139,7 +151,7 @@ export default function HistoryOrderDetailPage() {
           `)
           .eq('order_id', orderId)
           .eq('company_id', userData.company_id)
-          .returns<any[]>();
+          .returns<AllocationResultFromQuery[]>();
 
         if (allocationError) {
           console.error('Error fetching allocation results:', allocationError.message, allocationError.details);
@@ -147,7 +159,7 @@ export default function HistoryOrderDetailPage() {
           console.log('Allocation data:', allocationData);
 
           // Fetch order_products_company data only if has_discounts is true
-          let opcData: any[] = [];
+          let opcData: OrderProductCompanyData[] = [];
           if (hasDiscounts) {
             const { data, error: opcError } = await supabase
               .from('order_products_company')
@@ -168,16 +180,18 @@ export default function HistoryOrderDetailPage() {
 
           // Merge discounted_price into allocation results
           const discountMap: { [key: string]: number } = {};
-          opcData.forEach((opc: any) => {
+          opcData.forEach((opc: OrderProductCompanyData) => {
             // Ensure sequence and company_id are strings for consistent key
             const sequence = String(opc.sequence);
             const companyId = String(opc.company_id);
-            discountMap[`${sequence}-${companyId}`] = opc.discounted_price;
+            if (opc.discounted_price !== null) {
+              discountMap[`${sequence}-${companyId}`] = opc.discounted_price;
+            }
           });
 
           console.log('Discount map:', discountMap);
 
-          const processedAllocations = allocationData?.map((alloc: any) => {
+          const processedAllocations = allocationData?.map((alloc: AllocationResultFromQuery) => {
             // Ensure sequence and company_id are strings for lookup
             const sequence = String(alloc.sequence);
             const companyId = String(alloc.company_id);
@@ -247,7 +261,7 @@ export default function HistoryOrderDetailPage() {
           </Link>
           <h1 className="text-3xl font-bold text-white">Order Not Found</h1>
         </div>
-        <p className="text-gray-400">The requested order does not exist or you don't have permission to view it.</p>
+        <p className="text-gray-400">The requested order does not exist or you don&apos;t have permission to view it.</p>
       </div>
     </div>
   );
@@ -270,7 +284,7 @@ export default function HistoryOrderDetailPage() {
             <div className="flex flex-wrap gap-6 text-gray-300">
               <div className="flex flex-col">
                 <span className="font-medium">Status</span>
-                <Badge variant="outline" className='bg-[#c8aa64] text-[#242424]'>{order.order_statuses?.description || 'N/A'}</Badge>
+                <Badge variant="outline" className="bg-[#c8aa64] text-[#242424]">{order.order_statuses?.description || 'N/A'}</Badge>
               </div>
               <div className="flex flex-col">
                 <span className="font-medium">Lead Time</span>
