@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@lib/auth';
 import { supabase } from '@lib/supabase/client';
@@ -11,6 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Check, Plus } from 'lucide-react';
+import { debounce } from 'lodash';
 
 interface UserInfo {
   firstname: string;
@@ -34,6 +35,45 @@ export default function AccountPage() {
   const { isAuthenticated, loading: authLoading, user } = useAuth();
   const router = useRouter();
 
+  // Memoized function to fetch user and company data
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+
+    const { data: userData, error: userError } = await supabase
+      .from('users')
+      .select('firstname, lastname, email, company_id')
+      .eq('email', user?.email)
+      .single();
+
+    if (userError) {
+      console.error('Error fetching user data:', userError);
+      setMessage('Failed to load account data');
+      setLoading(false);
+      return;
+    }
+
+    setUserInfo(userData);
+
+    if (userData.company_id) {
+      const { data: companyData, error: companyError } = await supabase
+        .from('company')
+        .select('name, email')
+        .eq('company_id', userData.company_id)
+        .single();
+
+      if (companyError) {
+        console.error('Error fetching company data:', companyError);
+        setMessage('Failed to load company data');
+      } else {
+        setCompanyInfo(companyData);
+      }
+    } else {
+      setCompanyInfo({ name: '', email: '' });
+    }
+
+    setLoading(false);
+  }, [user?.email]);
+
   useEffect(() => {
     if (authLoading) return;
 
@@ -42,48 +82,11 @@ export default function AccountPage() {
       return;
     }
 
-    async function fetchData() {
-      setLoading(true);
-
-      const { data: userData, error: userError } = await supabase
-        .from('users')
-        .select('firstname, lastname, email, company_id')
-        .eq('email', user?.email)
-        .single();
-
-      if (userError) {
-        console.error('Error fetching user data:', userError);
-        setMessage('Failed to load account data');
-        setLoading(false);
-        return;
-      }
-
-      setUserInfo(userData);
-
-      if (userData.company_id) {
-        const { data: companyData, error: companyError } = await supabase
-          .from('company')
-          .select('name, email')
-          .eq('company_id', userData.company_id)
-          .single();
-
-        if (companyError) {
-          console.error('Error fetching company data:', companyError);
-          setMessage('Failed to load company data');
-        } else {
-          setCompanyInfo(companyData);
-        }
-      } else {
-        setCompanyInfo({ name: '', email: '' });
-      }
-
-      setLoading(false);
-    }
-
     fetchData();
-  }, [isAuthenticated, authLoading, router, user]);
+  }, [isAuthenticated, authLoading, router, fetchData]);
 
-  const handleUserUpdate = async () => {
+  // Memoized function to update user information
+  const handleUserUpdate = useCallback(async () => {
     if (!userInfo) return;
 
     setLoading(true);
@@ -99,32 +102,45 @@ export default function AccountPage() {
       updates.password = await bcrypt.hash(password, 10);
     }
 
-    const { error: userError } = await supabase
-      .from('users')
-      .update(updates)
-      .eq('email', user?.email);
+    // Optimistic UI update
+    const previousUserInfo = { ...userInfo };
+    
+    try {
+      const { error: userError } = await supabase
+        .from('users')
+        .update(updates)
+        .eq('email', user?.email);
 
-    if (userError) {
-      console.error('Error updating user:', userError);
-      setMessage('Failed to update account information');
-    } else {
-      setMessage('Account information updated successfully');
+      if (userError) {
+        console.error('Error updating user:', userError);
+        // Rollback optimistic update
+        setUserInfo(previousUserInfo);
+        setMessage('Failed to update account information');
+      } else {
+        setMessage('Account information updated successfully');
 
-      if (userInfo.email !== user?.email) {
-        const { error: authError } = await supabase.auth.updateUser({ email: userInfo.email });
-        if (authError) {
-          console.error('Error updating auth email:', authError);
-          setMessage('Account updated, but failed to update auth email');
+        if (userInfo.email !== user?.email) {
+          const { error: authError } = await supabase.auth.updateUser({ email: userInfo.email });
+          if (authError) {
+            console.error('Error updating auth email:', authError);
+            setMessage('Account updated, but failed to update auth email');
+          }
         }
-      }
 
-      setPassword('');
+        setPassword('');
+      }
+    } catch (error) {
+      console.error('Unexpected error:', error);
+      // Rollback optimistic update
+      setUserInfo(previousUserInfo);
+      setMessage('An unexpected error occurred');
     }
 
     setLoading(false);
-  };
+  }, [userInfo, password, user?.email]);
 
-  const handleCompanyUpdate = async () => {
+  // Memoized function to update company information
+  const handleCompanyUpdate = useCallback(async () => {
     if (!userInfo || !companyInfo) return;
     if (!companyInfo.name || !companyInfo.email) {
       setMessage('Company name and email are required');
@@ -134,69 +150,84 @@ export default function AccountPage() {
     setLoading(true);
     setMessage('');
 
-    const { data: { user: authUser }, error: authError } = await supabase.auth.getUser();
-    if (authError || !authUser) {
-      console.error('Auth error:', authError);
-      setMessage('Authentication error. Please log in again.');
-      setLoading(false);
-      return;
-    }
+    // Save previous state for rollback if needed
+    const previousCompanyInfo = { ...companyInfo };
 
-    if (userInfo.company_id) {
-      const { error: companyError } = await supabase
-        .from('company')
-        .update({
-          name: companyInfo.name,
-          email: companyInfo.email,
-        })
-        .eq('company_id', userInfo.company_id);
+    try {
+      const { data: { user: authUser }, error: authError } = await supabase.auth.getUser();
+      if (authError || !authUser) {
+        console.error('Auth error:', authError);
+        setMessage('Authentication error. Please log in again.');
+        setLoading(false);
+        return;
+      }
 
-      if (companyError) {
-        console.error('Error updating company:', companyError);
-        if (companyError.code === '23505') {
-          setMessage('A company with this email already exists');
+      if (userInfo.company_id) {
+        const { error: companyError } = await supabase
+          .from('company')
+          .update({
+            name: companyInfo.name,
+            email: companyInfo.email,
+          })
+          .eq('company_id', userInfo.company_id);
+
+        if (companyError) {
+          console.error('Error updating company:', companyError);
+          // Rollback optimistic update
+          setCompanyInfo(previousCompanyInfo);
+          if (companyError.code === '23505') {
+            setMessage('A company with this email already exists');
+          } else {
+            setMessage(`Failed to update company: ${companyError.message}`);
+          }
         } else {
-          setMessage(`Failed to update company: ${companyError.message}`);
+          setMessage('Company information updated successfully');
         }
       } else {
-        setMessage('Company information updated successfully');
-      }
-    } else {
-      const { data, error: companyError } = await supabase
-        .rpc('create_company', {
-          p_name: companyInfo.name,
-          p_email: companyInfo.email,
-          p_user_id: authUser.id,
-        });
+        const { data, error: companyError } = await supabase
+          .rpc('create_company', {
+            p_name: companyInfo.name,
+            p_email: companyInfo.email,
+            p_user_id: authUser.id,
+          });
 
-      if (companyError) {
-        console.error('Error creating company:', companyError);
-        if (companyError.code === '23505') {
-          setMessage('A company with this email already exists');
+        if (companyError) {
+          console.error('Error creating company:', companyError);
+          // Rollback optimistic update
+          setCompanyInfo(previousCompanyInfo);
+          if (companyError.code === '23505') {
+            setMessage('A company with this email already exists');
+          } else {
+            setMessage(`Failed to create company: ${companyError.message}`);
+          }
         } else {
-          setMessage(`Failed to create company: ${companyError.message}`);
-        }
-      } else {
-        const newCompanyId = data;
-        const { error: userError } = await supabase
-          .from('users')
-          .update({ company_id: newCompanyId })
-          .eq('user_id', authUser.id);
+          const newCompanyId = data;
+          const { error: userError } = await supabase
+            .from('users')
+            .update({ company_id: newCompanyId })
+            .eq('user_id', authUser.id);
 
-        if (userError) {
-          console.error('Error linking company to user:', userError);
-          setMessage(`Failed to link company: ${userError.message}`);
-        } else {
-          setUserInfo({ ...userInfo, company_id: newCompanyId });
-          setMessage('Company created and linked successfully');
+          if (userError) {
+            console.error('Error linking company to user:', userError);
+            setMessage(`Failed to link company: ${userError.message}`);
+          } else {
+            setUserInfo({ ...userInfo, company_id: newCompanyId });
+            setMessage('Company created and linked successfully');
+          }
         }
       }
+    } catch (error) {
+      console.error('Unexpected error:', error);
+      // Rollback optimistic update
+      setCompanyInfo(previousCompanyInfo);
+      setMessage('An unexpected error occurred');
     }
 
     setLoading(false);
-  };
+  }, [userInfo, companyInfo]);
 
-  const generateInviteCode = async () => {
+  // Memoized function to generate invite code
+  const generateInviteCode = useCallback(async () => {
     setMessage('');
     setInviteCode(null);
   
@@ -269,7 +300,22 @@ export default function AccountPage() {
     }
   
     setMessage('Failed to generate a unique invite code after multiple attempts.');
-  };
+  }, []);
+
+  // Fix debounced handlers with proper function implementation
+  const debouncedSetUserInfo = useCallback((fieldName: string, value: string) => {
+    const updateFn = (field: string, val: string) => {
+      setUserInfo(prev => prev ? { ...prev, [field]: val } : null);
+    };
+    debounce(updateFn, 300)(fieldName, value);
+  }, []);
+
+  const debouncedSetCompanyInfo = useCallback((fieldName: string, value: string) => {
+    const updateFn = (field: string, val: string) => {
+      setCompanyInfo(prev => ({ ...prev, [field]: val }));
+    };
+    debounce(updateFn, 300)(fieldName, value);
+  }, []);
 
   if (loading) {
     return (
@@ -298,7 +344,7 @@ export default function AccountPage() {
                 <Input
                   id="firstname"
                   value={userInfo?.firstname || ''}
-                  onChange={(e) => setUserInfo(prev => prev ? { ...prev, firstname: e.target.value } : null)}
+                  onChange={(e) => debouncedSetUserInfo('firstname', e.target.value)}
                   className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80]"
                 />
               </div>
@@ -307,7 +353,7 @@ export default function AccountPage() {
                 <Input
                   id="lastname"
                   value={userInfo?.lastname || ''}
-                  onChange={(e) => setUserInfo(prev => prev ? { ...prev, lastname: e.target.value } : null)}
+                  onChange={(e) => debouncedSetUserInfo('lastname', e.target.value)}
                   className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80]"
                 />
               </div>
@@ -318,7 +364,7 @@ export default function AccountPage() {
                 id="email"
                 type="email"
                 value={userInfo?.email || ''}
-                onChange={(e) => setUserInfo(prev => prev ? { ...prev, email: e.target.value } : null)}
+                onChange={(e) => debouncedSetUserInfo('email', e.target.value)}
                 className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80]"
               />
             </div>
@@ -353,7 +399,7 @@ export default function AccountPage() {
               <Input
                 id="companyName"
                 value={companyInfo.name}
-                onChange={(e) => setCompanyInfo(prev => ({ ...prev, name: e.target.value }))}
+                onChange={(e) => debouncedSetCompanyInfo('name', e.target.value)}
                 className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80]"
               />
             </div>
@@ -363,7 +409,7 @@ export default function AccountPage() {
                 id="companyEmail"
                 type="email"
                 value={companyInfo.email}
-                onChange={(e) => setCompanyInfo(prev => ({ ...prev, email: e.target.value }))}
+                onChange={(e) => debouncedSetCompanyInfo('email', e.target.value)}
                 className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80]"
               />
             </div>

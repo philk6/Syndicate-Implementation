@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useTransition } from 'react';
+import { useState, useEffect, useTransition, useCallback } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useAuth } from '@lib/auth';
 import { supabase } from '@lib/supabase/client';
@@ -25,6 +25,7 @@ import { Switch } from '@/components/ui/switch';
 import { cn } from '@/lib/utils';
 import { calculateOrderAllocation } from './actions';
 import { utils, write } from 'xlsx';
+import { debounce } from 'lodash';
 
 interface Order {
   order_id: number;
@@ -332,7 +333,7 @@ export default function AdminOrderManagementPage() {
 
       fetchData();
     }
-  }, [orderId, isAuthenticated, authLoading, router, user]);
+  }, [orderId, isAuthenticated, authLoading, router, user?.role]);
 
   const handleStatusChange = async (newStatusId: string) => {
     const { error } = await supabase
@@ -347,7 +348,7 @@ export default function AdminOrderManagementPage() {
     }
   };
 
-  const handleProductUpdate = async (sequence: number, field: keyof OrderProduct | 'roi' | 'hide_price_and_quantity', value: string | number | boolean) => {
+  const updateProduct = async (sequence: number, field: keyof OrderProduct | 'roi' | 'hide_price_and_quantity', value: string | number | boolean) => {
     const updatedProduct = products.find(p => p.sequence === sequence);
     if (!updatedProduct) return;
 
@@ -360,12 +361,36 @@ export default function AdminOrderManagementPage() {
 
     if (error) {
       console.error('Error updating product:', error);
+      // Revert UI in case of error - implementation depends on your state structure
     } else {
       setProducts(prev => prev.map(p => p.sequence === sequence ? { ...p, [field]: updatedValue } : p));
       if (field === 'hide_price_and_quantity') {
         setHideAll(products.every(p => p.sequence === sequence ? updatedValue : p.hide_price_and_quantity));
       }
     }
+  };
+
+  const debouncedProductUpdate = useCallback(
+    (sequence: number, field: keyof OrderProduct | 'roi' | 'hide_price_and_quantity', value: string | number | boolean) => {
+      const debounceFn = debounce((seq: number, fld: keyof OrderProduct | 'roi' | 'hide_price_and_quantity', val: string | number | boolean) => {
+        updateProduct(seq, fld, val);
+      }, 300);
+      debounceFn(sequence, field, value);
+    },
+    [updateProduct]
+  );
+
+  const handleProductUpdate = (sequence: number, field: keyof OrderProduct | 'roi' | 'hide_price_and_quantity', value: string | number | boolean) => {
+    // Optimistically update UI immediately
+    const updatedValue = typeof value === 'string' && (field === 'price' || field === 'quantity' || field === 'cost_price' || field === 'roi') ? parseFloat(value) : value;
+    setProducts(prev => prev.map(p => p.sequence === sequence ? { ...p, [field]: updatedValue } : p));
+    
+    if (field === 'hide_price_and_quantity') {
+      setHideAll(products.every(p => p.sequence === sequence ? updatedValue : p.hide_price_and_quantity));
+    }
+    
+    // Debounced API call
+    debouncedProductUpdate(sequence, field, value);
   };
 
   const handleHideAllToggle = async (checked: boolean) => {
@@ -426,7 +451,7 @@ export default function AdminOrderManagementPage() {
     }
   };
 
-  const handleOrderUpdate = async (field: 'leadtime' | 'deadline' | 'label_upload_deadline', value: string | number) => {
+  const updateOrder = async (field: 'leadtime' | 'deadline' | 'label_upload_deadline', value: string | number) => {
     const updatedValue = field === 'leadtime' ? parseInt(value as string) : value;
     const { error } = await supabase
       .from('orders')
@@ -438,6 +463,25 @@ export default function AdminOrderManagementPage() {
     } else {
       setOrder(prev => prev ? { ...prev, [field]: updatedValue } : null);
     }
+  };
+
+  const debouncedOrderUpdate = useCallback(
+    (field: 'leadtime' | 'deadline' | 'label_upload_deadline', value: string | number) => {
+      const debounceFn = debounce((fld: 'leadtime' | 'deadline' | 'label_upload_deadline', val: string | number) => {
+        updateOrder(fld, val);
+      }, 300);
+      debounceFn(field, value);
+    },
+    [updateOrder]
+  );
+
+  const handleOrderUpdate = (field: 'leadtime' | 'deadline' | 'label_upload_deadline', value: string | number) => {
+    // Optimistically update UI
+    const updatedValue = field === 'leadtime' ? parseInt(value as string) : value;
+    setOrder(prev => prev ? { ...prev, [field]: updatedValue } : null);
+    
+    // Debounced API call
+    debouncedOrderUpdate(field, value);
   };
 
   const handlePreAssign = async () => {
