@@ -1,7 +1,7 @@
 'use client';
 
 import { ReactNode, useEffect } from 'react';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 import { AppSidebar } from '@/components/app-sidebar';
 import {
   SidebarInset,
@@ -12,7 +12,6 @@ import { Separator } from "@/components/ui/separator";
 
 export function ClientLayoutWithConditionalSidebar({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-  const router = useRouter();
   const isAuthPage = pathname === '/login' || pathname === '/signup';
 
   // Listen for route changes to force re-rendering

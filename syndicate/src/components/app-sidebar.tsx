@@ -49,12 +49,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const [userData, setUserData] = useState({ name: 'User', email: '', avatar: '/syndicate_logo.jpeg' });
   const router = useRouter();
   const pathname = usePathname();
-  const [forceUpdate, setForceUpdate] = useState(0);
-
-  // Force re-render when pathname changes
-  useEffect(() => {
-    setForceUpdate(prev => prev + 1);
-  }, [pathname]);
 
   useEffect(() => {
     async function fetchUserData() {
