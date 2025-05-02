@@ -371,8 +371,13 @@ export default function AdminOrderManagementPage() {
   };
 
   const debouncedProductUpdate = useCallback(
-    debounce(updateProduct, 300),
-    [products, orderId]
+    (sequence: number, field: keyof OrderProduct | 'roi' | 'hide_price_and_quantity', value: string | number | boolean) => {
+      const debounceFn = debounce((seq: number, fld: keyof OrderProduct | 'roi' | 'hide_price_and_quantity', val: string | number | boolean) => {
+        updateProduct(seq, fld, val);
+      }, 300);
+      debounceFn(sequence, field, value);
+    },
+    [updateProduct]
   );
 
   const handleProductUpdate = (sequence: number, field: keyof OrderProduct | 'roi' | 'hide_price_and_quantity', value: string | number | boolean) => {
@@ -461,8 +466,13 @@ export default function AdminOrderManagementPage() {
   };
 
   const debouncedOrderUpdate = useCallback(
-    debounce(updateOrder, 300),
-    [orderId]
+    (field: 'leadtime' | 'deadline' | 'label_upload_deadline', value: string | number) => {
+      const debounceFn = debounce((fld: 'leadtime' | 'deadline' | 'label_upload_deadline', val: string | number) => {
+        updateOrder(fld, val);
+      }, 300);
+      debounceFn(field, value);
+    },
+    [updateOrder]
   );
 
   const handleOrderUpdate = (field: 'leadtime' | 'deadline' | 'label_upload_deadline', value: string | number) => {

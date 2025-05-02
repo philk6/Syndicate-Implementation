@@ -34,7 +34,6 @@ export default function AccountPage() {
   const [message, setMessage] = useState('');
   const { isAuthenticated, loading: authLoading, user } = useAuth();
   const router = useRouter();
-  const [isCompanyPopupOpen, setIsCompanyPopupOpen] = useState(false);
 
   // Memoized function to fetch user and company data
   const fetchData = useCallback(async () => {
@@ -303,25 +302,20 @@ export default function AccountPage() {
     setMessage('Failed to generate a unique invite code after multiple attempts.');
   }, []);
 
-  const handleRedirectToAccount = useCallback(() => {
-    setIsCompanyPopupOpen(false);
-    router.push('/account');
-  }, [router]);
+  // Fix debounced handlers with proper function implementation
+  const debouncedSetUserInfo = useCallback((fieldName: string, value: string) => {
+    const updateFn = (field: string, val: string) => {
+      setUserInfo(prev => prev ? { ...prev, [field]: val } : null);
+    };
+    debounce(updateFn, 300)(fieldName, value);
+  }, []);
 
-  // Debounced handlers for input changes
-  const debouncedSetUserInfo = useCallback(
-    debounce((fieldName: string, value: string) => {
-      setUserInfo(prev => prev ? { ...prev, [fieldName]: value } : null);
-    }, 300),
-    []
-  );
-
-  const debouncedSetCompanyInfo = useCallback(
-    debounce((fieldName: string, value: string) => {
-      setCompanyInfo(prev => ({ ...prev, [fieldName]: value }));
-    }, 300),
-    []
-  );
+  const debouncedSetCompanyInfo = useCallback((fieldName: string, value: string) => {
+    const updateFn = (field: string, val: string) => {
+      setCompanyInfo(prev => ({ ...prev, [field]: val }));
+    };
+    debounce(updateFn, 300)(fieldName, value);
+  }, []);
 
   if (loading) {
     return (
