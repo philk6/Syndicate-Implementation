@@ -17,6 +17,28 @@ if (!supabaseAnonKey) {
   throw new Error('Missing Supabase Anon Key environment variable (NEXT_PUBLIC_SUPABASE_ANON_KEY). Check your .env file and Next.js configuration.');
 }
 
-// Client-side Supabase client (uses anon key, RLS enforced based on user auth)
-// Use this in client components and client-side scripts.
-export const supabase = createClient(supabaseUrl, supabaseAnonKey); 
+// Client-side Supabase client with optimized settings
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  // Database connection settings
+  db: {
+    schema: 'public',
+  },
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: true,
+  },
+  // Add global request timeout
+  global: {
+    fetch: (url, options) => {
+      // Add a timeout to all fetch operations
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+      
+      return fetch(url, {
+        ...options,
+        signal: controller.signal
+      }).finally(() => clearTimeout(timeoutId));
+    }
+  }
+}); 
