@@ -199,46 +199,57 @@ export default function AccountPage() {
   const generateInviteCode = async () => {
     setMessage('');
     setInviteCode(null);
-
-    if (!userInfo?.company_id) {
-      setMessage('You must be associated with a company to generate an invite code.');
+  
+    // Get the current auth user to access the ID
+    const { data: { user: authUser }, error: authError } = await supabase.auth.getUser();
+    
+    if (authError || !authUser) {
+      console.error('Auth error:', authError);
+      setMessage('Authentication error. Please try again.');
       return;
     }
-
+  
+    // Fetch user data using user_id 
     const { data: userData, error: userError } = await supabase
       .from('users')
-      .select('user_id')
-      .eq('email', user?.email)
+      .select('user_id, company_id')
+      .eq('user_id', authUser.id)
       .single();
-
+  
     if (userError || !userData) {
-      console.error('Error fetching user ID:', userError);
+      console.error('Error fetching user data:', userError);
       setMessage('Failed to identify current user.');
       return;
     }
-
-    const createdUserId = userData.user_id;
+  
+    const { user_id: createdUserId, company_id: companyId } = userData;
+  
+    if (!companyId) {
+      setMessage('You must be associated with a company to generate an invite code.');
+      return;
+    }
+  
     const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
     const maxAttempts = 5;
     let attempts = 0;
-
+  
     while (attempts < maxAttempts) {
       let code = '';
       for (let i = 0; i < 5; i++) {
         code += characters.charAt(Math.floor(Math.random() * characters.length));
       }
-
+  
       const { data, error } = await supabase
         .from('invitation_codes')
         .insert({
           code,
           expired: false,
           created_user_id: createdUserId,
-          invited_to_company: userInfo.company_id,
+          invited_to_company: companyId,
         })
         .select('code')
         .single();
-
+  
       if (error) {
         if (error.code === '23505') {
           console.log(`Code ${code} already exists, retrying...`);
@@ -249,14 +260,14 @@ export default function AccountPage() {
         setMessage(`Failed to generate invite code: ${error.message}`);
         return;
       }
-
+  
       if (data) {
         setInviteCode(data.code);
         setMessage('Invite code generated successfully!');
         return;
       }
     }
-
+  
     setMessage('Failed to generate a unique invite code after multiple attempts.');
   };
 

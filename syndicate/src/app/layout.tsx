@@ -1,5 +1,6 @@
 import './globals.css';
 import { ReactNode } from 'react';
+import { Analytics } from '@vercel/analytics/react';
 import { AuthProvider } from '../../lib/auth';
 import { ClientLayoutWithConditionalSidebar } from '@/components/client-layout-with-sidebar';
 
@@ -17,6 +18,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             {children}
           </ClientLayoutWithConditionalSidebar>
         </AuthProvider>
+        <Analytics />
       </body>
     </html>
   );
