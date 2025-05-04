@@ -1,12 +1,12 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@lib/supabase/client';
 import { Button } from '@/components/ui/button';
 import Image from 'next/image';
 
-export default function ConfirmPage() {
+function ConfirmEmailComponent() {
   const [message, setMessage] = useState('Confirming your email...');
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
@@ -74,5 +74,17 @@ export default function ConfirmPage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function ConfirmPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex flex-col items-center justify-center bg-[#060606] p-4">
+        <p className="text-white">Loading...</p>
+      </div>
+    }>
+      <ConfirmEmailComponent />
+    </Suspense>
   );
 }
