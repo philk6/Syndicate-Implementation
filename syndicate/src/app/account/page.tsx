@@ -231,16 +231,13 @@ export default function AccountPage() {
     setMessage('');
     setInviteCode(null);
   
-    // Get the current auth user to access the ID
     const { data: { user: authUser }, error: authError } = await supabase.auth.getUser();
-    
     if (authError || !authUser) {
       console.error('Auth error:', authError);
       setMessage('Authentication error. Please try again.');
       return;
     }
   
-    // Fetch user data using user_id 
     const { data: userData, error: userError } = await supabase
       .from('users')
       .select('user_id, company_id')
@@ -260,46 +257,20 @@ export default function AccountPage() {
       return;
     }
   
-    const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-    const maxAttempts = 5;
-    let attempts = 0;
+    const { data, error } = await supabase
+      .rpc('generate_invite_code', {
+        p_user_id: createdUserId,
+        p_company_id: companyId,
+      });
   
-    while (attempts < maxAttempts) {
-      let code = '';
-      for (let i = 0; i < 5; i++) {
-        code += characters.charAt(Math.floor(Math.random() * characters.length));
-      }
-  
-      const { data, error } = await supabase
-        .from('invitation_codes')
-        .insert({
-          code,
-          expired: false,
-          created_user_id: createdUserId,
-          invited_to_company: companyId,
-        })
-        .select('code')
-        .single();
-  
-      if (error) {
-        if (error.code === '23505') {
-          console.log(`Code ${code} already exists, retrying...`);
-          attempts++;
-          continue;
-        }
-        console.error('Error creating invite code:', error);
-        setMessage(`Failed to generate invite code: ${error.message}`);
-        return;
-      }
-  
-      if (data) {
-        setInviteCode(data.code);
-        setMessage('Invite code generated successfully!');
-        return;
-      }
+    if (error) {
+      console.error('Error generating invite code:', error);
+      setMessage(`Failed to generate invite code: ${error.message}`);
+      return;
     }
   
-    setMessage('Failed to generate a unique invite code after multiple attempts.');
+    setInviteCode(data);
+    setMessage('Invite code generated successfully!');
   }, []);
 
   // Fix debounced handlers with proper function implementation
