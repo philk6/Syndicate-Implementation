@@ -141,11 +141,7 @@ export default function AccountPage() {
 
   // Memoized function to update company information
   const handleCompanyUpdate = useCallback(async () => {
-    if (!userInfo || !companyInfo) return;
-    if (!companyInfo.name || !companyInfo.email) {
-      setMessage('Company name and email are required');
-      return;
-    }
+    if (!userInfo) return;
 
     setLoading(true);
     setMessage('');
@@ -163,12 +159,14 @@ export default function AccountPage() {
       }
 
       if (userInfo.company_id) {
+        const updates: CompanyInfo = {
+          name: companyInfo.name,
+          email: companyInfo.email,
+        };
+
         const { error: companyError } = await supabase
           .from('company')
-          .update({
-            name: companyInfo.name,
-            email: companyInfo.email,
-          })
+          .update(updates)
           .eq('company_id', userInfo.company_id);
 
         if (companyError) {
@@ -273,17 +271,10 @@ export default function AccountPage() {
     setMessage('Invite code generated successfully!');
   }, []);
 
-  // Fix debounced handlers with proper function implementation
+  // Debounced handler for user info
   const debouncedSetUserInfo = useCallback((fieldName: string, value: string) => {
     const updateFn = (field: string, val: string) => {
       setUserInfo(prev => prev ? { ...prev, [field]: val } : null);
-    };
-    debounce(updateFn, 300)(fieldName, value);
-  }, []);
-
-  const debouncedSetCompanyInfo = useCallback((fieldName: string, value: string) => {
-    const updateFn = (field: string, val: string) => {
-      setCompanyInfo(prev => ({ ...prev, [field]: val }));
     };
     debounce(updateFn, 300)(fieldName, value);
   }, []);
@@ -370,7 +361,7 @@ export default function AccountPage() {
               <Input
                 id="companyName"
                 value={companyInfo.name}
-                onChange={(e) => debouncedSetCompanyInfo('name', e.target.value)}
+                onChange={(e) => setCompanyInfo(prev => ({ ...prev, name: e.target.value }))}
                 className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80]"
               />
             </div>
@@ -380,7 +371,7 @@ export default function AccountPage() {
                 id="companyEmail"
                 type="email"
                 value={companyInfo.email}
-                onChange={(e) => debouncedSetCompanyInfo('email', e.target.value)}
+                onChange={(e) => setCompanyInfo(prev => ({ ...prev, email: e.target.value }))}
                 className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80]"
               />
             </div>
