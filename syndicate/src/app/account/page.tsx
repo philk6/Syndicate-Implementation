@@ -141,11 +141,7 @@ export default function AccountPage() {
 
   // Memoized function to update company information
   const handleCompanyUpdate = useCallback(async () => {
-    if (!userInfo || !companyInfo) return;
-    if (!companyInfo.name || !companyInfo.email) {
-      setMessage('Company name and email are required');
-      return;
-    }
+    if (!userInfo) return;
 
     setLoading(true);
     setMessage('');
@@ -163,12 +159,14 @@ export default function AccountPage() {
       }
 
       if (userInfo.company_id) {
+        const updates: CompanyInfo = {
+          name: companyInfo.name,
+          email: companyInfo.email,
+        };
+
         const { error: companyError } = await supabase
           .from('company')
-          .update({
-            name: companyInfo.name,
-            email: companyInfo.email,
-          })
+          .update(updates)
           .eq('company_id', userInfo.company_id);
 
         if (companyError) {
@@ -231,16 +229,13 @@ export default function AccountPage() {
     setMessage('');
     setInviteCode(null);
   
-    // Get the current auth user to access the ID
     const { data: { user: authUser }, error: authError } = await supabase.auth.getUser();
-    
     if (authError || !authUser) {
       console.error('Auth error:', authError);
       setMessage('Authentication error. Please try again.');
       return;
     }
   
-    // Fetch user data using user_id 
     const { data: userData, error: userError } = await supabase
       .from('users')
       .select('user_id, company_id')
@@ -260,59 +255,26 @@ export default function AccountPage() {
       return;
     }
   
-    const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-    const maxAttempts = 5;
-    let attempts = 0;
+    const { data, error } = await supabase
+      .rpc('generate_invite_code', {
+        p_user_id: createdUserId,
+        p_company_id: companyId,
+      });
   
-    while (attempts < maxAttempts) {
-      let code = '';
-      for (let i = 0; i < 5; i++) {
-        code += characters.charAt(Math.floor(Math.random() * characters.length));
-      }
-  
-      const { data, error } = await supabase
-        .from('invitation_codes')
-        .insert({
-          code,
-          expired: false,
-          created_user_id: createdUserId,
-          invited_to_company: companyId,
-        })
-        .select('code')
-        .single();
-  
-      if (error) {
-        if (error.code === '23505') {
-          console.log(`Code ${code} already exists, retrying...`);
-          attempts++;
-          continue;
-        }
-        console.error('Error creating invite code:', error);
-        setMessage(`Failed to generate invite code: ${error.message}`);
-        return;
-      }
-  
-      if (data) {
-        setInviteCode(data.code);
-        setMessage('Invite code generated successfully!');
-        return;
-      }
+    if (error) {
+      console.error('Error generating invite code:', error);
+      setMessage(`Failed to generate invite code: ${error.message}`);
+      return;
     }
   
-    setMessage('Failed to generate a unique invite code after multiple attempts.');
+    setInviteCode(data);
+    setMessage('Invite code generated successfully!');
   }, []);
 
-  // Fix debounced handlers with proper function implementation
+  // Debounced handler for user info
   const debouncedSetUserInfo = useCallback((fieldName: string, value: string) => {
     const updateFn = (field: string, val: string) => {
       setUserInfo(prev => prev ? { ...prev, [field]: val } : null);
-    };
-    debounce(updateFn, 300)(fieldName, value);
-  }, []);
-
-  const debouncedSetCompanyInfo = useCallback((fieldName: string, value: string) => {
-    const updateFn = (field: string, val: string) => {
-      setCompanyInfo(prev => ({ ...prev, [field]: val }));
     };
     debounce(updateFn, 300)(fieldName, value);
   }, []);
@@ -399,7 +361,7 @@ export default function AccountPage() {
               <Input
                 id="companyName"
                 value={companyInfo.name}
-                onChange={(e) => debouncedSetCompanyInfo('name', e.target.value)}
+                onChange={(e) => setCompanyInfo(prev => ({ ...prev, name: e.target.value }))}
                 className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80]"
               />
             </div>
@@ -409,7 +371,7 @@ export default function AccountPage() {
                 id="companyEmail"
                 type="email"
                 value={companyInfo.email}
-                onChange={(e) => debouncedSetCompanyInfo('email', e.target.value)}
+                onChange={(e) => setCompanyInfo(prev => ({ ...prev, email: e.target.value }))}
                 className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80]"
               />
             </div>
