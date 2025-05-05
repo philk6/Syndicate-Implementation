@@ -10,7 +10,7 @@ export async function middleware(req: NextRequest) {
 
   const { data: { session } } = await supabase.auth.getSession();
 
-  const publicPaths = ['/login', '/signup', '/forgot-password'];
+  const publicPaths = ['/login', '/signup', '/forgot-password', '/confirm'];
 
   if (!session && !publicPaths.some(path => req.nextUrl.pathname.startsWith(path))) {
     const url = req.nextUrl.clone();
