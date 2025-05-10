@@ -19,7 +19,7 @@ import {
 import { NavUser } from '@/components/nav-user';
 import { useRouter, usePathname } from 'next/navigation';
 import { ShoppingCart, History, Settings, Users, Home } from 'lucide-react';
-import Link from 'next/link';
+import SidebarLink from '@/components/SidebarLink';
 
 const data = {
   versions: ['1.0.1', '1.1.0-alpha', '2.0.0-beta1'],
@@ -110,12 +110,12 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton size="lg" asChild>
-              <Link href="/">
+              <SidebarLink href="/dashboard">
                 <div className="flex flex-col gap-0.5 leading-none">
                   <span className="text-[#c8aa64] font-bold">The Syndicate - Buyers Portal</span>
-                  <span className="text-[#bfbfbf]">v0.0.1 Alpha</span>
+                  <span className="text-[#bfbfbf]">v1.0.0 Beta</span>
                 </div>
-              </Link>
+              </SidebarLink>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
@@ -134,10 +134,10 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                   {item.items.map((subItem) => (
                     <SidebarMenuItem key={subItem.title}>
                       <SidebarMenuButton asChild isActive={pathname === subItem.url}>
-                        <Link href={subItem.url}>
+                        <SidebarLink href={subItem.url} isActive={pathname === subItem.url}>
                           {subItem.icon && <subItem.icon className="mr-2 h-4 w-4" />}
                           <span>{subItem.title}</span>
-                        </Link>
+                        </SidebarLink>
                       </SidebarMenuButton>
                     </SidebarMenuItem>
                   ))}
