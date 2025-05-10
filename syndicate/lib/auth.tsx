@@ -1,12 +1,10 @@
 'use client';
-
 import { createContext, useState, useEffect, ReactNode } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import { supabase } from '@lib/supabase/client';
 import { Session } from '@supabase/supabase-js';
 import { LRUCache } from 'lru-cache';
 
-// Create a cache for user data with 5-minute TTL
 const userCache = new LRUCache<string, AuthUser>({ 
   max: 100, 
   ttl: 1000 * 60 * 5 // 5 minutes
@@ -14,7 +12,7 @@ const userCache = new LRUCache<string, AuthUser>({
 
 interface AuthUser {
   email: string;
-  role: 'user' | 'admin'; // Custom user type with role
+  role: 'user' | 'admin';
   firstname?: string;
   lastname?: string;
   company_id?: number | null;
@@ -22,7 +20,7 @@ interface AuthUser {
 
 interface AuthContextType {
   isAuthenticated: boolean;
-  user: AuthUser | null; // Updated to use AuthUser
+  user: AuthUser | null;
   loading: boolean;
   login: (token: string) => void;
   logout: () => Promise<void>;
@@ -32,105 +30,84 @@ interface AuthState {
   session: Session | null;
   loading: boolean;
   isAuthenticated: boolean;
-  user: AuthUser | null; // Updated to use AuthUser
+  user: AuthUser | null;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [user, setUser] = useState<AuthUser | null>(null); // Use AuthUser
+  const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
+  const pathname = usePathname();
 
-  useEffect(() => {
-    const initializeAuth = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session) {
-        const email = session.user.email;
-        if (!email) {
-          setIsAuthenticated(false);
-          setUser(null);
-          setLoading(false);
-          return;
-        }
-
-        // Check cache first
-        const cachedUser = userCache.get(email);
-        if (cachedUser) {
-          setIsAuthenticated(true);
-          setUser(cachedUser);
-          localStorage.setItem('token', session.access_token);
-          setLoading(false);
-          return;
-        }
-
-        // Fetch complete user data if not in cache
-        const { data: userData, error } = await supabase
-          .from('users')
-          .select('email, role, firstname, lastname, company_id')
-          .eq('email', email)
-          .single();
-
-        if (error) {
-          console.error('Error fetching user data:', error);
-          setIsAuthenticated(false);
-          setUser(null);
-        } else {
-          // Cache the user data
-          userCache.set(email, userData);
-          setIsAuthenticated(true);
-          setUser(userData);
-          localStorage.setItem('token', session.access_token);
-        }
-      } else {
+  const checkAuth = async () => {
+    try {
+      const { data: { session }, error } = await supabase.auth.getSession();
+      console.log('checkAuth: session=', session, 'error=', error);
+      if (error) throw error;
+      if (!session) {
         setIsAuthenticated(false);
         setUser(null);
         localStorage.removeItem('token');
+        setLoading(false);
+        return;
       }
-      setLoading(false);
-    };
 
-    initializeAuth();
+      const email = session.user.email;
+      if (!email) {
+        setIsAuthenticated(false);
+        setUser(null);
+        localStorage.removeItem('token');
+        setLoading(false);
+        return;
+      }
+
+      // Check cache first
+      const cachedUser = userCache.get(email);
+      if (cachedUser) {
+        setIsAuthenticated(true);
+        setUser(cachedUser);
+        localStorage.setItem('token', session.access_token);
+        setLoading(false);
+        return;
+      }
+
+      // Fetch user data
+      const { data: userData, error: userError } = await supabase
+        .from('users')
+        .select('email, role, firstname, lastname, company_id')
+        .eq('email', email)
+        .single();
+
+      if (userError) {
+        console.error('Error fetching user data:', userError);
+        setIsAuthenticated(false);
+        setUser(null);
+        localStorage.removeItem('token');
+      } else {
+        userCache.set(email, userData);
+        setIsAuthenticated(true);
+        setUser(userData);
+        localStorage.setItem('token', session.access_token);
+      }
+    } catch (error) {
+      console.error('Error checking auth:', error);
+      setIsAuthenticated(false);
+      setUser(null);
+      localStorage.removeItem('token');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    checkAuth();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (event === 'SIGNED_IN' && session) {
-        const email = session.user.email;
-        if (!email) {
-          setIsAuthenticated(false);
-          setUser(null);
-          setLoading(false);
-          return;
-        }
-
-        // Check cache first
-        const cachedUser = userCache.get(email);
-        if (cachedUser) {
-          setIsAuthenticated(true);
-          setUser(cachedUser);
-          localStorage.setItem('token', session.access_token);
-          setLoading(false);
-          return;
-        }
-
-        // Fetch complete user data if not in cache
-        const { data: userData, error } = await supabase
-          .from('users')
-          .select('email, role, firstname, lastname, company_id')
-          .eq('email', email)
-          .single();
-
-        if (error) {
-          console.error('Error fetching user data:', error);
-          setIsAuthenticated(false);
-          setUser(null);
-        } else {
-          // Cache the user data
-          userCache.set(email, userData);
-          setIsAuthenticated(true);
-          setUser(userData);
-          localStorage.setItem('token', session.access_token);
-        }
+        await checkAuth();
       } else if (event === 'SIGNED_OUT') {
         setIsAuthenticated(false);
         setUser(null);
@@ -141,7 +118,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
 
     return () => subscription.unsubscribe();
-  }, [router]);
+  }, []);
+
+  // Refresh session every 10 minutes during active use
+  useEffect(() => {
+    if (!isAuthenticated || loading) return;
+
+    const refreshInterval = setInterval(async () => {
+      try {
+        const { data, error } = await supabase.auth.refreshSession();
+        console.log('refreshSession: data=', data, 'error=', error);
+        if (error || !data.session) {
+          console.error('Session refresh failed:', error);
+          setIsAuthenticated(false);
+          setUser(null);
+          localStorage.removeItem('token');
+          router.push('/login?message=session_expired');
+        }
+      } catch (err) {
+        console.error('Error refreshing session:', err);
+        setIsAuthenticated(false);
+        setUser(null);
+        localStorage.removeItem('token');
+        router.push('/login?message=session_expired');
+      }
+    }, 5 * 60 * 1000); // 10 minutes
+
+    return () => clearInterval(refreshInterval);
+  }, [isAuthenticated, loading]);
+
+  // Re-check auth on route change
+  useEffect(() => {
+    if (!loading && isAuthenticated) {
+      checkAuth();
+    }
+  }, [pathname]);
 
   const login = (token: string) => {
     localStorage.setItem('token', token);
@@ -150,7 +161,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = async () => {
-    // Clear user from cache on logout
     if (user?.email) {
       userCache.delete(user.email);
     }
@@ -171,72 +181,73 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 export function useAuth(): AuthState {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
-  const [user, setUser] = useState<AuthUser | null>(null); // Use AuthUser
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const pathname = usePathname();
 
-  useEffect(() => {
-    supabase.auth.getSession()
-      .then(async ({ data: { session } }) => {
-        setSession(session);
-        if (session && session.user.email) {
-          const email = session.user.email;
-
-          // Check cache first
-          const cachedUser = userCache.get(email);
-          if (cachedUser) {
-            setUser(cachedUser);
-            setLoading(false);
-            return;
-          }
-
-          // Fetch complete user data if not in cache
-          const { data: userData, error } = await supabase
-            .from('users')
-            .select('email, role, firstname, lastname, company_id')
-            .eq('email', email)
-            .single();
-            
-          if (error) {
-            console.error('Error fetching user data:', error);
-            setUser(null);
-          } else {
-            // Cache the user data
-            userCache.set(email, userData);
-            setUser(userData);
-          }
-        } else {
-          setUser(null);
-        }
-      })
-      .catch((error) => {
-        console.error('Error fetching session:', error);
-        setUser(null);
-      })
-      .finally(() => setLoading(false));
-
-    const { data: listener } = supabase.auth.onAuthStateChange(async (event, session) => {
+  const checkAuth = async () => {
+    try {
+      const { data: { session }, error } = await supabase.auth.getSession();
+      console.log('useAuth checkAuth: session=', session, 'error=', error);
+      if (error) throw error;
       setSession(session);
       if (session && session.user.email) {
         const email = session.user.email;
+        const cachedUser = userCache.get(email);
+        if (cachedUser) {
+          setUser(cachedUser);
+          setLoading(false);
+          return;
+        }
 
-        // Check cache first
+        const { data: userData, error: userError } = await supabase
+          .from('users')
+          .select('email, role, firstname, lastname, company_id')
+          .eq('email', email)
+          .single();
+
+        if (userError) {
+          console.error('Error fetching user data:', userError);
+          setUser(null);
+        } else {
+          userCache.set(email, userData);
+          setUser(userData);
+        }
+      } else {
+        setUser(null);
+      }
+    } catch (error) {
+      console.error('Error fetching session:', error);
+      setSession(null);
+      setUser(null);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    checkAuth();
+
+    const { data: listener } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log('useAuth onAuthStateChange: event=', event, 'session=', session);
+      setSession(session);
+      if (session && session.user.email) {
+        const email = session.user.email;
         const cachedUser = userCache.get(email);
         if (cachedUser) {
           setUser(cachedUser);
           return;
         }
 
-        // Fetch complete user data if not in cache
         const { data: userData, error } = await supabase
           .from('users')
           .select('email, role, firstname, lastname, company_id')
           .eq('email', email)
           .single();
-          
+
         if (error) {
           console.error('Error fetching user data:', error);
           setUser(null);
         } else {
-          // Cache the user data
           userCache.set(email, userData);
           setUser(userData);
         }
@@ -247,6 +258,13 @@ export function useAuth(): AuthState {
 
     return () => listener.subscription.unsubscribe();
   }, []);
+
+  // Re-check auth on route change
+  useEffect(() => {
+    if (!loading && session) {
+      checkAuth();
+    }
+  }, [pathname]);
 
   return {
     session,
