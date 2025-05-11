@@ -154,7 +154,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
 
     return () => subscription.unsubscribe();
-  }, []);
+  }, [checkAuth, router, user]);
 
   useEffect(() => {
     if (!session || loading) return;
@@ -192,7 +192,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       if (checkTimeoutRef.current) clearTimeout(checkTimeoutRef.current);
     };
-  }, []);
+  }, [checkAuth]);
 
   useEffect(() => {
     if (!loading && isAuthenticated) {
@@ -204,7 +204,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.log('AuthProvider Route change: Re-checking auth for path:', pathname);
       checkAuth();
     }
-  }, [pathname]);
+  }, [pathname, checkAuth, isAuthenticated, loading]);
 
   const login = (token: string) => {
     console.warn('AuthProvider login function called. Ensure Supabase session is correctly handled.');
