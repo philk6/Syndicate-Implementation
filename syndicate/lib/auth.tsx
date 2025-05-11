@@ -1,257 +1,234 @@
 'use client';
-
-import { createContext, useState, useEffect, ReactNode } from 'react';
-import { useRouter } from 'next/navigation';
+import { createContext, useState, useEffect, ReactNode, useRef, useContext, useCallback } from 'react';
+import { useRouter, usePathname } from 'next/navigation';
 import { supabase } from '@lib/supabase/client';
 import { Session } from '@supabase/supabase-js';
 import { LRUCache } from 'lru-cache';
 
-// Create a cache for user data with 5-minute TTL
 const userCache = new LRUCache<string, AuthUser>({ 
   max: 100, 
   ttl: 1000 * 60 * 5 // 5 minutes
 });
 
+// Minimum time between session checks (5 seconds)
+const MIN_CHECK_INTERVAL = 5000;
+
 interface AuthUser {
   email: string;
-  role: 'user' | 'admin'; // Custom user type with role
+  role: 'user' | 'admin';
   firstname?: string;
   lastname?: string;
   company_id?: number | null;
+  tos_accepted: boolean;
 }
 
 interface AuthContextType {
+  session: Session | null;
   isAuthenticated: boolean;
-  user: AuthUser | null; // Updated to use AuthUser
+  user: AuthUser | null;
   loading: boolean;
   login: (token: string) => void;
   logout: () => Promise<void>;
-}
-
-interface AuthState {
-  session: Session | null;
-  loading: boolean;
-  isAuthenticated: boolean;
-  user: AuthUser | null; // Updated to use AuthUser
+  checkAuth: (isInitialLoad?: boolean) => Promise<void>; // Expose checkAuth
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [user, setUser] = useState<AuthUser | null>(null); // Use AuthUser
+  const [session, setSession] = useState<Session | null>(null);
+  const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const router = useRouter();
+  const pathname = usePathname();
+  const lastCheckedRef = useRef<number>(0);
+  const checkTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
-    const initializeAuth = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session) {
-        const email = session.user.email;
-        if (!email) {
-          setIsAuthenticated(false);
+    setIsAuthenticated(!!session);
+  }, [session]);
+
+  const fetchUserDetails = useCallback(async (email: string, currentSession: Session) => {
+    const cachedUser = userCache.get(email);
+    if (cachedUser) {
+      setUser(cachedUser);
+      localStorage.setItem('token', currentSession.access_token);
+      return;
+    }
+    try {
+      const { data: userData, error: userError } = await supabase
+        .from('users')
+        .select('email, role, firstname, lastname, company_id, tos_accepted')
+        .eq('email', email)
+        .single();
+      if (userError) {
+        console.error('Error fetching user data:', userError);
+        setUser(null);
+        localStorage.removeItem('token');
+      } else {
+        userCache.set(email, userData);
+        setUser(userData);
+        localStorage.setItem('token', currentSession.access_token);
+      }
+    } catch (e) {
+      console.error('Exception fetching user data:', e);
+      setUser(null);
+      localStorage.removeItem('token');
+    }
+  }, [setUser]);
+
+  const checkAuth = useCallback(async (isInitialLoad = false) => {
+    if (isInitialLoad) setLoading(true);
+    try {
+      const { data: { session: currentSession }, error } = await supabase.auth.getSession();
+      console.log('AuthProvider checkAuth: session=', currentSession, 'error=', error);
+      if (error) throw error;
+
+      if (currentSession) {
+        const expiresAt = currentSession.expires_at;
+        const currentTime = Math.floor(Date.now() / 1000);
+        if (expiresAt && currentTime >= expiresAt) {
+          console.log('AuthProvider: Session expired at', new Date(expiresAt * 1000).toISOString());
+          setSession(null);
           setUser(null);
-          setLoading(false);
-          return;
-        }
-
-        // Check cache first
-        const cachedUser = userCache.get(email);
-        if (cachedUser) {
-          setIsAuthenticated(true);
-          setUser(cachedUser);
-          localStorage.setItem('token', session.access_token);
-          setLoading(false);
-          return;
-        }
-
-        // Fetch complete user data if not in cache
-        const { data: userData, error } = await supabase
-          .from('users')
-          .select('email, role, firstname, lastname, company_id')
-          .eq('email', email)
-          .single();
-
-        if (error) {
-          console.error('Error fetching user data:', error);
-          setIsAuthenticated(false);
-          setUser(null);
+          localStorage.removeItem('token');
         } else {
-          // Cache the user data
-          userCache.set(email, userData);
-          setIsAuthenticated(true);
-          setUser(userData);
-          localStorage.setItem('token', session.access_token);
+          setSession(currentSession);
+          if (currentSession.user.email) {
+            await fetchUserDetails(currentSession.user.email, currentSession);
+          } else {
+            setUser(null);
+            localStorage.removeItem('token');
+          }
         }
       } else {
-        setIsAuthenticated(false);
+        setSession(null);
         setUser(null);
         localStorage.removeItem('token');
       }
-      setLoading(false);
-    };
+    } catch (error) {
+      console.error('Error checking auth:', error);
+      setSession(null);
+      setUser(null);
+      localStorage.removeItem('token');
+    } finally {
+      if (isInitialLoad) setLoading(false);
+      lastCheckedRef.current = Date.now();
+    }
+  }, [fetchUserDetails, setSession, setUser, setLoading]);
 
-    initializeAuth();
+  useEffect(() => {
+    checkAuth(true); // Initial check on mount
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (event === 'SIGNED_IN' && session) {
-        const email = session.user.email;
-        if (!email) {
-          setIsAuthenticated(false);
-          setUser(null);
-          setLoading(false);
-          return;
-        }
-
-        // Check cache first
-        const cachedUser = userCache.get(email);
-        if (cachedUser) {
-          setIsAuthenticated(true);
-          setUser(cachedUser);
-          localStorage.setItem('token', session.access_token);
-          setLoading(false);
-          return;
-        }
-
-        // Fetch complete user data if not in cache
-        const { data: userData, error } = await supabase
-          .from('users')
-          .select('email, role, firstname, lastname, company_id')
-          .eq('email', email)
-          .single();
-
-        if (error) {
-          console.error('Error fetching user data:', error);
-          setIsAuthenticated(false);
-          setUser(null);
-        } else {
-          // Cache the user data
-          userCache.set(email, userData);
-          setIsAuthenticated(true);
-          setUser(userData);
-          localStorage.setItem('token', session.access_token);
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, newSession) => {
+      console.log('AuthProvider onAuthStateChange: event=', event, 'session=', newSession);
+      setLoading(true);
+      if (event === 'SIGNED_IN' && newSession) {
+        setSession(newSession);
+        if (newSession.user.email) {
+          await fetchUserDetails(newSession.user.email, newSession);
         }
       } else if (event === 'SIGNED_OUT') {
-        setIsAuthenticated(false);
+        setSession(null);
         setUser(null);
+        userCache.clear();
         localStorage.removeItem('token');
         router.push('/login');
+      } else if (event === 'TOKEN_REFRESHED' && newSession) {
+        setSession(newSession);
+        if (newSession.user.email) {
+          if (!user || user.email !== newSession.user.email) {
+            await fetchUserDetails(newSession.user.email, newSession);
+          }
+        } else {
+          setUser(null);
+          localStorage.removeItem('token');
+        }
+      } else if (event === 'USER_UPDATED' && newSession) {
+        setSession(newSession);
+        if (newSession.user.email) {
+          await fetchUserDetails(newSession.user.email, newSession);
+        }
       }
       setLoading(false);
     });
 
     return () => subscription.unsubscribe();
-  }, [router]);
+  }, [checkAuth, router, user]);
+
+  useEffect(() => {
+    if (!session || loading) return;
+
+    const refreshInterval = setInterval(async () => {
+      console.log('AuthProvider: Proactively attempting to refresh session');
+      const { data, error } = await supabase.auth.refreshSession();
+      if (error) {
+        console.error('AuthProvider: Error refreshing session proactively:', error.message);
+      } else {
+        console.log('AuthProvider: Session proactively refreshed', data.session ? data.session.expires_at : 'no session data');
+      }
+    }, 10 * 60 * 1000);
+
+    return () => clearInterval(refreshInterval);
+  }, [session, loading]);
+
+  useEffect(() => {
+    const handleVisibilityChange = async () => {
+      if (document.visibilityState === 'visible') {
+        console.log('AuthProvider onVisibilityChange: Checking session on tab focus');
+        const now = Date.now();
+        if (now - lastCheckedRef.current < MIN_CHECK_INTERVAL) {
+          console.log('AuthProvider onVisibilityChange: Skipping check, too soon');
+          return;
+        }
+        if (checkTimeoutRef.current) clearTimeout(checkTimeoutRef.current);
+        checkTimeoutRef.current = setTimeout(async () => {
+          await checkAuth();
+        }, 500);
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      if (checkTimeoutRef.current) clearTimeout(checkTimeoutRef.current);
+    };
+  }, [checkAuth]);
+
+  useEffect(() => {
+    if (!loading && isAuthenticated) {
+      const now = Date.now();
+      if (now - lastCheckedRef.current < MIN_CHECK_INTERVAL) {
+        console.log('AuthProvider Route change: Skipping check, too soon');
+        return;
+      }
+      console.log('AuthProvider Route change: Re-checking auth for path:', pathname);
+      checkAuth();
+    }
+  }, [pathname, checkAuth, isAuthenticated, loading]);
 
   const login = (token: string) => {
+    console.warn('AuthProvider login function called. Ensure Supabase session is correctly handled.');
     localStorage.setItem('token', token);
-    setIsAuthenticated(true);
+    checkAuth();
     router.push('/orders');
   };
 
   const logout = async () => {
-    // Clear user from cache on logout
-    if (user?.email) {
-      userCache.delete(user.email);
-    }
+    if (user?.email) userCache.delete(user.email);
     await supabase.auth.signOut();
-    setIsAuthenticated(false);
-    setUser(null);
-    localStorage.removeItem('token');
-    router.push('/login');
   };
 
   return (
-    <AuthContext.Provider value={{ isAuthenticated, user, loading, login, logout }}>
+    <AuthContext.Provider value={{ session, isAuthenticated, user, loading, login, logout, checkAuth }}>
       {children}
     </AuthContext.Provider>
   );
 }
 
-export function useAuth(): AuthState {
-  const [session, setSession] = useState<Session | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [user, setUser] = useState<AuthUser | null>(null); // Use AuthUser
-
-  useEffect(() => {
-    supabase.auth.getSession()
-      .then(async ({ data: { session } }) => {
-        setSession(session);
-        if (session && session.user.email) {
-          const email = session.user.email;
-
-          // Check cache first
-          const cachedUser = userCache.get(email);
-          if (cachedUser) {
-            setUser(cachedUser);
-            setLoading(false);
-            return;
-          }
-
-          // Fetch complete user data if not in cache
-          const { data: userData, error } = await supabase
-            .from('users')
-            .select('email, role, firstname, lastname, company_id')
-            .eq('email', email)
-            .single();
-            
-          if (error) {
-            console.error('Error fetching user data:', error);
-            setUser(null);
-          } else {
-            // Cache the user data
-            userCache.set(email, userData);
-            setUser(userData);
-          }
-        } else {
-          setUser(null);
-        }
-      })
-      .catch((error) => {
-        console.error('Error fetching session:', error);
-        setUser(null);
-      })
-      .finally(() => setLoading(false));
-
-    const { data: listener } = supabase.auth.onAuthStateChange(async (event, session) => {
-      setSession(session);
-      if (session && session.user.email) {
-        const email = session.user.email;
-
-        // Check cache first
-        const cachedUser = userCache.get(email);
-        if (cachedUser) {
-          setUser(cachedUser);
-          return;
-        }
-
-        // Fetch complete user data if not in cache
-        const { data: userData, error } = await supabase
-          .from('users')
-          .select('email, role, firstname, lastname, company_id')
-          .eq('email', email)
-          .single();
-          
-        if (error) {
-          console.error('Error fetching user data:', error);
-          setUser(null);
-        } else {
-          // Cache the user data
-          userCache.set(email, userData);
-          setUser(userData);
-        }
-      } else {
-        setUser(null);
-      }
-    });
-
-    return () => listener.subscription.unsubscribe();
-  }, []);
-
-  return {
-    session,
-    loading,
-    isAuthenticated: !!session,
-    user,
-  };
+export function useAuth(): AuthContextType {
+  const context = useContext(AuthContext);
+  if (context === undefined) {
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
+  return context;
 }
