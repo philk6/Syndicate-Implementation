@@ -1,5 +1,5 @@
 'use client';
-import { createContext, useState, useEffect, ReactNode, useRef, useContext } from 'react';
+import { createContext, useState, useEffect, ReactNode, useRef, useContext, useCallback } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { supabase } from '@lib/supabase/client';
 import { Session } from '@supabase/supabase-js';
@@ -48,7 +48,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setIsAuthenticated(!!session);
   }, [session]);
 
-  const fetchUserDetails = async (email: string, currentSession: Session) => {
+  const fetchUserDetails = useCallback(async (email: string, currentSession: Session) => {
     const cachedUser = userCache.get(email);
     if (cachedUser) {
       setUser(cachedUser);
@@ -75,9 +75,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(null);
       localStorage.removeItem('token');
     }
-  };
+  }, [setUser]);
 
-  const checkAuth = async (isInitialLoad = false) => {
+  const checkAuth = useCallback(async (isInitialLoad = false) => {
     if (isInitialLoad) setLoading(true);
     try {
       const { data: { session: currentSession }, error } = await supabase.auth.getSession();
@@ -115,7 +115,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (isInitialLoad) setLoading(false);
       lastCheckedRef.current = Date.now();
     }
-  };
+  }, [fetchUserDetails, setSession, setUser, setLoading]);
 
   useEffect(() => {
     checkAuth(true); // Initial check on mount
