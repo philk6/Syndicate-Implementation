@@ -53,8 +53,12 @@ export default function SidebarLink({ href, children, className, isActive }: Sid
         console.log('SidebarLink: No authenticated session from context. Redirecting to login.');
         router.push('/login?message=no_session_from_context');
       }
-    } catch (err: any) {
-      console.error('SidebarLink handleClick unexpected error:', err.message || err);
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        console.error('SidebarLink handleClick unexpected error:', err.message);
+      } else {
+        console.error('SidebarLink handleClick unexpected error:', err);
+      }
       // Fallback redirect in case of any other error during logic
       router.push('/login?message=unexpected_error_sidebarlink');
     } finally {

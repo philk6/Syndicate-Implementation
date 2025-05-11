@@ -348,7 +348,7 @@ export default function AdminOrderManagementPage() {
     }
   };
 
-  const updateProduct = async (sequence: number, field: keyof OrderProduct | 'roi' | 'hide_price_and_quantity', value: string | number | boolean) => {
+  const updateProduct = useCallback(async (sequence: number, field: keyof OrderProduct | 'roi' | 'hide_price_and_quantity', value: string | number | boolean) => {
     const updatedProduct = products.find(p => p.sequence === sequence);
     if (!updatedProduct) return;
 
@@ -368,7 +368,7 @@ export default function AdminOrderManagementPage() {
         setHideAll(products.every(p => p.sequence === sequence ? updatedValue : p.hide_price_and_quantity));
       }
     }
-  };
+  }, [products, orderId, supabase, setProducts, setHideAll]);
 
   const debouncedProductUpdate = useCallback(
     (sequence: number, field: keyof OrderProduct | 'roi' | 'hide_price_and_quantity', value: string | number | boolean) => {
@@ -451,7 +451,7 @@ export default function AdminOrderManagementPage() {
     }
   };
 
-  const updateOrder = async (field: 'leadtime' | 'deadline' | 'label_upload_deadline', value: string | number) => {
+  const updateOrder = useCallback(async (field: 'leadtime' | 'deadline' | 'label_upload_deadline', value: string | number) => {
     const updatedValue = field === 'leadtime' ? parseInt(value as string) : value;
     const { error } = await supabase
       .from('orders')
@@ -463,7 +463,7 @@ export default function AdminOrderManagementPage() {
     } else {
       setOrder(prev => prev ? { ...prev, [field]: updatedValue } : null);
     }
-  };
+  }, [orderId, supabase, setOrder]);
 
   const debouncedOrderUpdate = useCallback(
     (field: 'leadtime' | 'deadline' | 'label_upload_deadline', value: string | number) => {
