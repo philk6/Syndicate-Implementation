@@ -368,7 +368,7 @@ export default function AdminOrderManagementPage() {
         setHideAll(products.every(p => p.sequence === sequence ? updatedValue : p.hide_price_and_quantity));
       }
     }
-  }, [products, orderId, supabase, setProducts, setHideAll]);
+  }, [products, orderId, setProducts, setHideAll]);
 
   const debouncedProductUpdate = useCallback(
     (sequence: number, field: keyof OrderProduct | 'roi' | 'hide_price_and_quantity', value: string | number | boolean) => {
@@ -463,7 +463,7 @@ export default function AdminOrderManagementPage() {
     } else {
       setOrder(prev => prev ? { ...prev, [field]: updatedValue } : null);
     }
-  }, [orderId, supabase, setOrder]);
+  }, [orderId, setOrder]);
 
   const debouncedOrderUpdate = useCallback(
     (field: 'leadtime' | 'deadline' | 'label_upload_deadline', value: string | number) => {
