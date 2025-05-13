@@ -6,7 +6,7 @@ import { useAuth } from '@lib/auth';
 import { supabase } from '@lib/supabase/client';
 import { PostgrestError } from '@supabase/supabase-js';
 import Link from 'next/link';
-import { CalendarIcon, Download, Trash2, Plus, Percent } from 'lucide-react';
+import { CalendarIcon, Download, Trash2, Plus, Percent, Save } from 'lucide-react';
 import {
   Table,
   TableBody,
@@ -22,6 +22,7 @@ import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Switch } from '@/components/ui/switch';
+import { Checkbox } from '@/components/ui/checkbox';
 import { cn } from '@/lib/utils';
 import { calculateOrderAllocation } from './actions';
 import { utils, write } from 'xlsx';
@@ -34,6 +35,7 @@ interface Order {
   label_upload_deadline: string;
   order_statuses: { description: string };
   total_amount?: number;
+  hide_allocations: boolean;
 }
 
 interface OrderProduct {
@@ -89,11 +91,16 @@ interface AllocationResult {
   sequence: number;
   company_id: number;
   quantity: number;
-  roi: number | null;
   needs_review: boolean;
   created_at: string;
   company: { name: string } | null;
   order_products: { asin: string; price: number; cost_price: number; description: string | null } | null;
+}
+
+interface EditedAllocation {
+  id: number;
+  quantity: number;
+  needs_review: boolean;
 }
 
 interface Discount {
@@ -170,12 +177,13 @@ export default function AdminOrderManagementPage() {
   const [discountPrice, setDiscountPrice] = useState<string>('');
   const [discountPercentage, setDiscountPercentage] = useState<string>('');
   const [discounts, setDiscounts] = useState<Discount[]>([]);
+  const [allocationResults, setAllocationResults] = useState<AllocationResult[]>([]);
+  const [editedAllocations, setEditedAllocations] = useState<EditedAllocation[]>([]);
+  const [hideAll, setHideAll] = useState<boolean>(false);
   const { isAuthenticated, loading: authLoading, user } = useAuth();
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [feedbackMessage, setFeedbackMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-  const [allocationResults, setAllocationResults] = useState<AllocationResult[]>([]);
-  const [hideAll, setHideAll] = useState<boolean>(false);
 
   useEffect(() => {
     if (!authLoading) {
@@ -189,7 +197,7 @@ export default function AdminOrderManagementPage() {
 
         const { data: orderData, error: orderError } = await supabase
           .from('orders')
-          .select('order_id, leadtime, deadline, label_upload_deadline, order_statuses(description)')
+          .select('order_id, leadtime, deadline, label_upload_deadline, order_statuses(description), hide_allocations')
           .eq('order_id', orderId)
           .single() as { data: Order | null, error: PostgrestError | null };
 
@@ -233,7 +241,6 @@ export default function AdminOrderManagementPage() {
           console.error('Error fetching pre-assignments:', preAssignmentError);
         }
 
-        // Updated query for company applications
         const { data: applicationData, error: applicationError } = await supabase
           .from('order_company')
           .select(`
@@ -249,9 +256,6 @@ export default function AdminOrderManagementPage() {
         } else if (applicationData && applicationData.length > 0) {
           const companyApps = await Promise.all(
             applicationData.map(async (app: { company_id: number; max_investment: number; company: { name: string } | Array<{ name: string }> }) => {
-              // Log raw data for debugging
-              console.log(`Raw application data for company_id ${app.company_id}:`, JSON.stringify(app, null, 2));
-
               const { data: ungatedData, error: ungatedError } = await supabase
                 .from('order_products_company')
                 .select('sequence')
@@ -263,7 +267,6 @@ export default function AdminOrderManagementPage() {
                 console.error(`Error fetching ungated products for company ${app.company_id}:`, ungatedError);
               }
 
-              // Handle company.name access properly for both object and array cases
               const companyObj = Array.isArray(app.company) ? app.company[0] : app.company;
               const companyName = companyObj && companyObj.name ? companyObj.name : 'Unknown';
               if (companyName === 'Unknown') {
@@ -279,7 +282,6 @@ export default function AdminOrderManagementPage() {
             })
           );
 
-          console.log('Processed company applications:', JSON.stringify(companyApps, null, 2));
           const sortedApps = companyApps.sort((a, b) => b.max_investment - a.max_investment);
           setCompanyApplications(sortedApps);
         } else {
@@ -315,7 +317,7 @@ export default function AdminOrderManagementPage() {
             discountData?.map(d => {
               const company = Array.isArray(d.company) ? d.company[0] : d.company;
               const orderProducts = Array.isArray(d.order_products) ? d.order_products[0] : d.order_products;
-              
+
               return {
                 order_id: d.order_id,
                 sequence: d.sequence,
@@ -341,6 +343,13 @@ export default function AdminOrderManagementPage() {
           })) || []
         );
         setAllocationResults(allocationData || []);
+        setEditedAllocations(
+          (allocationData || []).map(a => ({
+            id: a.id,
+            quantity: a.quantity,
+            needs_review: a.needs_review,
+          }))
+        );
         setHideAll(productData?.every(p => p.hide_price_and_quantity) || false);
         setLoading(false);
       }
@@ -357,31 +366,51 @@ export default function AdminOrderManagementPage() {
 
     if (error) {
       console.error('Error updating status:', error);
+      setFeedbackMessage({ type: 'error', text: 'Failed to update status.' });
     } else {
       setOrder(prev => prev ? { ...prev, order_statuses: statuses.find(s => s.order_status_id === parseInt(newStatusId))! } : null);
+      setFeedbackMessage({ type: 'success', text: 'Status updated successfully.' });
     }
   };
 
-  const updateProduct = useCallback(async (sequence: number, field: keyof OrderProduct | 'roi' | 'hide_price_and_quantity', value: string | number | boolean) => {
-    const updatedProduct = products.find(p => p.sequence === sequence);
-    if (!updatedProduct) return;
-
-    const updatedValue = typeof value === 'string' && (field === 'price' || field === 'quantity' || field === 'cost_price' || field === 'roi') ? parseFloat(value) : value;
+  const handleHideAllocationsToggle = async (checked: boolean) => {
     const { error } = await supabase
-      .from('order_products')
-      .update({ [field]: updatedValue })
-      .eq('order_id', orderId)
-      .eq('sequence', sequence);
+      .from('orders')
+      .update({ hide_allocations: checked })
+      .eq('order_id', orderId);
 
     if (error) {
-      console.error('Error updating product:', error);
+      console.error('Error updating hide_allocations:', error);
+      setFeedbackMessage({ type: 'error', text: 'Failed to update allocations visibility.' });
     } else {
-      setProducts(prev => prev.map(p => p.sequence === sequence ? { ...p, [field]: updatedValue } : p));
-      if (field === 'hide_price_and_quantity') {
-        setHideAll(products.every(p => p.sequence === sequence ? updatedValue : p.hide_price_and_quantity));
-      }
+      setOrder(prev => prev ? { ...prev, hide_allocations: checked } : null);
+      setFeedbackMessage({ type: 'success', text: `Allocations ${checked ? 'hidden' : 'visible'} for users.` });
     }
-  }, [products, orderId, setProducts, setHideAll]);
+  };
+
+  const updateProduct = useCallback(
+    async (sequence: number, field: keyof OrderProduct | 'roi' | 'hide_price_and_quantity', value: string | number | boolean) => {
+      const updatedProduct = products.find(p => p.sequence === sequence);
+      if (!updatedProduct) return;
+
+      const updatedValue = typeof value === 'string' && (field === 'price' || field === 'quantity' || field === 'cost_price' || field === 'roi') ? parseFloat(value) : value;
+      const { error } = await supabase
+        .from('order_products')
+        .update({ [field]: updatedValue })
+        .eq('order_id', orderId)
+        .eq('sequence', sequence);
+
+      if (error) {
+        console.error('Error updating product:', error);
+      } else {
+        setProducts(prev => prev.map(p => p.sequence === sequence ? { ...p, [field]: updatedValue } : p));
+        if (field === 'hide_price_and_quantity') {
+          setHideAll(products.every(p => p.sequence === sequence ? updatedValue : p.hide_price_and_quantity));
+        }
+      }
+    },
+    [products, orderId, setProducts, setHideAll]
+  );
 
   const debouncedProductUpdate = useCallback(
     (sequence: number, field: keyof OrderProduct | 'roi' | 'hide_price_and_quantity', value: string | number | boolean) => {
@@ -396,11 +425,11 @@ export default function AdminOrderManagementPage() {
   const handleProductUpdate = (sequence: number, field: keyof OrderProduct | 'roi' | 'hide_price_and_quantity', value: string | number | boolean) => {
     const updatedValue = typeof value === 'string' && (field === 'price' || field === 'quantity' || field === 'cost_price' || field === 'roi') ? parseFloat(value) : value;
     setProducts(prev => prev.map(p => p.sequence === sequence ? { ...p, [field]: updatedValue } : p));
-    
+
     if (field === 'hide_price_and_quantity') {
       setHideAll(products.every(p => p.sequence === sequence ? updatedValue : p.hide_price_and_quantity));
     }
-    
+
     debouncedProductUpdate(sequence, field, value);
   };
 
@@ -417,6 +446,9 @@ export default function AdminOrderManagementPage() {
       console.error('Error updating hide_price_and_quantity for all products:', error);
       setProducts(prev => prev.map(p => ({ ...p, hide_price_and_quantity: !checked })));
       setHideAll(!checked);
+      setFeedbackMessage({ type: 'error', text: 'Failed to update price and quantity visibility.' });
+    } else {
+      setFeedbackMessage({ type: 'success', text: `Price and quantity ${checked ? 'hidden' : 'visible'}.` });
     }
   };
 
@@ -429,11 +461,15 @@ export default function AdminOrderManagementPage() {
 
     if (error) {
       console.error('Error removing product:', error);
+      setFeedbackMessage({ type: 'error', text: 'Failed to remove product.' });
     } else {
       setProducts(prev => prev.filter(p => p.sequence !== sequence));
       setPreAssignments(prev => prev.filter(pa => pa.sequence !== sequence));
       setDiscounts(prev => prev.filter(d => d.sequence !== sequence));
+      setAllocationResults(prev => prev.filter(a => a.sequence !== sequence));
+      setEditedAllocations(prev => prev.filter(a => !allocationResults.find(ar => ar.id === a.id && ar.sequence === sequence)));
       setHideAll(products.filter(p => p.sequence !== sequence).every(p => p.hide_price_and_quantity));
+      setFeedbackMessage({ type: 'success', text: 'Product removed successfully.' });
     }
   };
 
@@ -457,24 +493,31 @@ export default function AdminOrderManagementPage() {
 
     if (error) {
       console.error('Error adding product:', error);
+      setFeedbackMessage({ type: 'error', text: 'Failed to add product.' });
     } else {
       setProducts(prev => [...prev, newProduct]);
+      setFeedbackMessage({ type: 'success', text: 'Product added successfully.' });
     }
   };
 
-  const updateOrder = useCallback(async (field: 'leadtime' | 'deadline' | 'label_upload_deadline', value: string | number) => {
-    const updatedValue = field === 'leadtime' ? parseInt(value as string) : value;
-    const { error } = await supabase
-      .from('orders')
-      .update({ [field]: updatedValue })
-      .eq('order_id', orderId);
+  const updateOrder = useCallback(
+    async (field: 'leadtime' | 'deadline' | 'label_upload_deadline', value: string | number) => {
+      const updatedValue = field === 'leadtime' ? parseInt(value as string) : value;
+      const { error } = await supabase
+        .from('orders')
+        .update({ [field]: updatedValue })
+        .eq('order_id', orderId);
 
-    if (error) {
-      console.error('Error updating order:', error);
-    } else {
-      setOrder(prev => prev ? { ...prev, [field]: updatedValue } : null);
-    }
-  }, [orderId, setOrder]);
+      if (error) {
+        console.error('Error updating order:', error);
+        setFeedbackMessage({ type: 'error', text: 'Failed to update order.' });
+      } else {
+        setOrder(prev => prev ? { ...prev, [field]: updatedValue } : null);
+        setFeedbackMessage({ type: 'success', text: `${field} updated successfully.` });
+      }
+    },
+    [orderId, setOrder]
+  );
 
   const debouncedOrderUpdate = useCallback(
     (field: 'leadtime' | 'deadline' | 'label_upload_deadline', value: string | number) => {
@@ -489,7 +532,7 @@ export default function AdminOrderManagementPage() {
   const handleOrderUpdate = (field: 'leadtime' | 'deadline' | 'label_upload_deadline', value: string | number) => {
     const updatedValue = field === 'leadtime' ? parseInt(value as string) : value;
     setOrder(prev => prev ? { ...prev, [field]: updatedValue } : null);
-    
+
     debouncedOrderUpdate(field, value);
   };
 
@@ -528,6 +571,7 @@ export default function AdminOrderManagementPage() {
     if (error) {
       console.error('Error adding pre-assignment:', error);
       alert('Failed to add pre-assignment.');
+      setFeedbackMessage({ type: 'error', text: 'Failed to add pre-assignment.' });
     } else if (data) {
       setPreAssignments(prev => [
         ...prev,
@@ -544,6 +588,7 @@ export default function AdminOrderManagementPage() {
       setDialogCompanyId('');
       setDialogQuantity('');
       setSelectedSequence(null);
+      setFeedbackMessage({ type: 'success', text: 'Pre-assignment added successfully.' });
     }
   };
 
@@ -556,8 +601,10 @@ export default function AdminOrderManagementPage() {
     if (error) {
       console.error('Error removing pre-assignment:', error);
       alert('Failed to remove pre-assignment.');
+      setFeedbackMessage({ type: 'error', text: 'Failed to remove pre-assignment.' });
     } else {
       setPreAssignments(prev => prev.filter(pa => pa.assignment_id !== assignmentId));
+      setFeedbackMessage({ type: 'success', text: 'Pre-assignment removed successfully.' });
     }
   };
 
@@ -580,6 +627,13 @@ export default function AdminOrderManagementPage() {
           .select('*, company(name), order_products(asin, price, cost_price, description)')
           .eq('order_id', orderId);
         setAllocationResults(allocationData || []);
+        setEditedAllocations(
+          (allocationData || []).map(a => ({
+            id: a.id,
+            quantity: a.quantity,
+            needs_review: a.needs_review,
+          }))
+        );
         router.refresh();
       }
     });
@@ -664,6 +718,7 @@ export default function AdminOrderManagementPage() {
     if (opcError) {
       console.error('Error saving discount:', opcError);
       alert('Failed to save discount.');
+      setFeedbackMessage({ type: 'error', text: 'Failed to save discount.' });
       return;
     }
 
@@ -676,6 +731,7 @@ export default function AdminOrderManagementPage() {
     if (ocError) {
       console.error('Error updating has_discounts:', ocError);
       alert('Failed to update discount status.');
+      setFeedbackMessage({ type: 'error', text: 'Failed to update discount status.' });
       return;
     }
 
@@ -710,6 +766,7 @@ export default function AdminOrderManagementPage() {
     setDiscountSequence('');
     setDiscountPrice('');
     setDiscountPercentage('');
+    setFeedbackMessage({ type: 'success', text: 'Discount saved successfully.' });
   };
 
   const handleDiscountPercentageChange = (value: string) => {
@@ -735,6 +792,7 @@ export default function AdminOrderManagementPage() {
     if (opcError) {
       console.error('Error deleting discount:', opcError);
       alert('Failed to delete discount.');
+      setFeedbackMessage({ type: 'error', text: 'Failed to delete discount.' });
       return;
     }
 
@@ -756,10 +814,82 @@ export default function AdminOrderManagementPage() {
     if (ocError) {
       console.error('Error updating has_discounts:', ocError);
       alert('Failed to update discount status.');
+      setFeedbackMessage({ type: 'error', text: 'Failed to update discount status.' });
       return;
     }
 
     setDiscounts(prev => prev.filter(d => !(d.sequence === sequence && d.company_id === company_id)));
+    setFeedbackMessage({ type: 'success', text: 'Discount deleted successfully.' });
+  };
+
+  const handleAllocationChange = (id: number, field: keyof EditedAllocation, value: number | boolean) => {
+    setEditedAllocations(prev =>
+      prev.map(a =>
+        a.id === id
+          ? { ...a, [field]: value }
+          : a
+      )
+    );
+  };
+
+  const handleAllocationSave = async (id: number) => {
+    const allocation = editedAllocations.find(a => a.id === id);
+    if (!allocation) return;
+
+    const result = allocationResults.find(a => a.id === id);
+    const product = products.find(p => p.sequence === result?.sequence);
+    if (!product || !result) return;
+
+    const totalAllocated = editedAllocations
+      .filter(a => a.id !== id && allocationResults.find(ar => ar.id === a.id)?.sequence === result.sequence)
+      .reduce((sum, a) => sum + a.quantity, 0);
+    const newTotal = totalAllocated + allocation.quantity;
+
+    if (newTotal > product.quantity) {
+      setFeedbackMessage({
+        type: 'error',
+        text: `Total allocated quantity (${newTotal}) for ASIN ${product.asin} exceeds available quantity (${product.quantity}).`,
+      });
+      return;
+    }
+
+    const { error } = await supabase
+      .from('allocation_results')
+      .update({
+        quantity: allocation.quantity,
+        needs_review: allocation.needs_review,
+      })
+      .eq('id', id);
+
+    if (error) {
+      console.error('Error updating allocation:', error);
+      setFeedbackMessage({ type: 'error', text: 'Failed to update allocation.' });
+    } else {
+      setAllocationResults(prev =>
+        prev.map(a =>
+          a.id === id
+            ? { ...a, quantity: allocation.quantity, needs_review: allocation.needs_review }
+            : a
+        )
+      );
+      setFeedbackMessage({ type: 'success', text: 'Allocation updated successfully.' });
+    }
+  };
+
+  const handleAllocationDelete = async (id: number) => {
+    const { error } = await supabase
+      .from('allocation_results')
+      .delete()
+      .eq('id', id);
+
+    if (error) {
+      console.error('Error deleting allocation:', error);
+      setFeedbackMessage({ type: 'error', text: 'Failed to delete allocation.' });
+    } else {
+      setAllocationResults(prev => prev.filter(a => a.id !== id));
+      setEditedAllocations(prev => prev.filter(a => a.id !== id));
+      setFeedbackMessage({ type: 'success', text: 'Allocation deleted successfully.' });
+    }
   };
 
   if (authLoading || loading) {
@@ -851,6 +981,14 @@ export default function AdminOrderManagementPage() {
               <Switch
                 checked={hideAll}
                 onCheckedChange={handleHideAllToggle}
+                disabled={!isOrderEditable}
+              />
+            </div>
+            <div>
+              <label className="text-gray-300 font-medium block mb-2">Hide Allocations from Users</label>
+              <Switch
+                checked={order.hide_allocations}
+                onCheckedChange={handleHideAllocationsToggle}
                 disabled={!isOrderEditable}
               />
             </div>
@@ -1257,22 +1395,66 @@ export default function AdminOrderManagementPage() {
                   <TableHead className="text-gray-300 h-12 px-4 text-left align-middle font-medium">ASIN</TableHead>
                   <TableHead className="text-gray-300 h-12 px-4 text-left align-middle font-medium">Company</TableHead>
                   <TableHead className="text-gray-300 h-12 px-4 text-left align-middle font-medium">Quantity</TableHead>
+                  <TableHead className="text-gray-300 h-12 px-4 text-left align-middle font-medium">Needs Review</TableHead>
                   <TableHead className="text-gray-300 h-12 px-4 text-left align-middle font-medium">Price</TableHead>
                   <TableHead className="text-gray-300 h-12 px-4 text-left align-middle font-medium">Cost Price</TableHead>
                   <TableHead className="text-gray-300 h-12 px-4 text-left align-middle font-medium">Description</TableHead>
+                  <TableHead className="text-gray-300 h-12 px-4 text-left align-middle font-medium">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {allocationResults.map((result) => (
-                  <TableRow key={result.id} className="hover:bg-[#35353580] transition-colors border-[#6a6a6a80]">
-                    <TableCell className="p-4 align-middle text-gray-300">{result.order_products?.asin || 'N/A'}</TableCell>
-                    <TableCell className="p-4 align-middle text-gray-300">{result.company?.name || 'Unknown'}</TableCell>
-                    <TableCell className="p-4 align-middle text-gray-300">{result.quantity}</TableCell>
-                    <TableCell className="p-4 align-middle text-gray-300">{result.order_products?.price ? `$${result.order_products.price.toFixed(2)}` : 'N/A'}</TableCell>
-                    <TableCell className="p-4 align-middle text-gray-300">{result.order_products?.cost_price ? `$${result.order_products.cost_price.toFixed(2)}` : 'N/A'}</TableCell>
-                    <TableCell className="p-4 align-middle text-gray-300">{result.order_products?.description || 'N/A'}</TableCell>
-                  </TableRow>
-                ))}
+                {allocationResults.map((result) => {
+                  const edited = editedAllocations.find(a => a.id === result.id);
+                  return (
+                    <TableRow key={result.id} className="hover:bg-[#35353580] transition-colors border-[#6a6a6a80]">
+                      <TableCell className="p-4 align-middle text-gray-300">{result.order_products?.asin || 'N/A'}</TableCell>
+                      <TableCell className="p-4 align-middle text-gray-300">{result.company?.name || 'Unknown'}</TableCell>
+                      <TableCell className="p-4 align-middle text-gray-300">
+                        <Input
+                          type="number"
+                          value={edited?.quantity ?? result.quantity}
+                          onChange={(e) => handleAllocationChange(result.id, 'quantity', parseInt(e.target.value))}
+                          className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80]"
+                          min="0"
+                          disabled={!isOrderEditable}
+                        />
+                      </TableCell>
+                      <TableCell className="p-4 align-middle text-gray-300">
+                        <Checkbox
+                          checked={edited?.needs_review ?? result.needs_review}
+                          onCheckedChange={(checked) => handleAllocationChange(result.id, 'needs_review', checked === 'indeterminate' ? false : checked)}
+                          className="h-4 w-4 text-[#c8aa64] bg-[#0d0d0d] border-[#a7a7a7] rounded"
+                          disabled={!isOrderEditable}
+                        />
+                      </TableCell>
+                      <TableCell className="p-4 align-middle text-gray-300">{result.order_products?.price ? `$${result.order_products.price.toFixed(2)}` : 'N/A'}</TableCell>
+                      <TableCell className="p-4 align-middle text-gray-300">{result.order_products?.cost_price ? `$${result.order_products.cost_price.toFixed(2)}` : 'N/A'}</TableCell>
+                      <TableCell className="p-4 align-middle text-gray-300">{result.order_products?.description || 'N/A'}</TableCell>
+                      <TableCell className="p-4 align-middle text-gray-300">
+                        <Button
+                          onClick={() => handleAllocationSave(result.id)}
+                          className="bg-[#c8aa64] hover:bg-[#9d864e] text-[#242424] mr-2"
+                          disabled={
+                            !isOrderEditable ||
+                            (edited?.quantity === result.quantity &&
+                              edited?.needs_review === result.needs_review)
+                          }
+                        >
+                          <Save className="h-4 w-4 mr-1" />
+                          Save
+                        </Button>
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={() => handleAllocationDelete(result.id)}
+                          disabled={!isOrderEditable}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           </div>
