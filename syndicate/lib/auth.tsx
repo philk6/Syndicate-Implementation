@@ -154,7 +154,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
 
     return () => subscription.unsubscribe();
-  }, [checkAuth, router, user]);
+  }, [checkAuth, router, user, fetchUserDetails]);
 
   useEffect(() => {
     if (!session || loading) return;
