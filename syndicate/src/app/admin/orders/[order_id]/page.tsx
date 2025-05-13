@@ -1063,7 +1063,7 @@ export default function AdminOrderManagementPage() {
                             ) : (
                               <span className="text-gray-400">None</span>
                             )}
-                            <Dialog open={isDialogOpen && selectedSequence === product.sequence} onOpenChange={(open) => {
+                            <Dialog open={isDialogOpen && selectedSequence === product.sequence} onOpenChange={(open: boolean) => {
                               if (open) openPreAssignDialog(product.sequence);
                               else setIsDialogOpen(false);
                             }}>
