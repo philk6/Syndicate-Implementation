@@ -233,22 +233,25 @@ export default function AdminOrderManagementPage() {
           console.error('Error fetching pre-assignments:', preAssignmentError);
         }
 
-        interface CompanyApplicationResult {
-          company_id: number;
-          company: { name: string } | null;
-          max_investment: number;
-        }
-
+        // Updated query for company applications
         const { data: applicationData, error: applicationError } = await supabase
           .from('order_company')
-          .select('company_id, company(name), max_investment')
-          .eq('order_id', orderId) as { data: CompanyApplicationResult[] | null, error: PostgrestError | null };
+          .select(`
+            company_id,
+            max_investment,
+            company:company_id (name)
+          `)
+          .eq('order_id', orderId);
 
         if (applicationError) {
           console.error('Error fetching company applications:', applicationError);
+          setCompanyApplications([]);
         } else if (applicationData && applicationData.length > 0) {
           const companyApps = await Promise.all(
-            applicationData.map(async (app: CompanyApplicationResult) => {
+            applicationData.map(async (app: { company_id: number; max_investment: number; company: { name: string } | Array<{ name: string }> }) => {
+              // Log raw data for debugging
+              console.log(`Raw application data for company_id ${app.company_id}:`, JSON.stringify(app, null, 2));
+
               const { data: ungatedData, error: ungatedError } = await supabase
                 .from('order_products_company')
                 .select('sequence')
@@ -258,23 +261,25 @@ export default function AdminOrderManagementPage() {
 
               if (ungatedError) {
                 console.error(`Error fetching ungated products for company ${app.company_id}:`, ungatedError);
-                return {
-                  company_id: app.company_id,
-                  company_name: app.company?.name || 'Unknown',
-                  max_investment: app.max_investment,
-                  ungated_count: 0,
-                };
+              }
+
+              // Handle company.name access properly for both object and array cases
+              const companyObj = Array.isArray(app.company) ? app.company[0] : app.company;
+              const companyName = companyObj && companyObj.name ? companyObj.name : 'Unknown';
+              if (companyName === 'Unknown') {
+                console.warn(`No valid company name for company_id: ${app.company_id}. Company object:`, app.company);
               }
 
               return {
                 company_id: app.company_id,
-                company_name: app.company?.name || 'Unknown',
+                company_name: companyName,
                 max_investment: app.max_investment,
                 ungated_count: ungatedData?.length || 0,
               };
             })
           );
 
+          console.log('Processed company applications:', JSON.stringify(companyApps, null, 2));
           const sortedApps = companyApps.sort((a, b) => b.max_investment - a.max_investment);
           setCompanyApplications(sortedApps);
         } else {
@@ -306,26 +311,35 @@ export default function AdminOrderManagementPage() {
         if (discountError) {
           console.error('Error fetching discounts:', discountError);
         } else {
-          setDiscounts(discountData?.map(d => ({
-            order_id: d.order_id,
-            sequence: d.sequence,
-            company_id: d.company_id,
-            company_name: d.company?.[0]?.name || 'Unknown',
-            asin: d.order_products?.[0]?.asin || 'Unknown',
-            original_price: d.order_products?.[0]?.price || 0,
-            discounted_price: d.discounted_price,
-          })) || []);
+          setDiscounts(
+            discountData?.map(d => {
+              const company = Array.isArray(d.company) ? d.company[0] : d.company;
+              const orderProducts = Array.isArray(d.order_products) ? d.order_products[0] : d.order_products;
+              
+              return {
+                order_id: d.order_id,
+                sequence: d.sequence,
+                company_id: d.company_id,
+                company_name: company?.name || 'Unknown',
+                asin: orderProducts?.asin || 'Unknown',
+                original_price: orderProducts?.price || 0,
+                discounted_price: d.discounted_price,
+              };
+            }) || []
+          );
         }
 
         setOrder(orderData);
         setProducts(productData || []);
         setStatuses(statusData || []);
         setCompanies(companyData || []);
-        setPreAssignments(preAssignmentData?.map(pa => ({
-          ...pa,
-          company_id: pa.company_id,
-          company_name: pa.company?.name ?? 'Unknown Company',
-        })) || []);
+        setPreAssignments(
+          preAssignmentData?.map(pa => ({
+            ...pa,
+            company_id: pa.company_id,
+            company_name: pa.company?.name ?? 'Unknown Company',
+          })) || []
+        );
         setAllocationResults(allocationData || []);
         setHideAll(productData?.every(p => p.hide_price_and_quantity) || false);
         setLoading(false);
@@ -361,7 +375,6 @@ export default function AdminOrderManagementPage() {
 
     if (error) {
       console.error('Error updating product:', error);
-      // Revert UI in case of error - implementation depends on your state structure
     } else {
       setProducts(prev => prev.map(p => p.sequence === sequence ? { ...p, [field]: updatedValue } : p));
       if (field === 'hide_price_and_quantity') {
@@ -381,7 +394,6 @@ export default function AdminOrderManagementPage() {
   );
 
   const handleProductUpdate = (sequence: number, field: keyof OrderProduct | 'roi' | 'hide_price_and_quantity', value: string | number | boolean) => {
-    // Optimistically update UI immediately
     const updatedValue = typeof value === 'string' && (field === 'price' || field === 'quantity' || field === 'cost_price' || field === 'roi') ? parseFloat(value) : value;
     setProducts(prev => prev.map(p => p.sequence === sequence ? { ...p, [field]: updatedValue } : p));
     
@@ -389,7 +401,6 @@ export default function AdminOrderManagementPage() {
       setHideAll(products.every(p => p.sequence === sequence ? updatedValue : p.hide_price_and_quantity));
     }
     
-    // Debounced API call
     debouncedProductUpdate(sequence, field, value);
   };
 
@@ -476,11 +487,9 @@ export default function AdminOrderManagementPage() {
   );
 
   const handleOrderUpdate = (field: 'leadtime' | 'deadline' | 'label_upload_deadline', value: string | number) => {
-    // Optimistically update UI
     const updatedValue = field === 'leadtime' ? parseInt(value as string) : value;
     setOrder(prev => prev ? { ...prev, [field]: updatedValue } : null);
     
-    // Debounced API call
     debouncedOrderUpdate(field, value);
   };
 
@@ -949,8 +958,8 @@ export default function AdminOrderManagementPage() {
                 className="bg-[#c8aa64] hover:bg-[#9d864e] text-[#242424]"
                 disabled={!isOrderEditable}
               >
-              <Plus className="mr-2 h-4 w-4" /> Add Product
-            </Button>
+                <Plus className="mr-2 h-4 w-4" /> Add Product
+              </Button>
             </div>
           </div>
           {products.length === 0 ? (
