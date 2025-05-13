@@ -9,6 +9,7 @@ export default function TosWrapper({ children }: { children: ReactNode }) {
   const { isAuthenticated, user, loading, checkAuth } = useAuth();
   const pathname = usePathname();
   const [isTosOpen, setIsTosOpen] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const publicPaths = ['/login', '/signup', '/forgot-password', '/confirm'];
   const tosExemptPaths = ['/dashboard', '/account'];
@@ -16,12 +17,18 @@ export default function TosWrapper({ children }: { children: ReactNode }) {
   const isTosExemptPath = tosExemptPaths.some(path => pathname === path || pathname.startsWith(`${path}/`));
 
   const handleTosClose = async () => {
+    setIsRefreshing(true);
     setIsTosOpen(false);
-    // Refresh auth state to fetch updated tos_accepted
+    try {
     await checkAuth();
+    } catch (error) {
+      console.error('Error refreshing auth state:', error);
+    } finally {
+      setIsRefreshing(false);
+    }
   };
 
-  if (loading || !isAuthenticated || isPublicPath || isTosExemptPath || user?.tos_accepted) {
+  if (loading || isRefreshing || !isAuthenticated || isPublicPath || isTosExemptPath || user?.tos_accepted) {
     return <>{children}</>;
   }
 

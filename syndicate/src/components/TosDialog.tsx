@@ -7,6 +7,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
+// Import the user cache from auth.tsx
+import { userCache } from '../../lib/auth';
+
 interface TosDialogProps {
   isOpen: boolean;
   onClose: () => void;
@@ -86,6 +89,11 @@ export default function TosDialog({ isOpen, onClose }: TosDialogProps) {
     
     if (error) {
         throw error;
+      }
+
+      // Invalidate user cache to ensure fresh data is fetched
+      if (user.email) {
+        userCache.delete(user.email);
       }
 
       // Close the dialog and notify parent

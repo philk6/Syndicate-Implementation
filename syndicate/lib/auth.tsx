@@ -5,7 +5,7 @@ import { supabase } from '@lib/supabase/client';
 import { Session } from '@supabase/supabase-js';
 import { LRUCache } from 'lru-cache';
 
-const userCache = new LRUCache<string, AuthUser>({ 
+export const userCache = new LRUCache<string, AuthUser>({ 
   max: 100, 
   ttl: 1000 * 60 * 5 // 5 minutes
 });
@@ -29,7 +29,7 @@ interface AuthContextType {
   loading: boolean;
   login: (token: string) => void;
   logout: () => Promise<void>;
-  checkAuth: (isInitialLoad?: boolean) => Promise<void>; // Expose checkAuth
+  checkAuth: (isInitialLoad?: boolean) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -154,7 +154,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
 
     return () => subscription.unsubscribe();
-  }, [checkAuth, router, user]);
+  }, [checkAuth, router, user, fetchUserDetails]);
 
   useEffect(() => {
     if (!session || loading) return;
