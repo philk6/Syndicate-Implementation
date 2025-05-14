@@ -56,11 +56,11 @@ export async function middleware(req: NextRequest) {
     const { data: userData, error: userError } = await supabase
       .from('users')
       .select('role')
-      .eq('email', session.user.email)
+      .eq('user_id', session.user.id)
       .single();
 
     if (userError || !userData || userData.role !== 'admin') {
-      console.warn('Admin access denied:', { user: session.user.email, error: userError?.message, role: userData?.role });
+      console.warn('Admin access denied:', { user: session.user.id, error: userError?.message, role: userData?.role });
       const url = req.nextUrl.clone();
       url.pathname = '/unauthorized';
       return NextResponse.redirect(url);

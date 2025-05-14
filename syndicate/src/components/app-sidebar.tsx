@@ -58,12 +58,12 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         const { data: profile, error: profileError } = await supabase
           .from('users')
           .select('firstname, lastname')
-          .eq('email', user.email)
+          .eq('user_id', user.user_id)
           .single();
 
         if (profileError) {
           if (profileError.code === 'PGRST116') {
-            console.warn('No profile found for user:', user.email);
+            console.warn('No profile found for user:', user.user_id);
           } else {
             console.error('Error fetching profile:', profileError);
           }
@@ -80,13 +80,13 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           const lastName = formatName(profile.lastname);
           fullName = `${firstName} ${lastName}`.trim();
         } else {
-          fullName = user.email?.split('@')[0] || 'User';
+          fullName = user.user_id?.split('@')[0] || 'User';
           fullName = formatName(fullName);
         }
 
         setUserData({
           name: fullName,
-          email: user.email || '',
+          email: user.user_id || '',
           avatar: '/syndicate_logo.jpeg',
         });
       } catch (error) {
