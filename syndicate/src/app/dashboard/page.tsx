@@ -156,7 +156,7 @@ export default function UserDashboardPage() {
       const { data: userData, error: userError } = await supabase
         .from('users')
         .select('company_id')
-        .eq('email', user?.email)
+        .eq('user_id', user?.user_id)
         .single();
 
       if (userError || !userData) {
@@ -243,7 +243,7 @@ export default function UserDashboardPage() {
     }
 
     fetchDashboardData();
-  }, [isAuthenticated, authLoading, router, user?.email, timeFrame, fetchChartData]);
+  }, [isAuthenticated, authLoading, router, user?.user_id, timeFrame, fetchChartData]);
 
   const handleRedirectToAccount = () => {
     setIsCompanyPopupOpen(false);

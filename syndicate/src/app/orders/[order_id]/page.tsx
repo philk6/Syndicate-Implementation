@@ -57,7 +57,7 @@ export default function OrderDetailPage() {
     const { data: userData, error: userError } = await supabase
       .from('users')
       .select('company_id')
-      .eq('email', user?.email)
+      .eq('user_id', user?.user_id)
       .single();
 
     if (userError) {
@@ -165,7 +165,7 @@ export default function OrderDetailPage() {
 
     setOrder(orderData);
     setLoading(false);
-  }, [orderId, user?.email]); // Only depend on the essential values
+  }, [orderId, user?.user_id]); // Only depend on the essential values
 
   useEffect(() => {
     if (authLoading) return;

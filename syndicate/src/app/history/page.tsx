@@ -44,7 +44,7 @@ export default function HistoryPage() {
         const { data: userData, error: userError } = await supabase
           .from('users')
           .select('company_id')
-          .eq('email', user?.email)
+          .eq('user_id', user?.user_id)
           .single();
 
         if (userError || !userData?.company_id) {
