@@ -65,7 +65,7 @@ export default function OrderDetailPage() {
     const { data: userData, error: userError } = await supabase
       .from('users')
       .select('company_id')
-      .eq('user_id', user.user_id)
+      .eq('user_id', user?.user_id)
       .single();
 
     if (userError) {

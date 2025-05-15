@@ -17,6 +17,7 @@ interface Order {
   deadline: string;
   label_upload_deadline: string;
   order_statuses: { description: string };
+  hide_allocations: boolean;
 }
 
 interface AllocationResult {
@@ -82,11 +83,11 @@ export default function HistoryOrderDetailPage() {
     async function fetchData() {
       setLoading(true);
 
-      // Fetch user's company_id
+      // Fetch user's company_id and role
       const { data: userData, error: userError } = await supabase
         .from('users')
-        .select('company_id')
-        .eq('email', user?.email)
+        .select('company_id, role')
+        .eq('user_id', user?.user_id)
         .single();
 
       if (userError || !userData.company_id) {
@@ -95,10 +96,12 @@ export default function HistoryOrderDetailPage() {
         return;
       }
 
+      const isAdmin = userData.role === 'admin';
+
       // Fetch order details
       const { data: orderData, error: orderError } = await supabase
         .from('orders')
-        .select('order_id, leadtime, deadline, label_upload_deadline, order_statuses(description)')
+        .select('order_id, leadtime, deadline, label_upload_deadline, order_statuses(description), hide_allocations')
         .eq('order_id', orderId)
         .single() as { data: Order | null, error: PostgrestError | null };
 
@@ -131,8 +134,8 @@ export default function HistoryOrderDetailPage() {
         }
       }
 
-      // Fetch allocation results for this company
-      if (userData.company_id) {
+      // Fetch allocation results for this company if not hidden or user is admin
+      if (userData.company_id && (!orderData?.hide_allocations || isAdmin)) {
         const { data: allocationData, error: allocationError } = await supabase
           .from('allocation_results')
           .select(`
@@ -181,7 +184,6 @@ export default function HistoryOrderDetailPage() {
           // Merge discounted_price into allocation results
           const discountMap: { [key: string]: number } = {};
           opcData.forEach((opc: OrderProductCompanyData) => {
-            // Ensure sequence and company_id are strings for consistent key
             const sequence = String(opc.sequence);
             const companyId = String(opc.company_id);
             if (opc.discounted_price !== null) {
@@ -192,7 +194,6 @@ export default function HistoryOrderDetailPage() {
           console.log('Discount map:', discountMap);
 
           const processedAllocations = allocationData?.map((alloc: AllocationResultFromQuery) => {
-            // Ensure sequence and company_id are strings for lookup
             const sequence = String(alloc.sequence);
             const companyId = String(alloc.company_id);
             const discountedPrice = discountMap[`${sequence}-${companyId}`] || null;
@@ -351,65 +352,67 @@ export default function HistoryOrderDetailPage() {
           </CardContent>
         </Card>
 
-        <div className="rounded-lg p-6 bg-gradient-to-br from-[#212121] via-[#0f0f0f] to-[#2b2b2b] shadow-lg w-full overflow-x-auto">
-          <h2 className="text-xl font-semibold text-gray-300 mb-4">Your Allocations</h2>
-          {allocations.length === 0 ? (
-            <p className="text-gray-400">No allocations found for this order.</p>
-          ) : (
-            <div className="w-full">
-              <table className="w-full border-collapse" style={{ tableLayout: 'fixed' }}>
-                <thead>
-                  <tr className="border-[#2B2B2B] hover:bg-transparent">
-                    <th className="text-gray-300 w-[15%] h-12 px-4 text-left align-middle font-medium">ASIN</th>
-                    <th className="text-gray-300 w-[10%] h-12 px-4 text-left align-middle font-medium">Quantity</th>
-                    <th className="text-gray-300 w-[15%] h-12 px-4 text-left align-middle font-medium">Price</th>
-                    <th className="text-gray-300 w-[15%] h-12 px-4 text-left align-middle font-medium">Profit</th>
-                    <th className="text-gray-300 w-[30%] h-12 px-4 text-left align-middle font-medium">Description</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {allocations.map((allocation) => {
-                    const discountedPrice = allocation.discounted_price;
-                    const originalPrice = allocation.order_products.price;
-                    const discountPercentage = discountedPrice != null && originalPrice > 0
-                      ? ((originalPrice - discountedPrice) / originalPrice * 100).toFixed(1)
-                      : null;
-                    return (
-                      <tr key={`${allocation.order_id}-${allocation.sequence}`} className="hover:bg-[#35353580] transition-colors border-[#6a6a6a80]">
-                        <td className="text-gray-200 p-4 align-middle" style={{ overflowWrap: 'break-word' }}>
-                          {allocation.order_products.asin}
-                        </td>
-                        <td className="text-gray-200 p-4 align-middle" style={{ overflowWrap: 'break-word' }}>
-                          {allocation.quantity}
-                        </td>
-                        <td className="text-gray-200 p-4 align-middle" style={{ overflowWrap: 'break-word' }}>
-                          {discountedPrice != null ? (
-                            <div className="flex items-center gap-2">
-                              <span>${discountedPrice.toFixed(2)}</span>
-                              {discountPercentage != null && (
-                                <Badge variant="secondary" className="bg-green-900 text-green-200">
-                                  -{discountPercentage}%
-                                </Badge>
-                              )}
-                            </div>
-                          ) : (
-                            `$${originalPrice.toFixed(2)}`
-                          )}
-                        </td>
-                        <td className="text-gray-200 p-4 align-middle" style={{ overflowWrap: 'break-word' }}>
-                          {allocation.profit != null ? `$${allocation.profit.toFixed(2)}` : '-'}
-                        </td>
-                        <td className="text-gray-200 p-4 align-middle" style={{ overflowWrap: 'break-word' }}>
-                          {allocation.order_products.description || '-'}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
+        {(user?.role === 'admin' || (!order.hide_allocations && allocations.length > 0)) && (
+          <div className="rounded-lg p-6 bg-gradient-to-br from-[#212121] via-[#0f0f0f] to-[#2b2b2b] shadow-lg w-full overflow-x-auto">
+            <h2 className="text-xl font-semibold text-gray-300 mb-4">Your Allocations</h2>
+            {allocations.length === 0 ? (
+              <p className="text-gray-400">No allocations found for this order.</p>
+            ) : (
+              <div className="w-full">
+                <table className="w-full border-collapse" style={{ tableLayout: 'fixed' }}>
+                  <thead>
+                    <tr className="border-[#2B2B2B] hover:bg-transparent">
+                      <th className="text-gray-300 w-[15%] h-12 px-4 text-left align-middle font-medium">ASIN</th>
+                      <th className="text-gray-300 w-[10%] h-12 px-4 text-left align-middle font-medium">Quantity</th>
+                      <th className="text-gray-300 w-[15%] h-12 px-4 text-left align-middle font-medium">Price</th>
+                      <th className="text-gray-300 w-[15%] h-12 px-4 text-left align-middle font-medium">Profit</th>
+                      <th className="text-gray-300 w-[30%] h-12 px-4 text-left align-middle font-medium">Description</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {allocations.map((allocation) => {
+                      const discountedPrice = allocation.discounted_price;
+                      const originalPrice = allocation.order_products.price;
+                      const discountPercentage = discountedPrice != null && originalPrice > 0
+                        ? ((originalPrice - discountedPrice) / originalPrice * 100).toFixed(1)
+                        : null;
+                      return (
+                        <tr key={`${allocation.order_id}-${allocation.sequence}`} className="hover:bg-[#35353580] transition-colors border-[#6a6a6a80]">
+                          <td className="text-gray-200 p-4 align-middle" style={{ overflowWrap: 'break-word' }}>
+                            {allocation.order_products.asin}
+                          </td>
+                          <td className="text-gray-200 p-4 align-middle" style={{ overflowWrap: 'break-word' }}>
+                            {allocation.quantity}
+                          </td>
+                          <td className="text-gray-200 p-4 align-middle" style={{ overflowWrap: 'break-word' }}>
+                            {discountedPrice != null ? (
+                              <div className="flex items-center gap-2">
+                                <span>${discountedPrice.toFixed(2)}</span>
+                                {discountPercentage != null && (
+                                  <Badge variant="secondary" className="bg-green-900 text-green-200">
+                                    -{discountPercentage}%
+                                  </Badge>
+                                )}
+                              </div>
+                            ) : (
+                              `$${originalPrice.toFixed(2)}`
+                            )}
+                          </td>
+                          <td className="text-gray-200 p-4 align-middle" style={{ overflowWrap: 'break-word' }}>
+                            {allocation.profit != null ? `$${allocation.profit.toFixed(2)}` : '-'}
+                          </td>
+                          <td className="text-gray-200 p-4 align-middle" style={{ overflowWrap: 'break-word' }}>
+                            {allocation.order_products.description || '-'}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
 
         {orderCompany != null && orderCompany.max_investment != null && (
           <div className="mb-4 flex flex-col items-end mt-14">

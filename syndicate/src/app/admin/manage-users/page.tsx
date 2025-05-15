@@ -87,7 +87,7 @@ export default function ManageUsersPage() {
     const { data: userData, error: userError } = await supabase
       .from('users')
       .select('user_id')
-      .eq('email', user?.email)
+      .eq('user_id', user?.user_id)
       .single();
 
     if (userError || !userData) {
@@ -147,7 +147,7 @@ export default function ManageUsersPage() {
       setMessage('An unexpected error occurred');
       setInviteCode(null);
     }
-  }, [user?.email]);
+  }, [user?.user_id]);
 
   if (authLoading || loading) {
     return (

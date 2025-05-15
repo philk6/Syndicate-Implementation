@@ -42,7 +42,7 @@ export default function AccountPage() {
     const { data: userData, error: userError } = await supabase
       .from('users')
       .select('firstname, lastname, email, company_id')
-      .eq('email', user?.email)
+      .eq('user_id', user?.user_id)
       .single();
 
     if (userError) {
@@ -72,7 +72,7 @@ export default function AccountPage() {
     }
 
     setLoading(false);
-  }, [user?.email]);
+  }, [user?.user_id]);
 
   useEffect(() => {
     if (authLoading) return;
@@ -109,7 +109,7 @@ export default function AccountPage() {
       const { error: userError } = await supabase
         .from('users')
         .update(updates)
-        .eq('email', user?.email);
+        .eq('user_id', user?.user_id);
 
       if (userError) {
         console.error('Error updating user:', userError);
@@ -137,7 +137,7 @@ export default function AccountPage() {
     }
 
     setLoading(false);
-  }, [userInfo, password, user?.email]);
+  }, [userInfo, password, user?.user_id]);
 
   // Memoized function to update company information
   const handleCompanyUpdate = useCallback(async () => {

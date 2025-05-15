@@ -50,7 +50,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [session]);
 
   const fetchUserDetails = useCallback(async (email: string, currentSession: Session) => {
-    const cachedUser = userCache.get(email);
+    const userId = currentSession.user.id;
+    const cachedUser = userCache.get(userId);
     if (cachedUser) {
       setUser(cachedUser);
       localStorage.setItem('token', currentSession.access_token);
@@ -60,15 +61,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const { data: userData, error: userError } = await supabase
         .from('users')
         .select('user_id, email, role, firstname, lastname, company_id, tos_accepted')
-        .eq('email', email)
+        .eq('user_id', userId)
         .single();
       if (userError) {
         console.error('Error fetching user data:', userError);
         setUser(null);
         localStorage.removeItem('token');
       } else {
-        userCache.set(email, userData);
-        setUser(userData);
+        const userWithId = { ...userData, user_id: userData?.user_id || currentSession.user.id };
+        userCache.set(userId, userWithId);
+        setUser(userWithId);
         localStorage.setItem('token', currentSession.access_token);
       }
     } catch (e) {
@@ -155,7 +157,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
 
     return () => subscription.unsubscribe();
-  }, [checkAuth, router, user]);
+  }, [checkAuth, router, user, fetchUserDetails]);
 
   useEffect(() => {
     if (!session || loading) return;
@@ -215,7 +217,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = async () => {
-    if (user?.email) userCache.delete(user.email);
+    if (user?.user_id) userCache.delete(user.user_id);
     await supabase.auth.signOut();
   };
 

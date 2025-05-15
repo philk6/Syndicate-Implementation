@@ -1,0 +1,2 @@
+ALTER TABLE orders
+ADD COLUMN hide_allocations BOOLEAN NOT NULL DEFAULT TRUE;
