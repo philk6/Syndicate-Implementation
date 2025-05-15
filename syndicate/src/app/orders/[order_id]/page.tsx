@@ -53,11 +53,19 @@ export default function OrderDetailPage() {
   const fetchData = useCallback(async () => {
     setLoading(true);
 
+    // Ensure user is valid before making API calls
+    if (!user?.user_id) {
+      console.error('No user_id available. Redirecting to login.');
+      router.push('/login');
+      setLoading(false);
+      return;
+    }
+
     // Fetch user's company_id
     const { data: userData, error: userError } = await supabase
       .from('users')
       .select('company_id')
-      .eq('email', user?.email)
+      .eq('user_id', user.user_id)
       .single();
 
     if (userError) {
@@ -165,7 +173,7 @@ export default function OrderDetailPage() {
 
     setOrder(orderData);
     setLoading(false);
-  }, [orderId, user?.email]); // Only depend on the essential values
+  }, [orderId, user?.user_id, router]); // Only depend on the essential values
 
   useEffect(() => {
     if (authLoading) return;
@@ -180,28 +188,40 @@ export default function OrderDetailPage() {
 
   // Memoized function to update ungated status
   const updateUngatedStatus = useCallback(async (sequence: number, checked: boolean) => {
-    if (!companyId || hasSubmitted || isOrderClosed) return;
+    if (!companyId || hasSubmitted || isOrderClosed) {
+      console.warn('Cannot update ungated status: missing companyId or order is closed/submitted');
+      return;
+    }
 
     // Find the product for this sequence
     const product = products.find(p => p.sequence === sequence);
-    if (!product) return;
+    if (!product) {
+      console.warn(`Product with sequence ${sequence} not found`);
+      return;
+    }
 
-    const { error } = await supabase
-      .from('order_products_company')
-      .upsert({
-        order_id: orderId,
-        sequence,
-        company_id: companyId,
-        ungated: checked,
-        quantity: product.quantity || 0,
-        ungated_min_amount: checked ? ungatedMinAmounts[sequence] : null,
-      }, {
-        onConflict: 'order_id, sequence, company_id'
-      });
+    try {
+      const { error } = await supabase
+        .from('order_products_company')
+        .upsert({
+          order_id: orderId,
+          sequence,
+          company_id: companyId,
+          ungated: checked,
+          quantity: product.quantity || 0,
+          ungated_min_amount: checked ? ungatedMinAmounts[sequence] : null,
+        }, {
+          onConflict: 'order_id, sequence, company_id'
+        });
 
-    if (error) {
-      console.error('Error updating ungated status:', error);
-      // Revert the optimistic update if there was an error
+      if (error) {
+        console.error('Error updating ungated status:', error);
+        alert('Failed to update ungated status. Please try again.');
+        setUngatedStatus(prev => ({ ...prev, [sequence]: !checked }));
+      }
+    } catch (err) {
+      console.error('Unexpected error updating ungated status:', err);
+      alert('An unexpected error occurred. Please try again.');
       setUngatedStatus(prev => ({ ...prev, [sequence]: !checked }));
     }
   }, [companyId, hasSubmitted, isOrderClosed, products, ungatedMinAmounts, orderId]);

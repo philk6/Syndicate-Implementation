@@ -14,6 +14,7 @@ export const userCache = new LRUCache<string, AuthUser>({
 const MIN_CHECK_INTERVAL = 5000;
 
 interface AuthUser {
+  user_id: string;
   email: string;
   role: 'user' | 'admin';
   firstname?: string;
@@ -58,7 +59,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const { data: userData, error: userError } = await supabase
         .from('users')
-        .select('email, role, firstname, lastname, company_id, tos_accepted')
+        .select('user_id, email, role, firstname, lastname, company_id, tos_accepted')
         .eq('email', email)
         .single();
       if (userError) {
