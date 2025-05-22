@@ -1042,9 +1042,9 @@ export default function AdminOrderManagementPage() {
       setFeedbackMessage({ type: 'success', text: 'Application updated successfully!' });
       setIsEditApplicationDialogOpen(false);
       await fetchCompanyApplications(orderId); // Re-fetch to update the table
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Error saving application changes:', err);
-      setFeedbackMessage({ type: 'error', text: err.message || 'An unexpected error occurred.' });
+      setFeedbackMessage({ type: 'error', text: err instanceof Error ? err.message : 'An unexpected error occurred.' });
     }
   };
 
@@ -1085,9 +1085,9 @@ export default function AdminOrderManagementPage() {
       setFeedbackMessage({ type: 'success', text: 'Application deleted successfully!' });
       setIsDeleteApplicationDialogOpen(false);
       await fetchCompanyApplications(orderId); // Re-fetch to update the table
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Error deleting application:', err);
-      setFeedbackMessage({ type: 'error', text: err.message || 'An unexpected error occurred during deletion.' });
+      setFeedbackMessage({ type: 'error', text: err instanceof Error ? err.message : 'An unexpected error occurred during deletion.' });
     }
   };
 
@@ -1104,9 +1104,9 @@ export default function AdminOrderManagementPage() {
       }
       setFeedbackMessage({ type: 'success', text: 'Company added to whitelist.' });
       fetchWhitelistedCompanies(orderId); // Re-fetch to update the list
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Error adding to whitelist:', err);
-      setFeedbackMessage({ type: 'error', text: err.message || 'An unexpected error occurred.' });
+      setFeedbackMessage({ type: 'error', text: err instanceof Error ? err.message : 'An unexpected error occurred.' });
     }
   };
 
@@ -1124,9 +1124,9 @@ export default function AdminOrderManagementPage() {
       }
       setFeedbackMessage({ type: 'success', text: 'Company removed from whitelist.' });
       fetchWhitelistedCompanies(orderId); // Re-fetch to update the list
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Error removing from whitelist:', err);
-      setFeedbackMessage({ type: 'error', text: err.message || 'An unexpected error occurred.' });
+      setFeedbackMessage({ type: 'error', text: err instanceof Error ? err.message : 'An unexpected error occurred.' });
     }
   };
 
@@ -1134,8 +1134,6 @@ export default function AdminOrderManagementPage() {
     !whitelistedCompanies.some(wc => wc.company_id === company.company_id) &&
     company.name.toLowerCase().includes(whitelistSearchTerm.toLowerCase())
   );
-
-  const productAsinMap = new Map(products.map(p => [p.sequence, p.asin]));
 
   if (authLoading || loading) {
     return <div className="min-h-screen bg-[#14130F] p-6 flex items-center justify-center"><p className="text-gray-400">Loading...</p></div>;

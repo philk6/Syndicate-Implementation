@@ -137,7 +137,7 @@ export default function AccountPage() {
     }
 
     setLoading(false);
-  }, [userInfo, password, user?.user_id]);
+  }, [userInfo, password, user?.user_id, user?.email]);
 
   // Memoized function to update company information
   const handleCompanyUpdate = useCallback(async () => {
@@ -222,7 +222,7 @@ export default function AccountPage() {
     }
 
     setLoading(false);
-  }, [userInfo, companyInfo]);
+  }, [userInfo, companyInfo, user?.user_id, user?.email]);
 
   // Memoized function to generate invite code
   const generateInviteCode = useCallback(async () => {
