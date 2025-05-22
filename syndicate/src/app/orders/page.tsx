@@ -18,20 +18,31 @@ import { Progress } from '@/components/ui/progress';
 
 interface Order {
   order_id: number;
-  leadtime: number;
+  leadtime: string;
   deadline: string;
   label_upload_deadline: string;
   order_statuses: { description: string };
+  is_public: boolean;
+  // order_whitelists is no longer needed in the client-side select for filtering,
+  // as RLS handles the join. It's good practice to only select what you need.
 }
 
 export default function OrdersPage() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loadingOrders, setLoadingOrders] = useState(true);
+  // userCompanyId is no longer strictly needed in state for the query,
+  // as RLS uses auth.uid() directly, but keeping it might be useful for other client-side logic.
+  // const [userCompanyId, setUserCompanyId] = useState<number | null>(null);
   const { isAuthenticated, loading } = useAuth();
   const router = useRouter();
 
-  // Memoized function to fetch orders
+  // Memoized function to fetch orders (RLS will handle accessibility)
   const fetchOrders = useCallback(async () => {
+    setLoadingOrders(true);
+
+    // The RLS policy on the 'orders' table will now filter based on 'is_public'
+    // and 'order_whitelists' for the authenticated user.
+    // So, we don't need complex .or() conditions here.
     const { data, error } = await supabase
       .from('orders')
       .select(`
@@ -39,10 +50,11 @@ export default function OrdersPage() {
         leadtime,
         deadline,
         label_upload_deadline,
-        order_statuses!order_status_id (description)
+        order_statuses!order_status_id (description),
+        is_public
       `)
-      .neq('order_status_id', 3) // Filter out order_status_id = 3
-      .not('order_statuses.description', 'eq', 'Draft') // Filter out 'Draft'
+      .neq('order_status_id', 3) // Filter out order_status_id = 3 (Draft)
+      .not('order_statuses.description', 'eq', 'Draft') // Filter out 'Draft' status explicitly
       .order('deadline', { ascending: true }) as { data: Order[] | null, error: PostgrestError | null };
 
     if (error) {
@@ -52,7 +64,7 @@ export default function OrdersPage() {
       setOrders(data || []);
     }
     setLoadingOrders(false);
-  }, []);
+  }, []); // No dependencies needed for fetchOrders now, as it relies on RLS
 
   useEffect(() => {
     if (loading) return;
@@ -62,8 +74,10 @@ export default function OrdersPage() {
       return;
     }
 
+    // No need to fetch userCompanyId explicitly for the query here anymore,
+    // as the RLS policy directly uses auth.uid() to determine company_id.
     fetchOrders();
-  }, [isAuthenticated, loading, router, fetchOrders]);
+  }, [isAuthenticated, loading, router, fetchOrders]); // fetchOrders is a dependency
 
   // Memoized function to handle order navigation
   const handleOrderClick = useCallback((orderId: number) => {
@@ -89,7 +103,7 @@ export default function OrdersPage() {
   }, []);
 
   // Memoize the render of orders table rows to prevent unnecessary re-renders
-  const orderRows = useMemo(() => 
+  const orderRows = useMemo(() =>
     orders.map((order) => (
       <TableRow
         key={order.order_id}
@@ -112,19 +126,25 @@ export default function OrdersPage() {
           <Progress value={calculateProgress(order.label_upload_deadline)} />
         </TableCell>
       </TableRow>
-    )), 
+    )),
   [orders, handleOrderClick, calculateProgress]);
 
-  if (!isAuthenticated) return null;
+  if (loading || loadingOrders) { // Combined loading states
+    return (
+      <div className="min-h-screen bg-[#14130F] p-6 flex items-center justify-center">
+        <p className="text-gray-400">Loading...</p>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) return null; // Should be handled by router.push('/login')
 
   return (
     <div className="min-h-screen bg-background p-6">
       <div className="mx-auto">
         <h1 className="text-3xl font-bold text-[#d1d5db] mb-6">Orders</h1>
         <div className="card max-w-full border-[#2b2b2b] border-solid border">
-          {loadingOrders ? (
-            <p className="text-gray-400 text-center">Loading orders...</p>
-          ) : orders.length === 0 ? (
+          {orders.length === 0 ? (
             <p className="text-gray-400 text-center">No orders found.</p>
           ) : (
             <Table>
