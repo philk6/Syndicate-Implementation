@@ -33,7 +33,7 @@ export default function OrdersPage() {
   // userCompanyId is no longer strictly needed in state for the query,
   // as RLS uses auth.uid() directly, but keeping it might be useful for other client-side logic.
   // const [userCompanyId, setUserCompanyId] = useState<number | null>(null);
-  const { isAuthenticated, loading, user } = useAuth();
+  const { isAuthenticated, loading } = useAuth();
   const router = useRouter();
 
   // Memoized function to fetch orders (RLS will handle accessibility)
