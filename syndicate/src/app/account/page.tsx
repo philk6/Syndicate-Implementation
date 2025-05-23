@@ -222,7 +222,7 @@ export default function AccountPage() {
     }
 
     setLoading(false);
-  }, [userInfo, companyInfo, user?.user_id, user?.email]);
+  }, [userInfo, companyInfo]);
 
   // Memoized function to generate invite code
   const generateInviteCode = useCallback(async () => {
