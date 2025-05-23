@@ -211,7 +211,7 @@ export default function AdminOrderManagementPage() {
   // State for Whitelist Management
   const [isWhitelistDialogOpen, setIsWhitelistDialogOpen] = useState(false);
   const [whitelistedCompanies, setWhitelistedCompanies] = useState<Company[]>([]);
-  const [allCompanies, setAllCompanies] = useState<Company[]>([]); // All companies in the system
+  const [allCompanies, setAllCompanies] = useState<Company[]>([]);
   const [whitelistSearchTerm, setWhitelistSearchTerm] = useState<string>('');
 
 
@@ -527,16 +527,49 @@ export default function AdminOrderManagementPage() {
   };
 
   const handleProductRemove = async (sequence: number) => {
-    const { error } = await supabase
-      .from('order_products')
-      .delete()
-      .eq('order_id', orderId)
-      .eq('sequence', sequence);
+    try {
+      // 1. Delete from order_products_company (depends on order_products)
+      const { error: opcError } = await supabase
+        .from('order_products_company')
+        .delete()
+        .eq('order_id', orderId)
+        .eq('sequence', sequence);
+      if (opcError) {
+        throw new Error(`Failed to delete order_products_company: ${opcError.message}`);
+      }
 
-    if (error) {
-      console.error('Error removing product:', error);
-      setFeedbackMessage({ type: 'error', text: 'Failed to remove product.' });
-    } else {
+      // 2. Delete from order_pre_assignments (depends on order_products)
+      const { error: preAssignmentsError } = await supabase
+        .from('order_pre_assignments')
+        .delete()
+        .eq('order_id', orderId)
+        .eq('sequence', sequence);
+      if (preAssignmentsError) {
+        throw new Error(`Failed to delete order_pre_assignments: ${preAssignmentsError.message}`);
+      }
+
+      // 3. Delete from allocation_results (depends on order_products)
+      const { error: allocationError } = await supabase
+        .from('allocation_results')
+        .delete()
+        .eq('order_id', orderId)
+        .eq('sequence', sequence);
+      if (allocationError) {
+        throw new Error(`Failed to delete allocation_results: ${allocationError.message}`);
+      }
+
+      // 4. Finally, delete from order_products (parent table, now safe to delete)
+      const { error: productError } = await supabase
+        .from('order_products')
+        .delete()
+        .eq('order_id', orderId)
+        .eq('sequence', sequence);
+
+      if (productError) {
+        throw new Error(`Failed to delete product: ${productError.message}`);
+      }
+
+      // If all deletions are successful, update the local state
       setProducts(prev => prev.filter(p => p.sequence !== sequence));
       setPreAssignments(prev => prev.filter(pa => pa.sequence !== sequence));
       setDiscounts(prev => prev.filter(d => d.sequence !== sequence));
@@ -544,6 +577,10 @@ export default function AdminOrderManagementPage() {
       setEditedAllocations(prev => prev.filter(a => !allocationResults.find(ar => ar.id === a.id && ar.sequence === sequence)));
       setHideAll(products.filter(p => p.sequence !== sequence).every(p => p.hide_price_and_quantity));
       setFeedbackMessage({ type: 'success', text: 'Product removed successfully.' });
+
+    } catch (err: unknown) {
+      console.error('Error removing product and its dependencies:', err);
+      setFeedbackMessage({ type: 'error', text: (err instanceof Error) ? err.message : 'An unexpected error occurred during product removal.' });
     }
   };
 
