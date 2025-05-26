@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@lib/auth';
 import { supabase } from '@lib/supabase/client';
+import { useNetworkResilience } from '@/hooks/useNetworkResilience';
 import { PostgrestError } from '@supabase/supabase-js';
 import {
   Table,
@@ -34,16 +35,19 @@ export default function OrdersPage() {
   // as RLS uses auth.uid() directly, but keeping it might be useful for other client-side logic.
   // const [userCompanyId, setUserCompanyId] = useState<number | null>(null);
   const { isAuthenticated, loading } = useAuth();
+  const { withNetworkResilience } = useNetworkResilience();
   const router = useRouter();
 
   // Memoized function to fetch orders (RLS will handle accessibility)
   const fetchOrders = useCallback(async () => {
     setLoadingOrders(true);
 
+    try {
+      await withNetworkResilience(async (signal) => {
     // The RLS policy on the 'orders' table will now filter based on 'is_public'
     // and 'order_whitelists' for the authenticated user.
     // So, we don't need complex .or() conditions here.
-    const { data, error } = await supabase
+        let query = supabase
       .from('orders')
       .select(`
         order_id,
@@ -55,16 +59,29 @@ export default function OrdersPage() {
       `)
       .neq('order_status_id', 3) // Filter out order_status_id = 3 (Draft)
       .not('order_statuses.description', 'eq', 'Draft') // Filter out 'Draft' status explicitly
-      .order('deadline', { ascending: true }) as { data: Order[] | null, error: PostgrestError | null };
+          .order('deadline', { ascending: true });
+
+        if (signal) {
+          query = query.abortSignal(signal);
+        }
+
+        const { data, error } = await query as { data: Order[] | null, error: PostgrestError | null };
 
     if (error) {
       console.error('Error fetching orders:', error);
+          throw error;
     } else {
       console.log('Fetched orders:', data);
       setOrders(data || []);
     }
+      }, { timeout: 10000, retries: 2 });
+    } catch (error) {
+      console.error('Failed to fetch orders after retries:', error);
+      // Don't clear orders on error, keep showing previous data
+    } finally {
     setLoadingOrders(false);
-  }, []); // No dependencies needed for fetchOrders now, as it relies on RLS
+    }
+  }, [withNetworkResilience]); // Include withNetworkResilience as dependency
 
   useEffect(() => {
     if (loading) return;

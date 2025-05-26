@@ -1,12 +1,12 @@
 'use client';
 
-import { useState, useEffect, useTransition, useCallback } from 'react';
+import { useState, useEffect, useTransition, useCallback, useMemo } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useAuth } from '@lib/auth';
 import { supabase } from '@lib/supabase/client';
 import { PostgrestError } from '@supabase/supabase-js';
 import Link from 'next/link';
-import { CalendarIcon, Download, Trash2, Plus, Percent, Save, Edit, XCircle, CheckCircle, ListPlus, Search } from 'lucide-react';
+import { CalendarIcon, Download, Trash2, Plus, Percent, Save, Edit, XCircle, CheckCircle, ListPlus, Search, TrendingUp, PackageSearch } from 'lucide-react';
 import {
   Table,
   TableBody,
@@ -213,6 +213,10 @@ export default function AdminOrderManagementPage() {
   const [whitelistedCompanies, setWhitelistedCompanies] = useState<Company[]>([]);
   const [allCompanies, setAllCompanies] = useState<Company[]>([]);
   const [whitelistSearchTerm, setWhitelistSearchTerm] = useState<string>('');
+
+  // State for new dialogs
+  const [isCompanyAllocationSummaryDialogOpen, setIsCompanyAllocationSummaryDialogOpen] = useState(false);
+  const [isUnallocatedProductsDialogOpen, setIsUnallocatedProductsDialogOpen] = useState(false);
 
 
   const fetchCompanyApplications = async (currentOrderId: number) => {
@@ -1003,7 +1007,7 @@ export default function AdminOrderManagementPage() {
     setEditMaxInvestment(application.max_investment);
 
     // Fetch ungated status and min amounts for all products for this specific company
-    const { data: ungatedProducts, error } = await supabase
+    const { data: ungatedProductsData, error } = await supabase
       .from('order_products_company')
       .select('sequence, ungated, ungated_min_amount')
       .eq('order_id', orderId)
@@ -1018,7 +1022,7 @@ export default function AdminOrderManagementPage() {
     const ungatedStatusMap: Record<number, boolean> = {};
     const ungatedMinAmountsMap: Record<number, number | null> = {};
 
-    ungatedProducts?.forEach(item => {
+    ungatedProductsData?.forEach(item => {
       ungatedStatusMap[item.sequence] = item.ungated;
       ungatedMinAmountsMap[item.sequence] = item.ungated_min_amount;
     });
@@ -1172,6 +1176,37 @@ export default function AdminOrderManagementPage() {
     company.name.toLowerCase().includes(whitelistSearchTerm.toLowerCase())
   );
 
+  // --- Company Allocation Summary Logic ---
+  const companyAllocationSummary = useMemo(() => {
+    return companyApplications.map(app => {
+      const allocatedToCompany = allocationResults.filter(ar => ar.company_id === app.company_id);
+      const totalAllocatedValue = allocatedToCompany.reduce((sum, ar) => {
+        const productPrice = ar.order_products?.price || 0;
+        return sum + (ar.quantity * productPrice);
+      }, 0);
+      return {
+        ...app,
+        totalAllocatedValue,
+      };
+    });
+  }, [companyApplications, allocationResults]);
+
+  // --- Unallocated Products Logic ---
+  const unallocatedProductsSummary = useMemo(() => {
+    return products.map(product => {
+      const totalAllocatedForProduct = allocationResults
+        .filter(ar => ar.sequence === product.sequence)
+        .reduce((sum, ar) => sum + ar.quantity, 0);
+      const unallocatedQuantity = product.quantity - totalAllocatedForProduct;
+      return {
+        ...product,
+        totalAllocatedForProduct,
+        unallocatedQuantity,
+      };
+    }).filter(p => p.unallocatedQuantity > 0);
+  }, [products, allocationResults]);
+
+
   if (authLoading || loading) {
     return <div className="min-h-screen bg-[#14130F] p-6 flex items-center justify-center"><p className="text-gray-400">Loading...</p></div>;
   }
@@ -1217,7 +1252,7 @@ export default function AdminOrderManagementPage() {
         )}
 
         <div className="rounded-lg p-6 bg-gradient-to-br from-[#212121] via-[#0f0f0f] to-[#2b2b2b] shadow-lg w-full mb-8">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             <div>
               <Label htmlFor="orderStatus" className="text-gray-300 font-medium block mb-2">Status</Label>
               <Select
@@ -1554,7 +1589,7 @@ export default function AdminOrderManagementPage() {
                 </TableHeader>
                 <TableBody>
                   {discounts.map((discount) => {
-                    const discountPercentage = discount.discounted_price
+                    const discountPercentageValue = discount.discounted_price
                       ? ((discount.original_price - discount.discounted_price) / discount.original_price * 100).toFixed(1)
                       : '0';
                     return (
@@ -1565,7 +1600,7 @@ export default function AdminOrderManagementPage() {
                         <TableCell className="p-4 align-middle text-gray-300">
                           {discount.discounted_price ? `$${discount.discounted_price.toFixed(2)}` : 'N/A'}
                         </TableCell>
-                        <TableCell className="p-4 align-middle text-gray-300">{discountPercentage}%</TableCell>
+                        <TableCell className="p-4 align-middle text-gray-300">{discountPercentageValue}%</TableCell>
                         <TableCell className="p-4 align-middle text-gray-300">
                           <Button
                             className="bg-[#c8aa64] hover:bg-[#9d864e] text-[#242424] mr-2"
@@ -1655,17 +1690,13 @@ export default function AdminOrderManagementPage() {
                           />
                         </TableCell>
                         <TableCell className="p-4 align-middle" style={{ overflowWrap: 'break-word' }}>
-                          {product.asin === 'NEW-ASIN' ? (
-                            <Input
-                              type="number"
-                              value={product.cost_price}
-                              onChange={(e) => handleProductUpdate(product.sequence, 'cost_price', e.target.value)}
-                              className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80]"
-                              disabled={!isOrderEditable}
-                            />
-                          ) : (
-                            <span className="text-gray-300">{product.cost_price}</span>
-                          )}
+                          <Input
+                            type="number"
+                            value={product.cost_price}
+                            onChange={(e) => handleProductUpdate(product.sequence, 'cost_price', e.target.value)}
+                            className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80]"
+                            disabled={!isOrderEditable}
+                          />
                         </TableCell>
                         <TableCell className="p-4 align-middle" style={{ overflowWrap: 'break-word' }}>
                           <Input
@@ -1896,13 +1927,27 @@ export default function AdminOrderManagementPage() {
           <div className="rounded-lg p-6 bg-gradient-to-br from-[#212121] via-[#0f0f0f] to-[#2b2b2b] shadow-lg w-full mt-8 overflow-x-auto">
             <div className="flex justify-between items-center mb-4">
               <h2 className="text-xl font-semibold text-gray-300">Allocation Results</h2>
-              <Button
-                onClick={handleDownloadAllocationResults}
-                className="bg-[#c8aa64] hover:bg-[#9d864e] text-[#242424]"
-              >
-                <Download className="mr-2 h-4 w-4" />
-                Download Allocation Results
-              </Button>
+              <div className="flex space-x-2">
+                <Button
+                  onClick={() => setIsCompanyAllocationSummaryDialogOpen(true)}
+                  className="bg-blue-600 hover:bg-blue-500 text-white"
+                >
+                  <TrendingUp className="mr-2 h-4 w-4" /> Company Summary
+                </Button>
+                <Button
+                  onClick={() => setIsUnallocatedProductsDialogOpen(true)}
+                  className="bg-yellow-500 hover:bg-yellow-400 text-black"
+                >
+                  <PackageSearch className="mr-2 h-4 w-4" /> Unallocated Products
+                </Button>
+                <Button
+                  onClick={handleDownloadAllocationResults}
+                  className="bg-[#c8aa64] hover:bg-[#9d864e] text-[#242424]"
+                >
+                  <Download className="mr-2 h-4 w-4" />
+                  Download Results
+                </Button>
+              </div>
             </div>
             <Table>
               <TableHeader>
@@ -1974,6 +2019,95 @@ export default function AdminOrderManagementPage() {
             </Table>
           </div>
         )}
+
+        {/* Company Allocation Summary Dialog */}
+        <Dialog open={isCompanyAllocationSummaryDialogOpen} onOpenChange={setIsCompanyAllocationSummaryDialogOpen}>
+          <DialogContent className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80] max-w-3xl">
+            <DialogHeader>
+              <DialogTitle>Company Allocation Summary for Order #{order?.order_id}</DialogTitle>
+            </DialogHeader>
+            <div className="max-h-[70vh] overflow-y-auto">
+              {companyAllocationSummary.length === 0 ? (
+                <p className="text-gray-400">No company applications or allocations found for this order.</p>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow className="hover:bg-transparent">
+                      <TableHead className="text-gray-300">Company Name</TableHead>
+                      <TableHead className="text-gray-300 text-right">Max Investment</TableHead>
+                      <TableHead className="text-gray-300 text-right">Total Allocated Value</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {companyAllocationSummary.map((summary) => (
+                      <TableRow key={summary.company_id} className="hover:bg-[#35353580] transition-colors border-[#6a6a6a80]">
+                        <TableCell className="text-gray-200">{summary.company_name}</TableCell>
+                        <TableCell className="text-gray-200 text-right">${summary.max_investment.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
+                        <TableCell className="text-gray-200 text-right">${summary.totalAllocatedValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </div>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => setIsCompanyAllocationSummaryDialogOpen(false)}
+                className="bg-gray-700 hover:bg-gray-600 text-gray-200"
+              >
+                Close
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Unallocated Products Dialog */}
+        <Dialog open={isUnallocatedProductsDialogOpen} onOpenChange={setIsUnallocatedProductsDialogOpen}>
+          <DialogContent className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80] max-w-3xl">
+            <DialogHeader>
+              <DialogTitle>Unallocated Products for Order #{order?.order_id}</DialogTitle>
+            </DialogHeader>
+            <div className="max-h-[70vh] overflow-y-auto">
+              {unallocatedProductsSummary.length === 0 ? (
+                <p className="text-gray-400">All products have been fully allocated or no products in this order.</p>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow className="hover:bg-transparent">
+                      <TableHead className="text-gray-300">ASIN</TableHead>
+                      <TableHead className="text-gray-300">Description</TableHead>
+                      <TableHead className="text-gray-300 text-right">Total Quantity</TableHead>
+                      <TableHead className="text-gray-300 text-right">Allocated Quantity</TableHead>
+                      <TableHead className="text-gray-300 text-right">Unallocated Quantity</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {unallocatedProductsSummary.map((product) => (
+                      <TableRow key={product.sequence} className="hover:bg-[#35353580] transition-colors border-[#6a6a6a80]">
+                        <TableCell className="text-gray-200">{product.asin}</TableCell>
+                        <TableCell className="text-gray-200">{product.description || 'N/A'}</TableCell>
+                        <TableCell className="text-gray-200 text-right">{product.quantity}</TableCell>
+                        <TableCell className="text-gray-200 text-right">{product.totalAllocatedForProduct}</TableCell>
+                        <TableCell className="text-red-400 text-right font-semibold">{product.unallocatedQuantity}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </div>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => setIsUnallocatedProductsDialogOpen(false)}
+                className="bg-gray-700 hover:bg-gray-600 text-gray-200"
+              >
+                Close
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
       </div>
     </div>
   );

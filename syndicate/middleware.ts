@@ -53,11 +53,14 @@ export async function middleware(req: NextRequest) {
 
   // Check admin access for /admin routes
   if (pathname.startsWith('/admin')) {
+    console.log('Middleware: Checking admin access for user:', session.user.id);
     const { data: userData, error: userError } = await supabase
       .from('users')
       .select('role')
       .eq('user_id', session.user.id)
       .single();
+
+    console.log('Middleware: User role check result:', { userData, userError, userId: session.user.id });
 
     if (userError || !userData || userData.role !== 'admin') {
       console.warn('Admin access denied:', { user: session.user.id, error: userError?.message, role: userData?.role });
@@ -65,6 +68,8 @@ export async function middleware(req: NextRequest) {
       url.pathname = '/unauthorized';
       return NextResponse.redirect(url);
     }
+    
+    console.log('Middleware: Admin access granted for user:', session.user.id);
   }
 
   // For non-exempt paths, check ToS acceptance
