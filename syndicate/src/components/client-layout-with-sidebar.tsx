@@ -2,6 +2,7 @@
 
 import { ReactNode, useEffect } from 'react';
 import { usePathname } from 'next/navigation';
+import { useAuth } from '@lib/auth';
 import { AppSidebar } from '@/components/app-sidebar';
 import {
   SidebarInset,
@@ -12,12 +13,18 @@ import { Separator } from "@/components/ui/separator";
 
 export function ClientLayoutWithConditionalSidebar({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const { isTabActive } = useAuth();
   const isAuthPage = pathname === '/login' || pathname === '/signup';
 
   // Listen for route changes to force re-rendering
   useEffect(() => {
     console.log('Route changed to:', pathname);
   }, [pathname]);
+
+  // Log tab activity for debugging
+  useEffect(() => {
+    console.log('Tab active state changed:', isTabActive);
+  }, [isTabActive]);
 
   // For login and signup pages, render without sidebar
   if (isAuthPage) {

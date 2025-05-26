@@ -45,14 +45,84 @@ const data = {
 };
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
-  const { isAuthenticated, user } = useAuth();
-  const [userData, setUserData] = useState({ name: 'User', email: '', avatar: '/syndicate_logo.jpeg' });
+  const { isAuthenticated, user, logout, session } = useAuth();
+  const [userData, setUserData] = useState({ name: 'Loading...', email: '', avatar: '/syndicate_logo.jpeg' });
+  const [userDataLoaded, setUserDataLoaded] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
 
+  // Timeout to force fallback if user data doesn't load
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    const timeout = setTimeout(() => {
+      if (!userDataLoaded) {
+        console.warn('User data failed to load within timeout, using fallback');
+        // Use fallback based on available data
+        let fallbackName = 'User';
+        let fallbackEmail = '';
+
+        if (user?.email) {
+          fallbackName = user.email.split('@')[0];
+          fallbackEmail = user.email;
+        } else if (session?.user?.email) {
+          fallbackName = session.user.email.split('@')[0];
+          fallbackEmail = session.user.email;
+        }
+
+        const fallbackUserData = {
+          name: fallbackName.charAt(0).toUpperCase() + fallbackName.slice(1).toLowerCase(),
+          email: fallbackEmail,
+          avatar: '/syndicate_logo.jpeg',
+        };
+        setUserData(fallbackUserData);
+        setUserDataLoaded(true);
+      }
+    }, 3000); // 3 second timeout
+
+    return () => clearTimeout(timeout);
+  }, [isAuthenticated, user, session, userDataLoaded]);
+
   useEffect(() => {
     async function fetchUserData() {
-      if (!isAuthenticated || !user) return;
+      console.log('Sidebar fetchUserData called:', { isAuthenticated, user, session });
+      
+      if (!isAuthenticated) {
+        console.log('Not authenticated, setting userDataLoaded to false');
+        setUserDataLoaded(false);
+        return;
+      }
+
+      // If we have session but no user yet, use session data as fallback
+      if (!user && session?.user) {
+        console.log('No user object but have session, using session data');
+        const sessionEmail = session.user.email || '';
+        const fallbackName = sessionEmail.split('@')[0] || 'User';
+        
+        setUserData({
+          name: fallbackName.charAt(0).toUpperCase() + fallbackName.slice(1).toLowerCase(),
+          email: sessionEmail,
+          avatar: '/syndicate_logo.jpeg',
+        });
+        setUserDataLoaded(true);
+        return;
+      }
+
+      if (!user) {
+        console.log('No user and no session, waiting...');
+        setUserDataLoaded(false);
+        return;
+      }
+
+      // Check if user object has essential data
+      if (!user.user_id) {
+        console.warn('Missing user_id in auth context:', { user_id: user.user_id, email: user.email });
+        console.warn('Forcing logout due to missing user_id');
+        await logout();
+        return;
+      }
+
+      console.log('User data looks good, fetching profile for:', user.user_id);
 
       try {
         const { data: profile, error: profileError } = await supabase
@@ -61,11 +131,16 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           .eq('user_id', user.user_id)
           .single();
 
+        console.log('Profile fetch result:', { profile, profileError });
+
         if (profileError) {
           if (profileError.code === 'PGRST116') {
             console.warn('No profile found for user:', user.user_id);
+            // Don't logout for missing profile, just use fallback name
           } else {
             console.error('Error fetching profile:', profileError);
+            console.warn('Profile fetch error, but continuing with fallback name');
+            // Don't force logout, just use fallback
           }
         }
 
@@ -79,23 +154,40 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           const firstName = formatName(profile.firstname);
           const lastName = formatName(profile.lastname);
           fullName = `${firstName} ${lastName}`.trim();
+          console.log('Using profile name:', fullName);
         } else {
-          fullName = user.user_id?.split('@')[0] || 'User';
+          // Use email as fallback if no name is available
+          fullName = user.email?.split('@')[0] || 'User';
           fullName = formatName(fullName);
+          console.log('Using fallback name:', fullName);
         }
 
-        setUserData({
+        const finalUserData = {
           name: fullName,
-          email: user.user_id || '',
+          email: user.email || user.user_id || '',
           avatar: '/syndicate_logo.jpeg',
-        });
+        };
+
+        console.log('Setting user data:', finalUserData);
+        setUserData(finalUserData);
+        setUserDataLoaded(true);
+        console.log('User data loaded successfully');
       } catch (error) {
-        console.error('Error in fetchUserData:', error);
+        console.error('Exception in fetchUserData:', error);
+        // Don't force logout on exceptions, use fallback
+        console.log('Using fallback due to exception');
+        const fallbackUserData = {
+          name: user.email?.split('@')[0] || 'User',
+          email: user.email || user.user_id || '',
+          avatar: '/syndicate_logo.jpeg',
+        };
+        setUserData(fallbackUserData);
+        setUserDataLoaded(true);
       }
     }
 
     fetchUserData();
-  }, [isAuthenticated, user]);
+  }, [isAuthenticated, user, logout, session]);
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -103,6 +195,32 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   };
 
   if (!isAuthenticated) return null;
+
+  // Show loading state if user data is not yet loaded
+  if (!userDataLoaded && userData.name === 'Loading...') {
+    return (
+      <Sidebar {...props}>
+        <SidebarHeader>
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton size="lg" asChild>
+                <div className="flex flex-col gap-0.5 leading-none">
+                  <span className="text-[#c8aa64] font-bold">The Syndicate - Buyers Portal</span>
+                  <span className="text-[#bfbfbf]">Loading user data...</span>
+                </div>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarHeader>
+        <SidebarContent>
+          <div className="p-4 text-center text-gray-400">
+            Loading...
+          </div>
+        </SidebarContent>
+        <SidebarRail />
+      </Sidebar>
+    );
+  }
 
   return (
     <Sidebar {...props}>

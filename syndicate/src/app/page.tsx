@@ -17,8 +17,8 @@ export default function Home() {
 
   return (
     <div className="p-6 max-w-4xl mx-auto">
-      <h1 className="text-3xl font-bold text-blue-600 mb-4">Group Buy SaaS</h1>
-      <p>Redirecting...</p>
+      
+      
     </div>
   );
 }

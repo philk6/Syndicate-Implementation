@@ -152,15 +152,29 @@ export default function UserDashboardPage() {
     async function fetchDashboardData() {
       setLoading(true);
 
+      // Ensure we have a valid user_id before making queries
+      if (!user?.user_id) {
+        console.error('No user_id available, waiting for auth to complete');
+        setLoading(false);
+        return;
+      }
+
       // Fetch user's company_id
       const { data: userData, error: userError } = await supabase
         .from('users')
         .select('company_id')
-        .eq('user_id', user?.user_id)
+        .eq('user_id', user.user_id)
         .single();
 
       if (userError || !userData) {
         console.error('Error fetching user data:', userError?.message);
+        // If this is a UUID error, it means user_id is malformed
+        if (userError?.message?.includes('invalid input syntax for type uuid')) {
+          console.error('Invalid user_id format:', user.user_id);
+          // Force a re-authentication
+          router.push('/login');
+          return;
+        }
         setLoading(false);
         return;
       }
@@ -240,6 +254,12 @@ export default function UserDashboardPage() {
       await fetchChartData(companyId, timeFrame);
 
       setLoading(false);
+    }
+
+    // Only fetch data if we have a valid user with user_id
+    if (!user?.user_id) {
+      console.log('Waiting for user data to be available...');
+      return;
     }
 
     fetchDashboardData();
