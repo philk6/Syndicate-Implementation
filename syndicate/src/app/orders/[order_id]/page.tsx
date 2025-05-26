@@ -55,8 +55,7 @@ export default function OrderDetailPage() {
 
     // Ensure user is valid before making API calls
     if (!user?.user_id) {
-      console.error('No user_id available. Redirecting to login.');
-      router.push('/login');
+      console.error('No user_id available, waiting for auth to complete...');
       setLoading(false);
       return;
     }
@@ -173,7 +172,7 @@ export default function OrderDetailPage() {
 
     setOrder(orderData);
     setLoading(false);
-  }, [orderId, user?.user_id, router]); // Only depend on the essential values
+  }, [orderId, user?.user_id]); // Only depend on the essential values
 
   useEffect(() => {
     if (authLoading) return;
@@ -183,8 +182,14 @@ export default function OrderDetailPage() {
       return;
     }
 
+    // Only fetch data if we have a user with user_id
+    if (!user?.user_id) {
+      console.log('Waiting for user data to be available...');
+      return;
+    }
+
     fetchData();
-  }, [isAuthenticated, authLoading, router, fetchData]);
+  }, [isAuthenticated, authLoading, router, fetchData, user?.user_id]);
 
   // Memoized function to update ungated status
   const updateUngatedStatus = useCallback(async (sequence: number, checked: boolean) => {
