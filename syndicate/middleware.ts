@@ -7,7 +7,7 @@ export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
   // Define public paths that don't require authentication or ToS
-  const publicPaths = ['/login', '/signup', '/forgot-password', '/confirm'];
+  const publicPaths = ['/login', '/signup', '/forgot-password', '/reset-password', '/confirm'];
   const isPublicPath = publicPaths.some(path => pathname === path || pathname.startsWith(`${path}/`));
 
   // Define paths exempt from ToS check (but still require authentication)
@@ -34,6 +34,15 @@ export async function middleware(req: NextRequest) {
 
   // Handle public paths
   if (isPublicPath) {
+    // For reset-password, allow access even without session if it has recovery tokens
+    if (pathname === '/reset-password') {
+      const url = new URL(req.url);
+      const hasRecoveryToken = url.searchParams.get('type') === 'recovery' || 
+                              url.hash.includes('type=recovery');
+      if (hasRecoveryToken) {
+        return NextResponse.next();
+      }
+    }
     return NextResponse.next();
   }
 

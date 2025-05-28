@@ -11,10 +11,19 @@ import {
 } from "@/components/ui/sidebar";
 import { Separator } from "@/components/ui/separator";
 
+const PUBLIC_AUTH_ROUTES = [
+  '/login',
+  '/signup',
+  '/reset-password',
+  '/forgot-password',
+  '/confirm' 
+  // Add any other public auth routes here, e.g., /verify-email, /invite
+];
+
 export function ClientLayoutWithConditionalSidebar({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const { isTabActive } = useAuth();
-  const isAuthPage = pathname === '/login' || pathname === '/signup';
+  const isAuthPage = PUBLIC_AUTH_ROUTES.includes(pathname || '/');
 
   // Listen for route changes to force re-rendering
   useEffect(() => {

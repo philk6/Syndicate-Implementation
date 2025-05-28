@@ -12,7 +12,7 @@ export default function TosWrapper({ children }: { children: ReactNode }) {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [hasCheckedTos, setHasCheckedTos] = useState(false);
 
-  const publicPaths = ['/login', '/signup', '/forgot-password', '/confirm'];
+  const publicPaths = ['/login', '/signup', '/forgot-password', '/reset-password', '/confirm'];
   const tosExemptPaths = ['/dashboard', '/account'];
   const isPublicPath = publicPaths.some(path => pathname === path || pathname.startsWith(`${path}/`));
   const isTosExemptPath = tosExemptPaths.some(path => pathname === path || pathname.startsWith(`${path}/`));
