@@ -718,13 +718,6 @@ export default function AdminOrderManagementPage() {
     }
   };
 
-  const openPreAssignDialog = (sequence: number) => {
-    setSelectedSequence(sequence);
-    setDialogCompanyId('');
-    setDialogQuantity('');
-    setIsPreAssignDialogOpen(true);
-  };
-
   const handleCalculateAllocation = () => {
     setFeedbackMessage(null);
     startTransition(async () => {
@@ -1282,7 +1275,7 @@ export default function AdminOrderManagementPage() {
       if (detailedMessage === 'Failed to add new allocation.' && typeof error === 'object' && error !== null && Object.keys(error).length > 0) {
         try {
           detailedMessage += ' Raw error: ' + JSON.stringify(error);
-        } catch (e) {
+        } catch {
           detailedMessage += ' Raw error: (Could not stringify error object)';
         }
       } else if (detailedMessage === 'Failed to add new allocation.') {
