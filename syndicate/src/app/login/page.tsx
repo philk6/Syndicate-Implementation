@@ -45,6 +45,10 @@ function LoginContent() {
     setTimeout(() => router.push('/dashboard'), 1000);
   };
 
+  const handleForgotPassword = () => {
+    router.push('/forgot-password');
+  };
+
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-[#060606] p-4">
       <Image src="/syndicate_logo.jpeg" alt="Logo" width={519} height={519} className="w-32 h-auto mb-4" />
@@ -74,11 +78,13 @@ function LoginContent() {
               />
               <span>Remember Me</span>
             </label>
-            <p>
-              <a href="/signup" className="text-[#c8aa64] hover:text-[#c7b17f] font-bold">
-                Forgot Password?
-              </a>
-            </p>
+            <button
+              type="button"
+              onClick={handleForgotPassword}
+              className="text-[#c8aa64] hover:text-[#c7b17f] font-bold cursor-pointer underline"
+            >
+              Forgot Password?
+            </button>
           </div>
           <button onClick={handleLogin} className="button">
             Login
