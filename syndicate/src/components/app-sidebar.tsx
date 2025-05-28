@@ -196,32 +196,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 
   if (!isAuthenticated) return null;
 
-  // Show loading state if user data is not yet loaded
-  if (!userDataLoaded && userData.name === 'Loading...') {
-    return (
-      <Sidebar {...props}>
-        <SidebarHeader>
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <SidebarMenuButton size="lg" asChild>
-                <div className="flex flex-col gap-0.5 leading-none">
-                  <span className="text-[#c8aa64] font-bold">The Syndicate - Buyers Portal</span>
-                  <span className="text-[#bfbfbf]">Loading user data...</span>
-                </div>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          </SidebarMenu>
-        </SidebarHeader>
-        <SidebarContent>
-          <div className="p-4 text-center text-gray-400">
-            Loading...
-          </div>
-        </SidebarContent>
-        <SidebarRail />
-      </Sidebar>
-    );
-  }
-
   return (
     <Sidebar {...props}>
       <SidebarHeader>
@@ -251,8 +225,8 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                 <SidebarMenu>
                   {item.items.map((subItem) => (
                     <SidebarMenuItem key={subItem.title}>
-                      <SidebarMenuButton asChild isActive={pathname === subItem.url}>
-                        <SidebarLink href={subItem.url} isActive={pathname === subItem.url}>
+                      <SidebarMenuButton asChild isActive={pathname.startsWith(subItem.url)}>
+                        <SidebarLink href={subItem.url} isActive={pathname.startsWith(subItem.url)}>
                           {subItem.icon && <subItem.icon className="mr-2 h-4 w-4" />}
                           <span>{subItem.title}</span>
                         </SidebarLink>

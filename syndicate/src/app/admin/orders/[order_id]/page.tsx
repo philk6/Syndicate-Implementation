@@ -37,7 +37,7 @@ interface Order {
   order_statuses: { description: string };
   total_amount?: number;
   hide_allocations: boolean;
-  is_public: boolean; // Added is_public
+  is_public: boolean;
 }
 
 interface OrderProduct {
@@ -93,7 +93,6 @@ interface AllocationResult {
   sequence: number;
   company_id: number;
   quantity: number;
-  needs_review: boolean;
   created_at: string;
   company: { name: string } | null;
   order_products: { asin: string; price: number; cost_price: number; description: string | null } | null;
@@ -102,7 +101,6 @@ interface AllocationResult {
 interface EditedAllocation {
   id: number;
   quantity: number;
-  needs_review: boolean;
 }
 
 interface Discount {
@@ -121,7 +119,7 @@ interface OrderProductCompany {
   company_id: number;
   ungated: boolean;
   ungated_min_amount: number | null;
-  quantity: number; // Added quantity to match upsert structure
+  quantity: number;
 }
 
 // Reusable DatePicker Component
@@ -217,6 +215,12 @@ export default function AdminOrderManagementPage() {
   // State for new dialogs
   const [isCompanyAllocationSummaryDialogOpen, setIsCompanyAllocationSummaryDialogOpen] = useState(false);
   const [isUnallocatedProductsDialogOpen, setIsUnallocatedProductsDialogOpen] = useState(false);
+
+  // State for Add New Allocation Dialog
+  const [isAddAllocationDialogOpen, setIsAddAllocationDialogOpen] = useState(false);
+  const [newAllocationSequence, setNewAllocationSequence] = useState<string>('');
+  const [newAllocationCompanyId, setNewAllocationCompanyId] = useState<string>('');
+  const [newAllocationQuantity, setNewAllocationQuantity] = useState<string>('');
 
 
   const fetchCompanyApplications = async (currentOrderId: number) => {
@@ -336,7 +340,7 @@ export default function AdminOrderManagementPage() {
         if (companyError) {
           console.error('Error fetching companies:', companyError);
         }
-        setAllCompanies(companyData || []); // Set all companies here
+        setAllCompanies(companyData || []);
 
         const { data: preAssignmentData, error: preAssignmentError } = await supabase
           .from('order_pre_assignments')
@@ -348,7 +352,7 @@ export default function AdminOrderManagementPage() {
         }
 
         await fetchCompanyApplications(orderId);
-        await fetchWhitelistedCompanies(orderId); // Fetch whitelisted companies
+        await fetchWhitelistedCompanies(orderId);
 
         const { data: allocationData, error: allocationError } = await supabase
           .from('allocation_results')
@@ -378,15 +382,15 @@ export default function AdminOrderManagementPage() {
           setDiscounts(
             discountData?.map(d => {
               const company = Array.isArray(d.company) ? d.company[0] : d.company;
-              const orderProducts = Array.isArray(d.order_products) ? d.order_products[0] : d.order_products;
+              const orderProductsData = Array.isArray(d.order_products) ? d.order_products[0] : d.order_products;
 
               return {
                 order_id: d.order_id,
                 sequence: d.sequence,
                 company_id: d.company_id,
                 company_name: company?.name || 'Unknown',
-                asin: orderProducts?.asin || 'Unknown',
-                original_price: orderProducts?.price || 0,
+                asin: orderProductsData?.asin || 'Unknown',
+                original_price: orderProductsData?.price || 0,
                 discounted_price: d.discounted_price,
               };
             }) || []
@@ -396,7 +400,7 @@ export default function AdminOrderManagementPage() {
         setOrder(orderData);
         setProducts(productData || []);
         setStatuses(statusData || []);
-        setCompanies(companyData || []); // All companies
+        setCompanies(companyData || []);
         setPreAssignments(
           preAssignmentData?.map(pa => ({
             ...pa,
@@ -409,7 +413,6 @@ export default function AdminOrderManagementPage() {
           (allocationData || []).map(a => ({
             id: a.id,
             quantity: a.quantity,
-            needs_review: a.needs_review,
           }))
         );
         setHideAll(productData?.every(p => p.hide_price_and_quantity) || false);
@@ -532,7 +535,6 @@ export default function AdminOrderManagementPage() {
 
   const handleProductRemove = async (sequence: number) => {
     try {
-      // 1. Delete from order_products_company (depends on order_products)
       const { error: opcError } = await supabase
         .from('order_products_company')
         .delete()
@@ -542,7 +544,6 @@ export default function AdminOrderManagementPage() {
         throw new Error(`Failed to delete order_products_company: ${opcError.message}`);
       }
 
-      // 2. Delete from order_pre_assignments (depends on order_products)
       const { error: preAssignmentsError } = await supabase
         .from('order_pre_assignments')
         .delete()
@@ -552,7 +553,6 @@ export default function AdminOrderManagementPage() {
         throw new Error(`Failed to delete order_pre_assignments: ${preAssignmentsError.message}`);
       }
 
-      // 3. Delete from allocation_results (depends on order_products)
       const { error: allocationError } = await supabase
         .from('allocation_results')
         .delete()
@@ -562,7 +562,6 @@ export default function AdminOrderManagementPage() {
         throw new Error(`Failed to delete allocation_results: ${allocationError.message}`);
       }
 
-      // 4. Finally, delete from order_products (parent table, now safe to delete)
       const { error: productError } = await supabase
         .from('order_products')
         .delete()
@@ -573,7 +572,6 @@ export default function AdminOrderManagementPage() {
         throw new Error(`Failed to delete product: ${productError.message}`);
       }
 
-      // If all deletions are successful, update the local state
       setProducts(prev => prev.filter(p => p.sequence !== sequence));
       setPreAssignments(prev => prev.filter(pa => pa.sequence !== sequence));
       setDiscounts(prev => prev.filter(d => d.sequence !== sequence));
@@ -647,7 +645,6 @@ export default function AdminOrderManagementPage() {
   const handleOrderUpdate = (field: 'leadtime' | 'deadline' | 'label_upload_deadline', value: string | number) => {
     const updatedValue = field === 'leadtime' ? parseInt(value as string) : value;
     setOrder(prev => prev ? { ...prev, [field]: updatedValue } : null);
-
     debouncedOrderUpdate(field, value);
   };
 
@@ -744,7 +741,6 @@ export default function AdminOrderManagementPage() {
           (allocationData || []).map(a => ({
             id: a.id,
             quantity: a.quantity,
-            needs_review: a.needs_review,
           }))
         );
         router.refresh();
@@ -822,8 +818,8 @@ export default function AdminOrderManagementPage() {
         sequence,
         company_id,
         discounted_price,
-        ungated: false, // Default to false as ungated status is managed elsewhere
-        quantity: 0, // Default to 0 as quantity is managed elsewhere
+        ungated: false,
+        quantity: 0,
       }, {
         onConflict: 'order_id,sequence,company_id',
       });
@@ -931,7 +927,7 @@ export default function AdminOrderManagementPage() {
     setFeedbackMessage({ type: 'success', text: 'Discount deleted successfully.' });
   };
 
-  const handleAllocationChange = (id: number, field: keyof EditedAllocation, value: number | boolean) => {
+  const handleAllocationChange = (id: number, field: keyof EditedAllocation, value: number) => {
     setEditedAllocations(prev =>
       prev.map(a =>
         a.id === id
@@ -949,16 +945,20 @@ export default function AdminOrderManagementPage() {
     const product = products.find(p => p.sequence === result?.sequence);
     if (!product || !result) return;
 
-    const totalAllocated = editedAllocations
-      .filter(a => a.id !== id && allocationResults.find(ar => ar.id === a.id)?.sequence === result.sequence)
-      .reduce((sum, a) => sum + a.quantity, 0);
-    const newTotal = totalAllocated + allocation.quantity;
+    const totalAllocatedForThisProductExcludingCurrent = allocationResults
+      .filter(ar => ar.sequence === result.sequence && ar.id !== id)
+      .reduce((sum, ar) => sum + ar.quantity, 0);
 
-    if (newTotal > product.quantity) {
+    const newTotalForProduct = totalAllocatedForThisProductExcludingCurrent + allocation.quantity;
+
+
+    if (newTotalForProduct > product.quantity) {
       setFeedbackMessage({
         type: 'error',
-        text: `Total allocated quantity (${newTotal}) for ASIN ${product.asin} exceeds available quantity (${product.quantity}).`,
+        text: `Total allocated quantity (${newTotalForProduct}) for ASIN ${product.asin} exceeds available quantity (${product.quantity}).`,
       });
+      // Optionally revert the change in editedAllocations for UX
+      // setEditedAllocations(prev => prev.map(ea => ea.id === id ? { ...ea, quantity: result.quantity } : ea));
       return;
     }
 
@@ -966,7 +966,6 @@ export default function AdminOrderManagementPage() {
       .from('allocation_results')
       .update({
         quantity: allocation.quantity,
-        needs_review: allocation.needs_review,
       })
       .eq('id', id);
 
@@ -977,7 +976,7 @@ export default function AdminOrderManagementPage() {
       setAllocationResults(prev =>
         prev.map(a =>
           a.id === id
-            ? { ...a, quantity: allocation.quantity, needs_review: allocation.needs_review }
+            ? { ...a, quantity: allocation.quantity }
             : a
         )
       );
@@ -1001,12 +1000,10 @@ export default function AdminOrderManagementPage() {
     }
   };
 
-  // --- Edit Application Functions ---
   const handleEditApplicationClick = async (application: CompanyApplication) => {
     setEditingApplication(application);
     setEditMaxInvestment(application.max_investment);
 
-    // Fetch ungated status and min amounts for all products for this specific company
     const { data: ungatedProductsData, error } = await supabase
       .from('order_products_company')
       .select('sequence, ungated, ungated_min_amount')
@@ -1029,7 +1026,7 @@ export default function AdminOrderManagementPage() {
 
     setEditProductsUngatedStatus(ungatedStatusMap);
     setEditProductsUngatedMinAmounts(ungatedMinAmountsMap);
-    setEditProductsData(products); // Use the already fetched products for the order
+    setEditProductsData(products);
     setIsEditApplicationDialogOpen(true);
   };
 
@@ -1047,11 +1044,8 @@ export default function AdminOrderManagementPage() {
 
   const handleSaveApplicationChanges = async () => {
     if (!editingApplication) return;
-
     setFeedbackMessage(null);
-
     try {
-      // Update max_investment in order_company
       const { error: maxInvestmentError } = await supabase
         .from('order_company')
         .update({ max_investment: editMaxInvestment })
@@ -1062,14 +1056,13 @@ export default function AdminOrderManagementPage() {
         throw new Error('Failed to update max investment: ' + maxInvestmentError.message);
       }
 
-      // Prepare data for upserting order_products_company
       const productCompanyUpdates: OrderProductCompany[] = products.map(product => ({
         order_id: orderId,
         sequence: product.sequence,
         company_id: editingApplication.company_id,
         ungated: editProductsUngatedStatus[product.sequence] || false,
         ungated_min_amount: editProductsUngatedStatus[product.sequence] ? editProductsUngatedMinAmounts[product.sequence] : null,
-        quantity: product.quantity, // Ensure quantity is included for upsert
+        quantity: product.quantity,
       }));
 
       const { error: productsCompanyError } = await supabase
@@ -1082,14 +1075,13 @@ export default function AdminOrderManagementPage() {
 
       setFeedbackMessage({ type: 'success', text: 'Application updated successfully!' });
       setIsEditApplicationDialogOpen(false);
-      await fetchCompanyApplications(orderId); // Re-fetch to update the table
+      await fetchCompanyApplications(orderId);
     } catch (err: unknown) {
       console.error('Error saving application changes:', err);
       setFeedbackMessage({ type: 'error', text: err instanceof Error ? err.message : 'An unexpected error occurred.' });
     }
   };
 
-  // --- Delete Application Functions ---
   const handleDeleteApplicationClick = (application: CompanyApplication) => {
     setDeletingApplication(application);
     setIsDeleteApplicationDialogOpen(true);
@@ -1097,11 +1089,8 @@ export default function AdminOrderManagementPage() {
 
   const handleConfirmDeleteApplication = async () => {
     if (!deletingApplication) return;
-
     setFeedbackMessage(null);
-
     try {
-      // Delete from order_products_company first (child table)
       const { error: opcError } = await supabase
         .from('order_products_company')
         .delete()
@@ -1112,7 +1101,6 @@ export default function AdminOrderManagementPage() {
         throw new Error('Failed to delete product ungated data: ' + opcError.message);
       }
 
-      // Then delete from order_company (parent table)
       const { error: ocError } = await supabase
         .from('order_company')
         .delete()
@@ -1125,14 +1113,13 @@ export default function AdminOrderManagementPage() {
 
       setFeedbackMessage({ type: 'success', text: 'Application deleted successfully!' });
       setIsDeleteApplicationDialogOpen(false);
-      await fetchCompanyApplications(orderId); // Re-fetch to update the table
+      await fetchCompanyApplications(orderId);
     } catch (err: unknown) {
       console.error('Error deleting application:', err);
       setFeedbackMessage({ type: 'error', text: err instanceof Error ? err.message : 'An unexpected error occurred during deletion.' });
     }
   };
 
-  // --- Whitelist Management Functions ---
   const handleAddCompanyToWhitelist = async (companyId: number) => {
     setFeedbackMessage(null);
     try {
@@ -1144,7 +1131,7 @@ export default function AdminOrderManagementPage() {
         throw new Error('Failed to add company to whitelist: ' + error.message);
       }
       setFeedbackMessage({ type: 'success', text: 'Company added to whitelist.' });
-      fetchWhitelistedCompanies(orderId); // Re-fetch to update the list
+      fetchWhitelistedCompanies(orderId);
     } catch (err: unknown) {
       console.error('Error adding to whitelist:', err);
       setFeedbackMessage({ type: 'error', text: err instanceof Error ? err.message : 'An unexpected error occurred.' });
@@ -1164,7 +1151,7 @@ export default function AdminOrderManagementPage() {
         throw new Error('Failed to remove company from whitelist: ' + error.message);
       }
       setFeedbackMessage({ type: 'success', text: 'Company removed from whitelist.' });
-      fetchWhitelistedCompanies(orderId); // Re-fetch to update the list
+      fetchWhitelistedCompanies(orderId);
     } catch (err: unknown) {
       console.error('Error removing from whitelist:', err);
       setFeedbackMessage({ type: 'error', text: err instanceof Error ? err.message : 'An unexpected error occurred.' });
@@ -1176,7 +1163,6 @@ export default function AdminOrderManagementPage() {
     company.name.toLowerCase().includes(whitelistSearchTerm.toLowerCase())
   );
 
-  // --- Company Allocation Summary Logic ---
   const companyAllocationSummary = useMemo(() => {
     return companyApplications.map(app => {
       const allocatedToCompany = allocationResults.filter(ar => ar.company_id === app.company_id);
@@ -1191,7 +1177,6 @@ export default function AdminOrderManagementPage() {
     });
   }, [companyApplications, allocationResults]);
 
-  // --- Unallocated Products Logic ---
   const unallocatedProductsSummary = useMemo(() => {
     return products.map(product => {
       const totalAllocatedForProduct = allocationResults
@@ -1205,6 +1190,122 @@ export default function AdminOrderManagementPage() {
       };
     }).filter(p => p.unallocatedQuantity > 0);
   }, [products, allocationResults]);
+
+  // For "Add New Allocation" Dialog
+  const availableProductsForNewAllocation = useMemo(() => {
+    return products.filter(product => {
+      const totalAllocatedForProduct = allocationResults
+        .filter(ar => ar.sequence === product.sequence)
+        .reduce((sum, ar) => sum + ar.quantity, 0);
+      return product.quantity - totalAllocatedForProduct > 0;
+    });
+  }, [products, allocationResults]);
+
+  const handleAddNewAllocationSave = async () => {
+    if (!newAllocationSequence || !newAllocationCompanyId || !newAllocationQuantity) {
+      setFeedbackMessage({ type: 'error', text: 'Please select ASIN, Company, and enter Quantity.' });
+      return;
+    }
+
+    const sequence = parseInt(newAllocationSequence);
+    const company_id = parseInt(newAllocationCompanyId);
+    const quantity = parseInt(newAllocationQuantity);
+
+    if (isNaN(sequence) || isNaN(company_id) || isNaN(quantity) || quantity <= 0) {
+      setFeedbackMessage({ type: 'error', text: 'Invalid input. Quantity must be a positive number.' });
+      return;
+    }
+
+    const product = products.find(p => p.sequence === sequence);
+    if (!product) {
+      setFeedbackMessage({ type: 'error', text: 'Selected product not found.' });
+      return;
+    }
+
+    const totalAllocatedForProduct = allocationResults
+      .filter(ar => ar.sequence === sequence)
+      .reduce((sum, ar) => sum + ar.quantity, 0);
+
+    if (totalAllocatedForProduct + quantity > product.quantity) {
+      setFeedbackMessage({
+        type: 'error',
+        text: `Cannot allocate ${quantity}. Available: ${product.quantity - totalAllocatedForProduct} for ASIN ${product.asin}.`,
+      });
+      return;
+    }
+    
+    const existingAllocation = allocationResults.find(
+      ar => ar.sequence === sequence && ar.company_id === company_id
+    );
+
+    if (existingAllocation) {
+      setFeedbackMessage({
+        type: 'error',
+        text: `An allocation for ASIN ${product.asin} and this company already exists. Please edit the existing one.`,
+      });
+      return;
+    }
+
+    const { data: newAllocation, error } = await supabase
+      .from('allocation_results')
+      .insert({
+        order_id: orderId,
+        sequence,
+        company_id,
+        quantity,
+      })
+      .select('*, company(name), order_products(asin, price, cost_price, description)')
+      .single();
+
+    if (error) {
+      console.error('Error adding new allocation. Raw error object:', error); // Log the raw object
+      let detailedMessage = 'Failed to add new allocation.';
+      // Type guard for PostgrestError properties
+      if (typeof error === 'object' && error !== null) {
+        const pgError = error as PostgrestError;
+        if (pgError.message && typeof pgError.message === 'string') {
+          detailedMessage += ` Message: ${pgError.message}`;
+        }
+        if (pgError.details && typeof pgError.details === 'string') {
+          detailedMessage += ` Details: ${pgError.details}`;
+        }
+        if (pgError.hint && typeof pgError.hint === 'string') {
+          detailedMessage += ` Hint: ${pgError.hint}`;
+        }
+        if (pgError.code && typeof pgError.code === 'string') {
+          detailedMessage += ` Code: ${pgError.code}`;
+        }
+      }
+      
+      // If it's an empty object or none of the standard PostgrestError properties were found, 
+      // but it's still an object and has keys, try to stringify it.
+      if (detailedMessage === 'Failed to add new allocation.' && typeof error === 'object' && error !== null && Object.keys(error).length > 0) {
+        try {
+          detailedMessage += ' Raw error: ' + JSON.stringify(error);
+        } catch (e) {
+          detailedMessage += ' Raw error: (Could not stringify error object)';
+        }
+      } else if (detailedMessage === 'Failed to add new allocation.') {
+        // Fallback for truly empty or non-descriptive error
+        detailedMessage += ' An unexpected error occurred with the database operation. Please check console for details.';
+      }
+      setFeedbackMessage({ type: 'error', text: detailedMessage });
+    } else if (newAllocation) {
+      setAllocationResults(prev => [...prev, newAllocation as AllocationResult]);
+      setEditedAllocations(prev => [
+        ...prev,
+        {
+          id: (newAllocation as AllocationResult).id,
+          quantity: (newAllocation as AllocationResult).quantity,
+        },
+      ]);
+      setFeedbackMessage({ type: 'success', text: 'New allocation added successfully.' });
+      setIsAddAllocationDialogOpen(false);
+      setNewAllocationSequence('');
+      setNewAllocationCompanyId('');
+      setNewAllocationQuantity('');
+    }
+  };
 
 
   if (authLoading || loading) {
@@ -1225,6 +1326,71 @@ export default function AdminOrderManagementPage() {
 
   const isOrderEditable = order.order_statuses.description.toLowerCase() !== 'closed';
   const currentStatusId = statuses.find(s => s.description === order.order_statuses.description)?.order_status_id;
+
+  const selectedProductForDialog = newAllocationSequence ? products.find(p => p.sequence === parseInt(newAllocationSequence)) : null;
+  const maxAllocatableForDialog = selectedProductForDialog
+    ? selectedProductForDialog.quantity - allocationResults
+        .filter(ar => ar.sequence === selectedProductForDialog.sequence)
+        .reduce((sum, ar) => sum + ar.quantity, 0)
+    : undefined;
+
+  // START: Handlers for Dialog onOpenChange to reset state
+  const handleAddAllocationDialogVisibilityChange = (open: boolean) => {
+    setIsAddAllocationDialogOpen(open);
+    if (!open) {
+      setNewAllocationSequence('');
+      setNewAllocationCompanyId('');
+      setNewAllocationQuantity('');
+    }
+  };
+
+  const handlePreAssignDialogControl = (isOpen: boolean) => {
+    setIsPreAssignDialogOpen(isOpen);
+    if (!isOpen) {
+      setSelectedSequence(null);
+      setDialogCompanyId('');
+      setDialogQuantity('');
+    }
+  };
+
+  const handleDiscountDialogVisibilityChange = (isOpen: boolean) => {
+    setIsDiscountDialogOpen(isOpen);
+    if (!isOpen) {
+      // Reset discount form states if openDiscountDialog isn't the only entry point
+      // or to ensure cleanup on Esc/overlay click.
+      // openDiscountDialog already resets these, but this makes it robust.
+      setDiscountCompanyId('');
+      setDiscountSequence('');
+      setDiscountPrice('');
+      setDiscountPercentage('');
+    }
+  };
+
+  const handleEditApplicationDialogVisibilityChange = (isOpen: boolean) => {
+    setIsEditApplicationDialogOpen(isOpen);
+    if (!isOpen) {
+      setEditingApplication(null);
+      setEditMaxInvestment(null);
+      setEditProductsUngatedStatus({});
+      setEditProductsUngatedMinAmounts({});
+      // editProductsData is derived from products, so no need to reset typically
+    }
+  };
+
+  const handleDeleteApplicationDialogVisibilityChange = (isOpen: boolean) => {
+    setIsDeleteApplicationDialogOpen(isOpen);
+    if (!isOpen) {
+      setDeletingApplication(null);
+    }
+  };
+
+  const handleWhitelistDialogVisibilityChange = (isOpen: boolean) => {
+    setIsWhitelistDialogOpen(isOpen);
+    if (!isOpen) {
+      setWhitelistSearchTerm('');
+    }
+  };
+  // END: Handlers for Dialog onOpenChange to reset state
 
   return (
     <div className="min-h-screen bg-background p-6 w-full">
@@ -1311,7 +1477,6 @@ export default function AdminOrderManagementPage() {
               />
               <Label htmlFor="hideAllocationsSwitch" className="text-gray-300 font-medium">Hide Allocations from Users</Label>
             </div>
-            {/* New Accessibility Section */}
             <div>
               <Label htmlFor="orderAccessibility" className="text-gray-300 font-medium block mb-2">Accessibility</Label>
               <Select
@@ -1342,19 +1507,18 @@ export default function AdminOrderManagementPage() {
           </div>
         </div>
 
-        {/* Whitelist Management Dialog */}
-        <Dialog open={isWhitelistDialogOpen} onOpenChange={setIsWhitelistDialogOpen}>
+        <Dialog open={isWhitelistDialogOpen} onOpenChange={handleWhitelistDialogVisibilityChange}>
           <DialogContent className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80] max-w-2xl">
             <DialogHeader>
               <DialogTitle>Manage Whitelist for Order #{order.order_id}</DialogTitle>
             </DialogHeader>
-            <div className="space-y-4">
+            <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-2"> {/* Added scroll for dialog content */}
               <div>
                 <h3 className="text-lg font-semibold mb-2">Currently Whitelisted Companies</h3>
                 {whitelistedCompanies.length === 0 ? (
                   <p className="text-gray-400">No companies whitelisted for this order.</p>
                 ) : (
-                  <div className="grid grid-cols-1 gap-2">
+                  <div className="grid grid-cols-1 gap-2 max-h-48 overflow-y-auto pr-2"> {/* Added scroll for this specific list */}
                     {whitelistedCompanies.map(company => (
                       <div key={company.company_id} className="flex items-center justify-between p-2 bg-[#2b2b2b] rounded-md">
                         <span className="text-gray-200">{company.name}</span>
@@ -1468,8 +1632,7 @@ export default function AdminOrderManagementPage() {
           )}
         </div>
 
-        {/* Edit Application Dialog */}
-        <Dialog open={isEditApplicationDialogOpen} onOpenChange={setIsEditApplicationDialogOpen}>
+        <Dialog open={isEditApplicationDialogOpen} onOpenChange={handleEditApplicationDialogVisibilityChange}>
           <DialogContent className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80] max-w-2xl">
             <DialogHeader>
               <DialogTitle>Edit Application for {editingApplication?.company_name}</DialogTitle>
@@ -1503,7 +1666,7 @@ export default function AdminOrderManagementPage() {
                       <TableCell className="p-2">
                         <Checkbox
                           checked={editProductsUngatedStatus[product.sequence] || false}
-                          onCheckedChange={(checked) => handleEditUngatedChange(product.sequence, checked === 'indeterminate' ? false : checked)}
+                          onCheckedChange={(checked) => handleEditUngatedChange(product.sequence, checked === 'indeterminate' ? false : !!checked)}
                           className="w-4 h-4 text-[#c8aa64] bg-[#0d0d0d] border-[#a7a7a7] rounded"
                         />
                       </TableCell>
@@ -1541,8 +1704,7 @@ export default function AdminOrderManagementPage() {
           </DialogContent>
         </Dialog>
 
-        {/* Delete Application Confirmation Dialog */}
-        <Dialog open={isDeleteApplicationDialogOpen} onOpenChange={setIsDeleteApplicationDialogOpen}>
+        <Dialog open={isDeleteApplicationDialogOpen} onOpenChange={handleDeleteApplicationDialogVisibilityChange}>
           <DialogContent className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80]">
             <DialogHeader>
               <DialogTitle>Confirm Deletion</DialogTitle>
@@ -1753,10 +1915,7 @@ export default function AdminOrderManagementPage() {
                             ) : (
                               <span className="text-gray-400">None</span>
                             )}
-                            <Dialog open={isPreAssignDialogOpen && selectedSequence === product.sequence} onOpenChange={(open: boolean) => {
-                              if (open) openPreAssignDialog(product.sequence);
-                              else setIsPreAssignDialogOpen(false);
-                            }}>
+                            <Dialog open={isPreAssignDialogOpen && selectedSequence === product.sequence} onOpenChange={handlePreAssignDialogControl}>
                               <DialogTrigger asChild>
                                 <Button
                                   className="bg-[#c8aa64] hover:bg-[#9d864e] text-[#242424] mt-2"
@@ -1827,7 +1986,7 @@ export default function AdminOrderManagementPage() {
             </div>
           )}
 
-          <Dialog open={isDiscountDialogOpen} onOpenChange={setIsDiscountDialogOpen}>
+          <Dialog open={isDiscountDialogOpen} onOpenChange={handleDiscountDialogVisibilityChange}>
             <DialogContent className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80]">
               <DialogHeader>
                 <DialogTitle>Configure Discount</DialogTitle>
@@ -1929,14 +2088,26 @@ export default function AdminOrderManagementPage() {
               <h2 className="text-xl font-semibold text-gray-300">Allocation Results</h2>
               <div className="flex space-x-2">
                 <Button
+                  onClick={() => {
+                    setNewAllocationSequence('');
+                    setNewAllocationCompanyId('');
+                    setNewAllocationQuantity('');
+                    setIsAddAllocationDialogOpen(true);
+                  }}
+                  className="bg-[#c8aa64] hover:bg-[#9d864e] text-[#242424]"
+                  disabled={!isOrderEditable || availableProductsForNewAllocation.length === 0}
+                >
+                  <Plus className="mr-2 h-4 w-4" /> Add Allocation
+                </Button>
+                <Button
                   onClick={() => setIsCompanyAllocationSummaryDialogOpen(true)}
-                  className="bg-blue-600 hover:bg-blue-500 text-white"
+                  className="bg-[#c8aa64] hover:bg-[#9d864e] text-[#242424]"
                 >
                   <TrendingUp className="mr-2 h-4 w-4" /> Company Summary
                 </Button>
                 <Button
                   onClick={() => setIsUnallocatedProductsDialogOpen(true)}
-                  className="bg-yellow-500 hover:bg-yellow-400 text-black"
+                  className="bg-[#c8aa64] hover:bg-[#9d864e] text-[#242424]"
                 >
                   <PackageSearch className="mr-2 h-4 w-4" /> Unallocated Products
                 </Button>
@@ -1955,7 +2126,6 @@ export default function AdminOrderManagementPage() {
                   <TableHead className="text-gray-300 h-12 px-4 text-left align-middle font-medium">ASIN</TableHead>
                   <TableHead className="text-gray-300 h-12 px-4 text-left align-middle font-medium">Company</TableHead>
                   <TableHead className="text-gray-300 h-12 px-4 text-left align-middle font-medium">Quantity</TableHead>
-                  <TableHead className="text-gray-300 h-12 px-4 text-left align-middle font-medium">Needs Review</TableHead>
                   <TableHead className="text-gray-300 h-12 px-4 text-left align-middle font-medium">Price</TableHead>
                   <TableHead className="text-gray-300 h-12 px-4 text-left align-middle font-medium">Cost Price</TableHead>
                   <TableHead className="text-gray-300 h-12 px-4 text-left align-middle font-medium">Description</TableHead>
@@ -1979,14 +2149,6 @@ export default function AdminOrderManagementPage() {
                           disabled={!isOrderEditable}
                         />
                       </TableCell>
-                      <TableCell className="p-4 align-middle text-gray-300">
-                        <Checkbox
-                          checked={edited?.needs_review ?? result.needs_review}
-                          onCheckedChange={(checked) => handleAllocationChange(result.id, 'needs_review', checked === 'indeterminate' ? false : checked)}
-                          className="h-4 w-4 text-[#c8aa64] bg-[#0d0d0d] border-[#a7a7a7] rounded"
-                          disabled={!isOrderEditable}
-                        />
-                      </TableCell>
                       <TableCell className="p-4 align-middle text-gray-300">{result.order_products?.price ? `$${result.order_products.price.toFixed(2)}` : 'N/A'}</TableCell>
                       <TableCell className="p-4 align-middle text-gray-300">{result.order_products?.cost_price ? `$${result.order_products.cost_price.toFixed(2)}` : 'N/A'}</TableCell>
                       <TableCell className="p-4 align-middle text-gray-300">{result.order_products?.description || 'N/A'}</TableCell>
@@ -1996,8 +2158,7 @@ export default function AdminOrderManagementPage() {
                           className="bg-[#c8aa64] hover:bg-[#9d864e] text-[#242424] mr-2"
                           disabled={
                             !isOrderEditable ||
-                            (edited?.quantity === result.quantity &&
-                              edited?.needs_review === result.needs_review)
+                            (edited?.quantity === result.quantity)
                           }
                         >
                           <Save className="h-4 w-4 mr-1" />
@@ -2020,7 +2181,89 @@ export default function AdminOrderManagementPage() {
           </div>
         )}
 
-        {/* Company Allocation Summary Dialog */}
+        {/* Add New Allocation Dialog */}
+        <Dialog open={isAddAllocationDialogOpen} onOpenChange={handleAddAllocationDialogVisibilityChange}>
+          <DialogContent className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80] max-w-lg">
+            <DialogHeader>
+              <DialogTitle>Add New Allocation</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div>
+                <Label htmlFor="newAllocationAsin" className="block mb-2 text-sm font-medium text-gray-300">ASIN (Product)</Label>
+                <Select value={newAllocationSequence} onValueChange={setNewAllocationSequence}>
+                  <SelectTrigger id="newAllocationAsin" className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80]">
+                    <SelectValue placeholder="Select a product" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableProductsForNewAllocation.length === 0 ? (
+                      <SelectItem value="disabled" disabled>No products available for new allocation</SelectItem>
+                    ) : (
+                      availableProductsForNewAllocation.map(product => (
+                        <SelectItem key={product.sequence} value={product.sequence.toString()}>
+                          {product.asin} (Available: {product.quantity - (allocationResults.filter(ar => ar.sequence === product.sequence).reduce((sum, ar) => sum + ar.quantity, 0))})
+                        </SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label htmlFor="newAllocationCompany" className="block mb-2 text-sm font-medium text-gray-300">Company</Label>
+                <Select value={newAllocationCompanyId} onValueChange={setNewAllocationCompanyId}>
+                  <SelectTrigger id="newAllocationCompany" className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80]">
+                    <SelectValue placeholder="Select a company" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {companyApplications.length === 0 ? (
+                        <SelectItem value="disabled" disabled>No companies have applied</SelectItem>
+                    ) : (
+                        companyApplications.map(app => (
+                        <SelectItem key={app.company_id} value={app.company_id.toString()}>
+                            {app.company_name}
+                        </SelectItem>
+                        ))
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label htmlFor="newAllocationQuantity" className="block mb-2 text-sm font-medium text-gray-300">Quantity</Label>
+                <Input
+                  id="newAllocationQuantity"
+                  type="number"
+                  value={newAllocationQuantity}
+                  onChange={(e) => setNewAllocationQuantity(e.target.value)}
+                  className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80]"
+                  placeholder="Enter quantity"
+                  min="1"
+                  max={maxAllocatableForDialog}
+                />
+                {newAllocationSequence && products.find(p => p.sequence === parseInt(newAllocationSequence)) && (
+                  <p className="text-xs text-gray-400 mt-1">
+                    Max allocatable for selected ASIN: {maxAllocatableForDialog}
+                  </p>
+                )}
+              </div>
+            </div>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => setIsAddAllocationDialogOpen(false)}
+                className="bg-gray-700 hover:bg-gray-600 text-gray-200"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleAddNewAllocationSave}
+                className="bg-[#c8aa64] hover:bg-[#9d864e] text-[#242424]"
+                disabled={!newAllocationSequence || !newAllocationCompanyId || !newAllocationQuantity || parseInt(newAllocationQuantity) <=0 || (maxAllocatableForDialog !== undefined && parseInt(newAllocationQuantity) > maxAllocatableForDialog)}
+              >
+                Save Allocation
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
         <Dialog open={isCompanyAllocationSummaryDialogOpen} onOpenChange={setIsCompanyAllocationSummaryDialogOpen}>
           <DialogContent className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80] max-w-3xl">
             <DialogHeader>
@@ -2062,7 +2305,6 @@ export default function AdminOrderManagementPage() {
           </DialogContent>
         </Dialog>
 
-        {/* Unallocated Products Dialog */}
         <Dialog open={isUnallocatedProductsDialogOpen} onOpenChange={setIsUnallocatedProductsDialogOpen}>
           <DialogContent className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80] max-w-3xl">
             <DialogHeader>
