@@ -16,6 +16,19 @@ const MIN_CHECK_INTERVAL = 2000;
 // Time to consider tab as "inactive" (1 minute, reduced for faster detection)
 const TAB_INACTIVE_THRESHOLD = 1 * 60 * 1000;
 
+// Function to check if current URL is a password reset link
+const isPasswordResetURL = () => {
+  if (typeof window === 'undefined') return false;
+  // Check pathname first
+  if (window.location.pathname !== '/reset-password') {
+    return false;
+  }
+  // Then check hash parameters
+  const hashParams = new URLSearchParams(window.location.hash.substring(1));
+  return hashParams.get('type') === 'recovery' &&
+         hashParams.has('access_token');
+};
+
 // Function to validate if user data is complete
 const isUserDataComplete = (user: AuthUser | null): boolean => {
   if (!user) return false;
@@ -342,24 +355,49 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [fetchUserDetails, setSession, setUser, setLoading, session, user]);
 
   useEffect(() => {
+    // Skip initial auth check if this is a password reset URL
+    if (isPasswordResetURL()) {
+      console.log('AuthProvider: Skipping initial auth check for password reset URL');
+      setLoading(false);
+      return;
+    }
+    
     checkAuth(true); // Initial check on mount
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, newSession) => {
-      console.log('AuthProvider onAuthStateChange: event=', event, 'session=', newSession);
-      setLoading(true);
-      
+      const onResetPageCurrently = isPasswordResetURL(); // Capture current state at event time
+      console.log('AuthProvider onAuthStateChange: event=', event, 'session=', newSession, 'onResetPage=', onResetPageCurrently);
+
+      setLoading(true); // Set loading true at the start of handling any auth event.
+
       try {
+        if (onResetPageCurrently) {
+          // Handle events specifically for the reset password page
+          if (event === 'SIGNED_OUT') {
+            console.log('AuthProvider: Ignoring SIGNED_OUT on password reset page (after password update).');
+            // Session will be null, user will be null. setLoading(false) handled in finally.
+            return; // Don't process further.
+          } else if (newSession && (event === 'PASSWORD_RECOVERY' || event === 'USER_UPDATED' || event === 'SIGNED_IN')) {
+            console.log(`AuthProvider: Event ${event} on reset page. Setting session, but SKIPPING fetchUserDetails.`);
+            setSession(newSession);
+            setUser(null); // Ensure user is null or minimal as full details are not (and should not be) fetched here.
+            // setLoading(false) will be handled by finally.
+            return; // Do not fall through to general handling that might call fetchUserDetails.
+          }
+          // If other events occur on reset page that are not handled above, they will fall through.
+          // However, the main concern is preventing fetchUserDetails after setSession from recovery.
+        }
+
+        // General event handling (when not on reset page, or if an unhandled event occurs on reset page and falls through)
         if (event === 'SIGNED_IN' && newSession) {
-          console.log('AuthProvider: User signed in, setting session immediately');
+          console.log('AuthProvider: User signed in (general case)');
           setSession(newSession);
-          retryCountRef.current = 0; // Reset retry count on successful login
-          lastCheckedRef.current = Date.now(); // Update last check time
+          retryCountRef.current = 0;
+          lastCheckedRef.current = Date.now();
           
-          // Fetch full details immediately on sign-in
           if (newSession.user.email) {
             await fetchUserDetails(newSession.user.email, newSession);
           } else if (!isFetchingUserDetailsRef.current) {
-            // Immediately create minimal user object, but don't overwrite existing admin user
             if (!user || user.role !== 'admin') {
               const minimalUser: AuthUser = {
                 user_id: newSession.user.id,
@@ -374,8 +412,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             }
           }
           localStorage.setItem('token', newSession.access_token);
-        } else if (event === 'SIGNED_OUT') {
-          console.log('AuthProvider: User signed out');
+        } else if (event === 'SIGNED_OUT' /* && !onResetPageCurrently is implicit here due to above block */) {
+          console.log('AuthProvider: User signed out (general case)');
           setSession(null);
           setUser(null);
           userCache.clear();
@@ -384,33 +422,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         } else if (event === 'TOKEN_REFRESHED' && newSession) {
           console.log('AuthProvider: Token refreshed');
           setSession(newSession);
-          lastCheckedRef.current = Date.now(); // Update last check time
+          lastCheckedRef.current = Date.now();
           
           if (newSession.user.email) {
-            // Only fetch if user details are missing or for a different user
             if (!user || user.email !== newSession.user.email || !isUserDataComplete(user)) {
               await fetchUserDetails(newSession.user.email, newSession);
             }
           } else {
-            setUser(null);
-            localStorage.removeItem('token');
+            // If token refreshed but no email (e.g. phone auth), clear user if not already minimal
+             if (user && user.email) setUser(null); // Or handle as per app's logic for email-less users
+            localStorage.removeItem('token'); // Or update token if app uses it differently here
           }
-        } else if (event === 'USER_UPDATED' && newSession) {
-          console.log('AuthProvider: User updated');
+        } else if (event === 'USER_UPDATED' && newSession /* && !onResetPageCurrently is implicit */) {
+          console.log('AuthProvider: User updated (general case)');
           setSession(newSession);
           if (newSession.user.email) {
             await fetchUserDetails(newSession.user.email, newSession);
           }
+        } else if (event === 'PASSWORD_RECOVERY' && newSession /* && !onResetPageCurrently is implicit */) {
+          console.log('AuthProvider: Password recovery event (general case - not on reset page)');
+          // This event type means the user has initiated password recovery.
+          // The session might be set to allow password update.
+          setSession(newSession);
+          // Generally, do not fetch user details here. User is in a recovery flow.
         }
       } catch (error) {
         console.error('AuthProvider: Error in auth state change handler:', error);
       } finally {
-        setLoading(false);
+        setLoading(false); // Ensure loading is always set to false after processing an event.
       }
     });
 
     return () => subscription.unsubscribe();
-  }, [checkAuth, router, user, fetchUserDetails]);
+  }, [checkAuth, router, user, fetchUserDetails, pathname]); // Added pathname to ensure useEffect re-evaluates if path changes, for console logs.
 
   // Proactive session refresh - reduced interval and improved error handling
   useEffect(() => {
