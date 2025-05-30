@@ -6,7 +6,7 @@ import { useAuth } from '@lib/auth';
 import { supabase } from '@lib/supabase/client';
 import { PostgrestError } from '@supabase/supabase-js';
 import Link from 'next/link';
-import { CalendarIcon, Download, Trash2, Plus, Percent, Save, Edit, XCircle, CheckCircle, ListPlus, Search, TrendingUp, PackageSearch } from 'lucide-react';
+import { CalendarIcon, Download, Trash2, Plus, Percent, Save, Edit, XCircle, CheckCircle, ListPlus, Search, TrendingUp, PackageSearch, DollarSign } from 'lucide-react'; // Added DollarSign
 import {
   Table,
   TableBody,
@@ -118,8 +118,9 @@ interface OrderProductCompany {
   sequence: number;
   company_id: number;
   ungated: boolean;
-  ungated_min_amount: number | null;
+  ungated_min_amount?: number | null;
   quantity: number;
+  discounted_price?: number | null;
 }
 
 // Reusable DatePicker Component
@@ -135,7 +136,13 @@ function DatePicker({
   const handleSelect = (selectedDate: Date | undefined) => {
     setDate(selectedDate);
     if (selectedDate) {
-      const formattedDate = selectedDate.toISOString().slice(0, 16);
+      // Format to YYYY-MM-DDTHH:MM, which is what datetime-local input expects
+      const year = selectedDate.getFullYear();
+      const month = (selectedDate.getMonth() + 1).toString().padStart(2, '0');
+      const day = selectedDate.getDate().toString().padStart(2, '0');
+      const hours = selectedDate.getHours().toString().padStart(2, '0');
+      const minutes = selectedDate.getMinutes().toString().padStart(2, '0');
+      const formattedDate = `${year}-${month}-${day}T${hours}:${minutes}`;
       onChange(formattedDate);
     }
   };
@@ -151,7 +158,7 @@ function DatePicker({
           )}
         >
           <CalendarIcon className="mr-2 h-4 w-4" />
-          {date ? date.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : <span>Pick a date</span>}
+          {date ? date.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : <span>Pick a date</span>}
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-auto p-0" align="start">
@@ -161,6 +168,23 @@ function DatePicker({
           onSelect={handleSelect}
           initialFocus
         />
+        {/* Basic time picker - can be enhanced with a proper time picker component if needed */}
+        <div className="p-2 border-t border-border">
+            <Input 
+                type="time"
+                className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80]"
+                value={date ? `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}` : ''}
+                onChange={(e) => {
+                    if (date) {
+                        const [hours, minutes] = e.target.value.split(':');
+                        const newDate = new Date(date);
+                        newDate.setHours(parseInt(hours));
+                        newDate.setMinutes(parseInt(minutes));
+                        handleSelect(newDate);
+                    }
+                }}
+            />
+        </div>
       </PopoverContent>
     </Popover>
   );
@@ -525,8 +549,8 @@ export default function AdminOrderManagementPage() {
 
     if (error) {
       console.error('Error updating hide_price_and_quantity for all products:', error);
-      setProducts(prev => prev.map(p => ({ ...p, hide_price_and_quantity: !checked })));
-      setHideAll(!checked);
+      setProducts(prev => prev.map(p => ({ ...p, hide_price_and_quantity: !checked }))); // Revert on error
+      setHideAll(!checked); // Revert on error
       setFeedbackMessage({ type: 'error', text: 'Failed to update price and quantity visibility.' });
     } else {
       setFeedbackMessage({ type: 'success', text: `Price and quantity ${checked ? 'hidden' : 'visible'}.` });
@@ -535,13 +559,18 @@ export default function AdminOrderManagementPage() {
 
   const handleProductRemove = async (sequence: number) => {
     try {
+      // Attempt to delete related records first to maintain referential integrity
       const { error: opcError } = await supabase
         .from('order_products_company')
         .delete()
         .eq('order_id', orderId)
         .eq('sequence', sequence);
       if (opcError) {
-        throw new Error(`Failed to delete order_products_company: ${opcError.message}`);
+        // If the error is due to foreign key constraint, it might mean no records existed, which is fine.
+        // If it's another error, then it's problematic.
+        if (opcError.code !== '23503' && opcError.code !== 'PGRST204') { // PGRST204: No Content (means nothing to delete)
+            throw new Error(`Failed to delete order_products_company: ${opcError.message}`);
+        }
       }
 
       const { error: preAssignmentsError } = await supabase
@@ -549,7 +578,7 @@ export default function AdminOrderManagementPage() {
         .delete()
         .eq('order_id', orderId)
         .eq('sequence', sequence);
-      if (preAssignmentsError) {
+      if (preAssignmentsError && preAssignmentsError.code !== 'PGRST204') {
         throw new Error(`Failed to delete order_pre_assignments: ${preAssignmentsError.message}`);
       }
 
@@ -558,10 +587,11 @@ export default function AdminOrderManagementPage() {
         .delete()
         .eq('order_id', orderId)
         .eq('sequence', sequence);
-      if (allocationError) {
+      if (allocationError && allocationError.code !== 'PGRST204') {
         throw new Error(`Failed to delete allocation_results: ${allocationError.message}`);
       }
 
+      // Finally, delete the product itself
       const { error: productError } = await supabase
         .from('order_products')
         .delete()
@@ -572,6 +602,7 @@ export default function AdminOrderManagementPage() {
         throw new Error(`Failed to delete product: ${productError.message}`);
       }
 
+      // Update local state
       setProducts(prev => prev.filter(p => p.sequence !== sequence));
       setPreAssignments(prev => prev.filter(pa => pa.sequence !== sequence));
       setDiscounts(prev => prev.filter(d => d.sequence !== sequence));
@@ -596,7 +627,7 @@ export default function AdminOrderManagementPage() {
       price: 0,
       description: 'New Product',
       cost_price: 0,
-      hide_price_and_quantity: hideAll,
+      hide_price_and_quantity: hideAll, // Apply current hideAll state
       roi: 0,
     };
 
@@ -725,6 +756,7 @@ export default function AdminOrderManagementPage() {
       setFeedbackMessage({ type: result.success ? 'success' : 'error', text: result.message });
 
       if (result.success) {
+        // Refetch allocation results after calculation
         const { data: allocationData } = await supabase
           .from('allocation_results')
           .select('*, company(name), order_products(asin, price, cost_price, description)')
@@ -736,7 +768,7 @@ export default function AdminOrderManagementPage() {
             quantity: a.quantity,
           }))
         );
-        router.refresh();
+        router.refresh(); // Consider if this is still needed or if state updates are sufficient
       }
     });
   };
@@ -804,16 +836,39 @@ export default function AdminOrderManagementPage() {
       }
     }
 
-    const { error: opcError } = await supabase
-      .from('order_products_company')
-      .upsert({
+    // Check if an entry exists in order_products_company for this order, sequence, and company
+    const { data: existingOpc, error: fetchOpcError } = await supabase
+        .from('order_products_company')
+        .select('quantity, ungated, ungated_min_amount') // Select existing fields
+        .eq('order_id', orderId)
+        .eq('sequence', sequence)
+        .eq('company_id', company_id)
+        .maybeSingle();
+
+    if (fetchOpcError && fetchOpcError.code !== 'PGRST116') { // PGRST116: No rows found, which is fine for an upsert
+        console.error('Error fetching existing order_products_company:', fetchOpcError);
+        setFeedbackMessage({ type: 'error', text: 'Failed to check existing discount data.' });
+        return;
+    }
+    
+    const upsertData: OrderProductCompany = {
         order_id: orderId,
         sequence,
         company_id,
         discounted_price,
-        ungated: false,
-        quantity: 0,
-      }, {
+        // Preserve existing quantity and ungated status if they exist, otherwise use defaults
+        quantity: existingOpc?.quantity ?? 0, 
+        ungated: existingOpc?.ungated ?? false,
+    };
+    
+    if (existingOpc?.ungated_min_amount !== undefined) { // Only include if it was already set
+        upsertData.ungated_min_amount = existingOpc.ungated_min_amount;
+    }
+
+
+    const { error: opcError } = await supabase
+      .from('order_products_company')
+      .upsert(upsertData, {
         onConflict: 'order_id,sequence,company_id',
       });
 
@@ -823,16 +878,16 @@ export default function AdminOrderManagementPage() {
       return;
     }
 
+    // Update has_discounts on order_company table
     const { error: ocError } = await supabase
       .from('order_company')
-      .update({ has_discounts: discounted_price !== null })
+      .update({ has_discounts: discounted_price !== null }) // This logic might need refinement if multiple discounts per company
       .eq('order_id', orderId)
       .eq('company_id', company_id);
 
     if (ocError) {
       console.error('Error updating has_discounts:', ocError);
-      setFeedbackMessage({ type: 'error', text: 'Failed to update discount status.' });
-      return;
+      // This might not be a critical failure for the user, so maybe just log it or a softer feedback
     }
 
     const product = products.find(p => p.sequence === sequence);
@@ -884,7 +939,7 @@ export default function AdminOrderManagementPage() {
   const handleDiscountDelete = async (sequence: number, company_id: number) => {
     const { error: opcError } = await supabase
       .from('order_products_company')
-      .update({ discounted_price: null })
+      .update({ discounted_price: null }) // Set discounted_price to null instead of deleting the row
       .eq('order_id', orderId)
       .eq('sequence', sequence)
       .eq('company_id', company_id);
@@ -895,6 +950,7 @@ export default function AdminOrderManagementPage() {
       return;
     }
 
+    // Check if this company still has other discounts for this order
     const { data: remainingDiscounts } = await supabase
       .from('order_products_company')
       .select('discounted_price')
@@ -912,8 +968,7 @@ export default function AdminOrderManagementPage() {
 
     if (ocError) {
       console.error('Error updating has_discounts:', ocError);
-      setFeedbackMessage({ type: 'error', text: 'Failed to update discount status.' });
-      return;
+      // Non-critical, proceed with UI update
     }
 
     setDiscounts(prev => prev.filter(d => !(d.sequence === sequence && d.company_id === company_id)));
@@ -950,8 +1005,6 @@ export default function AdminOrderManagementPage() {
         type: 'error',
         text: `Total allocated quantity (${newTotalForProduct}) for ASIN ${product.asin} exceeds available quantity (${product.quantity}).`,
       });
-      // Optionally revert the change in editedAllocations for UX
-      // setEditedAllocations(prev => prev.map(ea => ea.id === id ? { ...ea, quantity: result.quantity } : ea));
       return;
     }
 
@@ -1019,7 +1072,7 @@ export default function AdminOrderManagementPage() {
 
     setEditProductsUngatedStatus(ungatedStatusMap);
     setEditProductsUngatedMinAmounts(ungatedMinAmountsMap);
-    setEditProductsData(products);
+    setEditProductsData(products); // Use current products list for the dialog
     setIsEditApplicationDialogOpen(true);
   };
 
@@ -1055,7 +1108,7 @@ export default function AdminOrderManagementPage() {
         company_id: editingApplication.company_id,
         ungated: editProductsUngatedStatus[product.sequence] || false,
         ungated_min_amount: editProductsUngatedStatus[product.sequence] ? editProductsUngatedMinAmounts[product.sequence] : null,
-        quantity: product.quantity,
+        quantity: product.quantity, // This might need to be fetched or handled differently if it can change
       }));
 
       const { error: productsCompanyError } = await supabase
@@ -1068,7 +1121,7 @@ export default function AdminOrderManagementPage() {
 
       setFeedbackMessage({ type: 'success', text: 'Application updated successfully!' });
       setIsEditApplicationDialogOpen(false);
-      await fetchCompanyApplications(orderId);
+      await fetchCompanyApplications(orderId); // Refresh company applications list
     } catch (err: unknown) {
       console.error('Error saving application changes:', err);
       setFeedbackMessage({ type: 'error', text: err instanceof Error ? err.message : 'An unexpected error occurred.' });
@@ -1084,16 +1137,18 @@ export default function AdminOrderManagementPage() {
     if (!deletingApplication) return;
     setFeedbackMessage(null);
     try {
+      // Delete from order_products_company first
       const { error: opcError } = await supabase
         .from('order_products_company')
         .delete()
         .eq('order_id', orderId)
         .eq('company_id', deletingApplication.company_id);
 
-      if (opcError) {
+      if (opcError && opcError.code !== 'PGRST204') { // PGRST204 means no rows were deleted, which is fine
         throw new Error('Failed to delete product ungated data: ' + opcError.message);
       }
 
+      // Then delete from order_company
       const { error: ocError } = await supabase
         .from('order_company')
         .delete()
@@ -1106,7 +1161,7 @@ export default function AdminOrderManagementPage() {
 
       setFeedbackMessage({ type: 'success', text: 'Application deleted successfully!' });
       setIsDeleteApplicationDialogOpen(false);
-      await fetchCompanyApplications(orderId);
+      await fetchCompanyApplications(orderId); // Refresh the list
     } catch (err: unknown) {
       console.error('Error deleting application:', err);
       setFeedbackMessage({ type: 'error', text: err instanceof Error ? err.message : 'An unexpected error occurred during deletion.' });
@@ -1124,7 +1179,7 @@ export default function AdminOrderManagementPage() {
         throw new Error('Failed to add company to whitelist: ' + error.message);
       }
       setFeedbackMessage({ type: 'success', text: 'Company added to whitelist.' });
-      fetchWhitelistedCompanies(orderId);
+      fetchWhitelistedCompanies(orderId); // Refresh the list
     } catch (err: unknown) {
       console.error('Error adding to whitelist:', err);
       setFeedbackMessage({ type: 'error', text: err instanceof Error ? err.message : 'An unexpected error occurred.' });
@@ -1144,7 +1199,7 @@ export default function AdminOrderManagementPage() {
         throw new Error('Failed to remove company from whitelist: ' + error.message);
       }
       setFeedbackMessage({ type: 'success', text: 'Company removed from whitelist.' });
-      fetchWhitelistedCompanies(orderId);
+      fetchWhitelistedCompanies(orderId); // Refresh the list
     } catch (err: unknown) {
       console.error('Error removing from whitelist:', err);
       setFeedbackMessage({ type: 'error', text: err instanceof Error ? err.message : 'An unexpected error occurred.' });
@@ -1160,6 +1215,7 @@ export default function AdminOrderManagementPage() {
     return companyApplications.map(app => {
       const allocatedToCompany = allocationResults.filter(ar => ar.company_id === app.company_id);
       const totalAllocatedValue = allocatedToCompany.reduce((sum, ar) => {
+        // Use the price from the allocation_results's joined order_products data
         const productPrice = ar.order_products?.price || 0;
         return sum + (ar.quantity * productPrice);
       }, 0);
@@ -1247,13 +1303,12 @@ export default function AdminOrderManagementPage() {
         company_id,
         quantity,
       })
-      .select('*, company(name), order_products(asin, price, cost_price, description)')
+      .select('*, company(name), order_products(asin, price, cost_price, description)') // Ensure joined data is selected
       .single();
 
     if (error) {
-      console.error('Error adding new allocation. Raw error object:', error); // Log the raw object
+      console.error('Error adding new allocation. Raw error object:', error); 
       let detailedMessage = 'Failed to add new allocation.';
-      // Type guard for PostgrestError properties
       if (typeof error === 'object' && error !== null) {
         const pgError = error as PostgrestError;
         if (pgError.message && typeof pgError.message === 'string') {
@@ -1270,8 +1325,6 @@ export default function AdminOrderManagementPage() {
         }
       }
       
-      // If it's an empty object or none of the standard PostgrestError properties were found, 
-      // but it's still an object and has keys, try to stringify it.
       if (detailedMessage === 'Failed to add new allocation.' && typeof error === 'object' && error !== null && Object.keys(error).length > 0) {
         try {
           detailedMessage += ' Raw error: ' + JSON.stringify(error);
@@ -1279,7 +1332,6 @@ export default function AdminOrderManagementPage() {
           detailedMessage += ' Raw error: (Could not stringify error object)';
         }
       } else if (detailedMessage === 'Failed to add new allocation.') {
-        // Fallback for truly empty or non-descriptive error
         detailedMessage += ' An unexpected error occurred with the database operation. Please check console for details.';
       }
       setFeedbackMessage({ type: 'error', text: detailedMessage });
@@ -1299,6 +1351,26 @@ export default function AdminOrderManagementPage() {
       setNewAllocationQuantity('');
     }
   };
+
+  // Fee Calculation Logic
+  const { totalProfit, totalOrderValue, profitPercentage } = useMemo(() => {
+    let currentTotalProfit = 0;
+    let currentTotalOrderValue = 0;
+
+    products.forEach(product => {
+      const productProfit = (product.price - product.cost_price) * product.quantity;
+      currentTotalProfit += productProfit;
+      currentTotalOrderValue += product.price * product.quantity;
+    });
+    
+    const currentProfitPercentage = currentTotalOrderValue > 0 ? (currentTotalProfit / currentTotalOrderValue) * 100 : 0;
+
+    return {
+      totalProfit: currentTotalProfit,
+      totalOrderValue: currentTotalOrderValue,
+      profitPercentage: currentProfitPercentage,
+    };
+  }, [products]);
 
 
   if (authLoading || loading) {
@@ -1349,9 +1421,6 @@ export default function AdminOrderManagementPage() {
   const handleDiscountDialogVisibilityChange = (isOpen: boolean) => {
     setIsDiscountDialogOpen(isOpen);
     if (!isOpen) {
-      // Reset discount form states if openDiscountDialog isn't the only entry point
-      // or to ensure cleanup on Esc/overlay click.
-      // openDiscountDialog already resets these, but this makes it robust.
       setDiscountCompanyId('');
       setDiscountSequence('');
       setDiscountPrice('');
@@ -1366,7 +1435,6 @@ export default function AdminOrderManagementPage() {
       setEditMaxInvestment(null);
       setEditProductsUngatedStatus({});
       setEditProductsUngatedMinAmounts({});
-      // editProductsData is derived from products, so no need to reset typically
     }
   };
 
@@ -1411,7 +1479,7 @@ export default function AdminOrderManagementPage() {
         )}
 
         <div className="rounded-lg p-6 bg-gradient-to-br from-[#212121] via-[#0f0f0f] to-[#2b2b2b] shadow-lg w-full mb-8">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6"> {/* Adjusted grid for more items */}
             <div>
               <Label htmlFor="orderStatus" className="text-gray-300 font-medium block mb-2">Status</Label>
               <Select
@@ -1452,23 +1520,23 @@ export default function AdminOrderManagementPage() {
                 onChange={(value) => handleOrderUpdate('label_upload_deadline', value)}
               />
             </div>
-            <div className="flex items-center space-x-2">
+            <div className="flex items-center space-x-2 pt-6"> {/* Added pt-6 for alignment */}
               <Switch
                 id="hideAllSwitch"
                 checked={hideAll}
                 onCheckedChange={handleHideAllToggle}
                 disabled={!isOrderEditable}
               />
-              <Label htmlFor="hideAllSwitch" className="text-gray-300 font-medium">Hide All Price and Quantity</Label>
+              <Label htmlFor="hideAllSwitch" className="text-gray-300 font-medium">Hide All Price & Qty</Label>
             </div>
-            <div className="flex items-center space-x-2">
+            <div className="flex items-center space-x-2 pt-6"> {/* Added pt-6 for alignment */}
               <Switch
                 id="hideAllocationsSwitch"
                 checked={order.hide_allocations}
                 onCheckedChange={handleHideAllocationsToggle}
                 disabled={!isOrderEditable}
               />
-              <Label htmlFor="hideAllocationsSwitch" className="text-gray-300 font-medium">Hide Allocations from Users</Label>
+              <Label htmlFor="hideAllocationsSwitch" className="text-gray-300 font-medium">Hide Allocations</Label>
             </div>
             <div>
               <Label htmlFor="orderAccessibility" className="text-gray-300 font-medium block mb-2">Accessibility</Label>
@@ -1497,6 +1565,27 @@ export default function AdminOrderManagementPage() {
                 </Button>
               </div>
             )}
+             {/* New Fee Information Section */}
+            <div>
+                <Label className="text-gray-300 font-medium block mb-2">Total Fees Earned ($)</Label>
+                <div className="p-3 bg-[#1f1f1f] text-gray-200 border border-[#6a6a6a80] rounded-md flex items-center">
+                    <DollarSign className="h-4 w-4 mr-2 text-green-400"/> 
+                    {totalProfit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </div>
+            </div>
+            <div>
+                <Label className="text-gray-300 font-medium block mb-2">Total Fees Earned (%)</Label>
+                <div className="p-3 bg-[#1f1f1f] text-gray-200 border border-[#6a6a6a80] rounded-md flex items-center">
+                     <Percent className="h-4 w-4 mr-2 text-blue-400"/>
+                    {profitPercentage.toFixed(2)}%
+                </div>
+            </div>
+            <div>
+                <Label className="text-gray-300 font-medium block mb-2">Total Order Value ($)</Label>
+                <div className="p-3 bg-[#1f1f1f] text-gray-200 border border-[#6a6a6a80] rounded-md">
+                    {totalOrderValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </div>
+            </div>
           </div>
         </div>
 
@@ -1505,13 +1594,13 @@ export default function AdminOrderManagementPage() {
             <DialogHeader>
               <DialogTitle>Manage Whitelist for Order #{order.order_id}</DialogTitle>
             </DialogHeader>
-            <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-2"> {/* Added scroll for dialog content */}
+            <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-2">
               <div>
                 <h3 className="text-lg font-semibold mb-2">Currently Whitelisted Companies</h3>
                 {whitelistedCompanies.length === 0 ? (
                   <p className="text-gray-400">No companies whitelisted for this order.</p>
                 ) : (
-                  <div className="grid grid-cols-1 gap-2 max-h-48 overflow-y-auto pr-2"> {/* Added scroll for this specific list */}
+                  <div className="grid grid-cols-1 gap-2 max-h-48 overflow-y-auto pr-2">
                     {whitelistedCompanies.map(company => (
                       <div key={company.company_id} className="flex items-center justify-between p-2 bg-[#2b2b2b] rounded-md">
                         <span className="text-gray-200">{company.name}</span>
@@ -1913,6 +2002,10 @@ export default function AdminOrderManagementPage() {
                                 <Button
                                   className="bg-[#c8aa64] hover:bg-[#9d864e] text-[#242424] mt-2"
                                   disabled={!isOrderEditable}
+                                  onClick={() => {
+                                    setSelectedSequence(product.sequence);
+                                    setIsPreAssignDialogOpen(true);
+                                  }}
                                 >
                                   Add Pre-Assignment
                                 </Button>
