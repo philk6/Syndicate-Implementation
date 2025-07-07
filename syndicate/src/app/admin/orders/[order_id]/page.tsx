@@ -448,17 +448,77 @@ export default function AdminOrderManagementPage() {
   }, [orderId, isAuthenticated, authLoading, router, user?.role, fetchWhitelistedCompanies]);
 
   const handleStatusChange = async (newStatusId: string) => {
-    const { error } = await supabase
-      .from('orders')
-      .update({ order_status_id: parseInt(newStatusId) })
-      .eq('order_id', orderId);
-
-    if (error) {
-      console.error('Error updating status:', error);
-      setFeedbackMessage({ type: 'error', text: 'Failed to update status.' });
-    } else {
-      setOrder(prev => prev ? { ...prev, order_statuses: statuses.find(s => s.order_status_id === parseInt(newStatusId))! } : null);
-      setFeedbackMessage({ type: 'success', text: 'Status updated successfully.' });
+    const newStatusIdInt = parseInt(newStatusId);
+    const oldStatusId = currentStatusId;
+  
+    if (!oldStatusId) {
+      setFeedbackMessage({ type: 'error', text: 'Current status not found.' });
+      return;
+    }
+  
+    try {
+      // First, handle any credit-related transitions
+      const { error: transitionError } = await supabase
+        .rpc('handle_order_status_transition', {
+          p_order_id: orderId,
+          p_new_status_id: newStatusIdInt,
+          p_old_status_id: oldStatusId
+        });
+  
+      if (transitionError) {
+        console.error('Error handling status transition:', transitionError);
+        setFeedbackMessage({ 
+          type: 'error', 
+          text: `Failed to process credit transactions: ${transitionError.message}` 
+        });
+        return;
+      }
+  
+      // Then update the order status
+      const { error: updateError } = await supabase
+        .from('orders')
+        .update({ order_status_id: newStatusIdInt })
+        .eq('order_id', orderId);
+  
+      if (updateError) {
+        console.error('Error updating status:', updateError);
+        setFeedbackMessage({ type: 'error', text: 'Failed to update status.' });
+        
+        // If status update fails, we might need to reverse the credit transactions
+        // This would require another function or manual intervention
+      } else {
+        setOrder(prev => prev ? { 
+          ...prev, 
+          order_statuses: statuses.find(s => s.order_status_id === newStatusIdInt)! 
+        } : null);
+        
+        // Show appropriate message based on the transition
+        const newStatus = statuses.find(s => s.order_status_id === newStatusIdInt);
+        const oldStatus = statuses.find(s => s.order_status_id === oldStatusId);
+        
+        if (newStatus?.description.toLowerCase() === 'closed') {
+          setFeedbackMessage({ 
+            type: 'success', 
+            text: 'Order closed successfully. Credit transactions have been processed.' 
+          });
+        } else if (oldStatus?.description.toLowerCase() === 'closed') {
+          setFeedbackMessage({ 
+            type: 'success', 
+            text: 'Order reopened successfully. Credit holds have been reinstated.' 
+          });
+        } else {
+          setFeedbackMessage({ type: 'success', text: 'Status updated successfully.' });
+        }
+  
+        // Refresh company applications to show updated held/allocated amounts
+        await fetchCompanyApplications(orderId);
+      }
+    } catch (err) {
+      console.error('Unexpected error during status change:', err);
+      setFeedbackMessage({ 
+        type: 'error', 
+        text: 'An unexpected error occurred while changing the order status.' 
+      });
     }
   };
 
