@@ -1,6 +1,6 @@
+import { createMiddlewareClient } from '@supabase/auth-helpers-nextjs';
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { createSupabaseServerClient } from '@lib/supabase/server';
 
 export async function middleware(req: NextRequest) {
   const res = NextResponse.next();
@@ -20,17 +20,21 @@ export async function middleware(req: NextRequest) {
     pathname.startsWith('/_next/') ||
     pathname.match(/\.(jpg|jpeg|png|gif|svg|ico|css|js)$/)
   ) {
-    return NextResponse.next();
+    return res;
   }
 
-  // Get token from headers or cookies
-  const token = req.headers.get('Authorization')?.replace('Bearer ', '') || req.cookies.get('sb-access-token')?.value;
+  // Create a Supabase client configured to use cookies
+  const supabase = createMiddlewareClient({ req, res });
 
-  // Initialize Supabase client
-  const supabase = createSupabaseServerClient(token);
+  // Refresh session if expired - required for Server Components
+  const {
+    data: { session },
+    error: sessionError
+  } = await supabase.auth.getSession();
 
-  // Get session
-  const { data: { session } } = await supabase.auth.getSession();
+  if (sessionError) {
+    console.error('Middleware: Session error:', sessionError);
+  }
 
   // Handle public paths
   if (isPublicPath) {
@@ -40,10 +44,18 @@ export async function middleware(req: NextRequest) {
       const hasRecoveryToken = url.searchParams.get('type') === 'recovery' || 
                               url.hash.includes('type=recovery');
       if (hasRecoveryToken) {
-        return NextResponse.next();
+        return res;
       }
     }
-    return NextResponse.next();
+    
+    // If user is authenticated and tries to access login/signup, redirect to orders
+    if (session && (pathname === '/login' || pathname === '/signup')) {
+      const url = req.nextUrl.clone();
+      url.pathname = '/orders';
+      return NextResponse.redirect(url);
+    }
+    
+    return res;
   }
 
   // Redirect to login if not authenticated
@@ -53,26 +65,28 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  // Redirect authenticated users away from login/signup to orders
-  if (pathname === '/login' || pathname === '/signup') {
-    const url = req.nextUrl.clone();
-    url.pathname = '/orders';
-    return NextResponse.redirect(url);
-  }
-
   // Check admin access for /admin routes
   if (pathname.startsWith('/admin')) {
     console.log('Middleware: Checking admin access for user:', session.user.id);
+    
     const { data: userData, error: userError } = await supabase
       .from('users')
       .select('role')
       .eq('user_id', session.user.id)
       .single();
 
-    console.log('Middleware: User role check result:', { userData, userError, userId: session.user.id });
+    console.log('Middleware: User role check result:', { 
+      userData, 
+      userError: userError?.message, 
+      userId: session.user.id 
+    });
 
     if (userError || !userData || userData.role !== 'admin') {
-      console.warn('Admin access denied:', { user: session.user.id, error: userError?.message, role: userData?.role });
+      console.warn('Admin access denied:', { 
+        user: session.user.id, 
+        error: userError?.message, 
+        role: userData?.role 
+      });
       const url = req.nextUrl.clone();
       url.pathname = '/unauthorized';
       return NextResponse.redirect(url);
@@ -82,7 +96,7 @@ export async function middleware(req: NextRequest) {
   }
 
   // For non-exempt paths, check ToS acceptance
-  if (!isTosExemptPath) {
+  if (!isTosExemptPath && !pathname.startsWith('/admin')) {
     const { data: userData, error: userError } = await supabase
       .from('users')
       .select('tos_accepted')
@@ -90,17 +104,29 @@ export async function middleware(req: NextRequest) {
       .single();
 
     if (userError || !userData?.tos_accepted) {
+      console.log('Middleware: User has not accepted ToS, redirecting to dashboard');
       const url = req.nextUrl.clone();
       url.pathname = '/dashboard';
       return NextResponse.redirect(url);
     }
   }
 
+  // IMPORTANT: Return the response object with the supabase cookie modifications
   return res;
 }
 
 export const config = {
   matcher: [
-    '/((?!api|_next/static|_next/image|favicon.ico|images|assets).*)',
+    /*
+     * Match all request paths except for the ones starting with:
+     * - api (API routes)
+     * - _next/static (static files)
+     * - _next/image (image optimization files)
+     * - favicon.ico (favicon file)
+     * - images (public images directory)
+     * - assets (public assets directory)
+     * And files with extensions (e.g., .png, .jpg, etc.)
+     */
+    '/((?!api|_next/static|_next/image|favicon.ico|images|assets|.*\\..*|_next).*)',
   ],
 };

@@ -4,13 +4,12 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useAuth } from '@lib/auth';
 import { supabase } from '@lib/supabase/client';
-import { PostgrestError } from '@supabase/supabase-js';
 import Link from 'next/link';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Input } from '@/components/ui/input';
-import { AlertOctagon, Check } from 'lucide-react';
+import { AlertOctagon, Check, CircleDollarSign } from 'lucide-react';
 import { debounce } from 'lodash';
 
 // Define the Order type
@@ -34,6 +33,13 @@ interface OrderProduct {
   roi: number | null;
 }
 
+// Interface for Company Credit Balance
+interface CreditBalance {
+  total_balance: number;
+  available_balance: number;
+  held_balance: number;
+}
+
 export default function OrderDetailPage() {
   const params = useParams();
   const orderId = parseInt(params.order_id as string);
@@ -46,214 +52,181 @@ export default function OrderDetailPage() {
   const [loading, setLoading] = useState(true);
   const [hasSubmitted, setHasSubmitted] = useState(false);
   const [isOrderClosed, setIsOrderClosed] = useState(false);
-  const { isAuthenticated, loading: authLoading, user } = useAuth();
+  const { isAuthenticated, loading: authLoading, user, session } = useAuth();
   const router = useRouter();
 
-  // Memoized fetch data function
+  const [creditBalance, setCreditBalance] = useState<CreditBalance | null>(null);
+  const [investmentError, setInvestmentError] = useState<string>('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [initialHeldAmount, setInitialHeldAmount] = useState<number>(0);
+
   const fetchData = useCallback(async () => {
+    if (!user?.user_id || !session) return;
     setLoading(true);
 
-    // Ensure user is valid before making API calls
-    if (!user?.user_id) {
-      console.error('No user_id available, waiting for auth to complete...');
-      setLoading(false);
-      return;
-    }
-
-    // Fetch user's company_id
-    const { data: userData, error: userError } = await supabase
-      .from('users')
-      .select('company_id')
-      .eq('user_id', user?.user_id)
-      .single();
-
-    if (userError) {
-      console.error('Error fetching user data:', userError);
-      setLoading(false);
-      return;
-    }
-    setCompanyId(userData.company_id);
-
-    // Fetch order details
-    const { data: orderData, error: orderError } = await supabase
-      .from('orders')
-      .select('order_id, leadtime, deadline, label_upload_deadline, order_statuses(description)')
-      .eq('order_id', orderId)
-      .single() as { data: Order | null, error: PostgrestError | null };
-
-    if (orderError) {
-      console.error('Error fetching order:', orderError);
-      setLoading(false);
-      return;
-    }
-
-    // Check if order is closed
-    if (orderData && orderData.order_statuses.description.toLowerCase() === 'closed') {
-      setIsOrderClosed(true);
-    }
-
-    // Fetch order products
-    const { data: productData, error: productError } = await supabase
-      .from('order_products')
-      .select('sequence, order_id, asin, quantity, price, description, hide_price_and_quantity, roi')
-      .eq('order_id', orderId);
-
-    if (productError) {
-      console.error('Error fetching order products:', productError);
-    }
-
-    // Normalize roi to ensure it's a number or null
-    setProducts(productData?.map(product => ({
-      ...product,
-      roi: typeof product.roi === 'number' ? product.roi : null,
-    })) || []);
-
-    // Fetch existing max_investment from order_company
-    if (userData.company_id) {
-      const { data: companyOrderData, error: companyOrderError } = await supabase
-        .from('order_company')
-        .select('max_investment')
-        .eq('order_id', orderId)
-        .eq('company_id', userData.company_id)
+    try {
+      // Fetch user data
+      const { data: userData, error: userError } = await supabase
+        .from('users')
+        .select('company_id')
+        .eq('user_id', user.user_id)
         .single();
 
-      if (companyOrderError && companyOrderError.code !== 'PGRST116') {
-        console.error('Error fetching order company data:', companyOrderError);
-      } else if (companyOrderData) {
-        setMaxInvestment(companyOrderData.max_investment);
+      if (userError || !userData?.company_id) {
+        console.error('Error fetching user data:', userError);
+        setLoading(false);
+        return;
       }
-    }
+      setCompanyId(userData.company_id);
+      
+      // Fetch credit balance with proper error handling
+      try {
+        const balanceResponse = await fetch('/api/credits/balance', {
+          headers: { 
+            'Authorization': `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json'
+          }
+        });
+        
+        if (balanceResponse.ok) {
+          const balanceData = await balanceResponse.json();
+          setCreditBalance(balanceData);
+        } else {
+          console.error("Error fetching credit balance:", balanceResponse.status);
+          // Set default values if balance fetch fails
+          setCreditBalance({
+            total_balance: 0,
+            available_balance: 0,
+            held_balance: 0
+          });
+        }
+      } catch (fetchError) {
+        console.error("Failed to fetch credit balance:", fetchError);
+        // Set default values if balance fetch fails
+        setCreditBalance({
+          total_balance: 0,
+          available_balance: 0,
+          held_balance: 0
+        });
+      }
 
-    // Fetch existing ungated status and ungated_min_amount for this company
-    if (userData.company_id) {
-      const { data: ungatedData, error: ungatedError } = await supabase
+      // Fetch order data
+      const { data: rawOrderData, error: orderError } = await supabase
+        .from('orders')
+        .select('order_id, leadtime, deadline, label_upload_deadline, order_statuses(description)')
+        .eq('order_id', orderId)
+        .single();
+
+      if (orderError) {
+        console.error('Error fetching order:', orderError);
+        setLoading(false);
+        return;
+      }
+
+      // Normalize the order_statuses property
+      const orderData = rawOrderData
+        ? {
+            ...rawOrderData,
+            order_statuses: Array.isArray(rawOrderData.order_statuses)
+              ? rawOrderData.order_statuses[0]
+              : rawOrderData.order_statuses,
+          } as Order
+        : null;
+      
+      setOrder(orderData);
+      if (orderData?.order_statuses.description.toLowerCase() === 'closed') {
+        setIsOrderClosed(true);
+      }
+
+      // Fetch products
+      const { data: productData } = await supabase
+        .from('order_products')
+        .select('sequence, order_id, asin, quantity, price, description, hide_price_and_quantity, roi')
+        .eq('order_id', orderId);
+
+      setProducts(productData?.map(p => ({ ...p, roi: typeof p.roi === 'number' ? p.roi : null })) || []);
+
+      // Fetch existing order_company data
+      const { data: companyOrderDataArr, error: companyOrderError } = await supabase
+        .from('order_company')
+        .select('max_investment, held_amount')
+        .eq('order_id', orderId)
+        .eq('company_id', userData.company_id)
+        .limit(1);
+
+      if (!companyOrderError && companyOrderDataArr && companyOrderDataArr.length > 0) {
+        const companyOrderData = companyOrderDataArr[0];
+        setMaxInvestment(companyOrderData.max_investment);
+        setInitialHeldAmount(companyOrderData.held_amount || 0);
+        if (companyOrderData.held_amount && companyOrderData.held_amount > 0) {
+          setHasSubmitted(true);
+        }
+      }
+      
+      // Fetch ungated status
+      const { data: ungatedData } = await supabase
         .from('order_products_company')
         .select('sequence, ungated, ungated_min_amount')
         .eq('order_id', orderId)
         .eq('company_id', userData.company_id);
-
-      if (ungatedError) {
-        console.error('Error fetching ungated status:', ungatedError);
-      } else {
-        const ungatedMap = ungatedData?.reduce((acc, item) => {
-          acc[item.sequence] = item.ungated;
-          return acc;
-        }, {} as Record<number, boolean>);
-        setUngatedStatus(ungatedMap || {});
-
-        const minAmountMap = ungatedData?.reduce((acc, item) => {
-          acc[item.sequence] = item.ungated_min_amount;
-          return acc;
-        }, {} as Record<number, number | null>);
-        setUngatedMinAmounts(minAmountMap || {});
+      
+      if (ungatedData) {
+        setUngatedStatus(ungatedData.reduce((acc, item) => ({ ...acc, [item.sequence]: item.ungated }), {}));
+        setUngatedMinAmounts(ungatedData.reduce((acc, item) => ({ ...acc, [item.sequence]: item.ungated_min_amount }), {}));
       }
+
+    } catch (error) {
+      console.error('Error in fetchData:', error);
+    } finally {
+      setLoading(false);
     }
-
-    // Check if investment has been submitted
-    if (userData.company_id) {
-      const { data: opcData, error: opcError } = await supabase
-        .from('order_products_company')
-        .select('count')
-        .eq('order_id', orderId)
-        .eq('company_id', userData.company_id);
-
-      const { data: ocData, error: ocError } = await supabase
-        .from('order_company')
-        .select('count')
-        .eq('order_id', orderId)
-        .eq('company_id', userData.company_id);
-
-      if (!opcError && !ocError) {
-        const hasOpcRecords = opcData && opcData.length > 0 && opcData[0].count > 0;
-        const hasOcRecords = ocData && ocData.length > 0 && ocData[0].count > 0;
-        setHasSubmitted(hasOpcRecords && hasOcRecords);
-      }
-    }
-
-    setOrder(orderData);
-    setLoading(false);
-  }, [orderId, user?.user_id]); // Only depend on the essential values
+  }, [orderId, user?.user_id, session]);
 
   useEffect(() => {
     if (authLoading) return;
-
     if (!isAuthenticated) {
       router.push('/login');
-      return;
+    } else if (user?.user_id && session) {
+      fetchData();
     }
+  }, [isAuthenticated, authLoading, router, user?.user_id, session, fetchData]);
 
-    // Only fetch data if we have a user with user_id
-    if (!user?.user_id) {
-      console.log('Waiting for user data to be available...');
-      return;
-    }
-
-    fetchData();
-  }, [isAuthenticated, authLoading, router, fetchData, user?.user_id]);
-
-  // Memoized function to update ungated status
   const updateUngatedStatus = useCallback(async (sequence: number, checked: boolean) => {
-    if (!companyId || hasSubmitted || isOrderClosed) {
-      console.warn('Cannot update ungated status: missing companyId or order is closed/submitted');
-      return;
-    }
-
-    // Find the product for this sequence
+    if (!companyId || hasSubmitted || isOrderClosed) return;
+    
     const product = products.find(p => p.sequence === sequence);
-    if (!product) {
-      console.warn(`Product with sequence ${sequence} not found`);
-      return;
-    }
-
-    try {
-      const { error } = await supabase
-        .from('order_products_company')
-        .upsert({
-          order_id: orderId,
-          sequence,
-          company_id: companyId,
-          ungated: checked,
-          quantity: product.quantity || 0,
-          ungated_min_amount: checked ? ungatedMinAmounts[sequence] : null,
-        }, {
-          onConflict: 'order_id, sequence, company_id'
-        });
-
-      if (error) {
-        console.error('Error updating ungated status:', error);
-        alert('Failed to update ungated status. Please try again.');
-        setUngatedStatus(prev => ({ ...prev, [sequence]: !checked }));
-      }
-    } catch (err) {
-      console.error('Unexpected error updating ungated status:', err);
-      alert('An unexpected error occurred. Please try again.');
-      setUngatedStatus(prev => ({ ...prev, [sequence]: !checked }));
+    if (!product) return;
+    
+    const { error } = await supabase
+      .from('order_products_company')
+      .upsert({
+        order_id: orderId,
+        sequence,
+        company_id: companyId,
+        ungated: checked,
+        quantity: product.quantity || 0,
+        ungated_min_amount: checked ? ungatedMinAmounts[sequence] : null,
+      }, { onConflict: 'order_id, sequence, company_id' });
+    
+    if (error) {
+      console.error('Error updating ungated status:', error);
     }
   }, [companyId, hasSubmitted, isOrderClosed, products, ungatedMinAmounts, orderId]);
 
-  // Debounced version of updateUngatedStatus with stable identity
-  const debouncedUngatedUpdate = useMemo(
-    () => debounce(updateUngatedStatus, 300),
-    [updateUngatedStatus]
-  );
+  const debouncedUngatedUpdate = useMemo(() => debounce(updateUngatedStatus, 300), [updateUngatedStatus]);
 
-  // Handler that calls the debounced version
   const handleUngatedChange = useCallback((sequence: number, checked: boolean) => {
-    // Immediately update UI for responsiveness
     setUngatedStatus(prev => ({ ...prev, [sequence]: checked }));
-    
-    // Debounced API call
+    if (!checked) setUngatedMinAmounts(prev => ({ ...prev, [sequence]: null }));
     debouncedUngatedUpdate(sequence, checked);
   }, [debouncedUngatedUpdate]);
-
-  // Memoized function to update min amount
+  
   const updateMinAmount = useCallback(async (sequence: number, minAmount: number | null) => {
-    if (!companyId || hasSubmitted || isOrderClosed) return;
-    if (!ungatedStatus[sequence]) return;
-
+    if (!companyId || hasSubmitted || isOrderClosed || !ungatedStatus[sequence]) return;
+    
     const product = products.find(p => p.sequence === sequence);
     if (!product) return;
-
+    
     const { error } = await supabase
       .from('order_products_company')
       .upsert({
@@ -263,78 +236,89 @@ export default function OrderDetailPage() {
         ungated: ungatedStatus[sequence],
         quantity: product.quantity || 0,
         ungated_min_amount: minAmount,
-      }, {
-        onConflict: 'order_id, sequence, company_id'
-      });
-
+      }, { onConflict: 'order_id, sequence, company_id' });
+    
     if (error) {
       console.error('Error updating min amount:', error);
-      // Could implement revert mechanism here
     }
   }, [companyId, hasSubmitted, isOrderClosed, products, ungatedStatus, orderId]);
 
-  // Debounced version of updateMinAmount with stable identity
-  const debouncedMinAmountUpdate = useMemo(
-    () => debounce(updateMinAmount, 300),
-    [updateMinAmount]
-  );
+  const debouncedMinAmountUpdate = useMemo(() => debounce(updateMinAmount, 300), [updateMinAmount]);
 
-  // Handler for min amount changes with optimistic UI update
   const handleMinAmountChange = useCallback((sequence: number, value: string) => {
     if (!companyId || hasSubmitted || isOrderClosed || !ungatedStatus[sequence]) return;
-
     const newMinAmount = value ? parseInt(value) : null;
-    
-    // Optimistic UI update
     setUngatedMinAmounts(prev => ({ ...prev, [sequence]: newMinAmount }));
-    
-    // Debounced API call
     debouncedMinAmountUpdate(sequence, newMinAmount);
   }, [companyId, hasSubmitted, isOrderClosed, ungatedStatus, debouncedMinAmountUpdate]);
 
-  // Memoized function to update max investment
-  const updateMaxInvestment = useCallback(async (value: number) => {
-    if (!companyId || hasSubmitted || isOrderClosed) return;
-
-    const { error } = await supabase
-      .from('order_company')
-      .upsert({
-        order_id: orderId,
-        company_id: companyId,
-        max_investment: value
-      }, {
-        onConflict: 'order_id, company_id'
-      });
-
-    if (error) {
-      console.error('Error updating max investment:', error);
-      // If there's an error, revert back to whatever value we had before
-      setMaxInvestment(prev => prev);
-    }
-  }, [companyId, hasSubmitted, isOrderClosed, orderId]);
-
-  // Debounced version of updateMaxInvestment with stable identity
-  const debouncedMaxInvestmentUpdate = useMemo(
-    () => debounce(updateMaxInvestment, 300),
-    [updateMaxInvestment]
-  );
-
-  // Handler that calls the debounced version with optimistic UI update
   const handleMaxInvestmentChange = useCallback((value: string) => {
     const numValue = parseFloat(value) || 0;
-    
-    // Immediately update UI
     setMaxInvestment(numValue);
-    
-    // Debounced API call
-    debouncedMaxInvestmentUpdate(numValue);
-  }, [debouncedMaxInvestmentUpdate]);
+    const effectiveAvailable = (creditBalance?.available_balance ?? 0) + initialHeldAmount;
+    if (numValue > effectiveAvailable) {
+      setInvestmentError(`Investment cannot exceed available credit of $${effectiveAvailable.toLocaleString()}.`);
+    } else {
+      setInvestmentError('');
+    }
+  }, [creditBalance, initialHeldAmount]);
 
-  // Memoized function to submit investment
   const handleSubmitInvestment = useCallback(async () => {
-    if (!companyId || !order || hasSubmitted || isOrderClosed) return;
+    if (!companyId || !order || hasSubmitted || isOrderClosed || maxInvestment === null || investmentError) {
+      alert("Please correct any errors or complete the form before submitting.");
+      return;
+    }
+    
+    if (!creditBalance || creditBalance.available_balance === 0) {
+      alert("You have no available credit. Please contact support.");
+      return;
+    }
+    
+    setIsSubmitting(true);
 
     try {
+      // First, save the order_company record with max_investment
+      const { error: orderCompanyError } = await supabase
+        .from('order_company')
+        .upsert({
+          order_id: order.order_id,
+          company_id: companyId,
+          max_investment: maxInvestment
+        }, { onConflict: 'order_id, company_id' });
+
+      if (orderCompanyError) {
+        alert(`Failed to save investment: ${orderCompanyError.message}`);
+        setIsSubmitting(false);
+        return;
+      }
+
+      // Then process the credit hold
+      const { error: holdError } = await supabase.rpc('process_order_hold', {
+        p_company_id: companyId,
+        p_order_id: order.order_id,
+        p_hold_amount: maxInvestment
+      });
+
+      if (holdError) {
+        alert(`Failed to place credit hold: ${holdError.message}`);
+        setIsSubmitting(false);
+        return;
+      }
+
+      // Update order_company with held_amount
+      const { error: updateError } = await supabase
+        .from('order_company')
+        .update({
+          held_amount: maxInvestment
+        })
+        .eq('order_id', order.order_id)
+        .eq('company_id', companyId);
+
+      if (updateError) {
+        console.error('Error updating held_amount:', updateError);
+      }
+
+      // Save product ungated status
       const investmentData = products.map(product => ({
         order_id: order.order_id,
         sequence: product.sequence,
@@ -343,74 +327,28 @@ export default function OrderDetailPage() {
         ungated: ungatedStatus[product.sequence] || false,
         ungated_min_amount: ungatedStatus[product.sequence] ? ungatedMinAmounts[product.sequence] : null,
       }));
-
-      const { error } = await supabase
+      
+      const { error: productsError } = await supabase
         .from('order_products_company')
-        .upsert(investmentData, {
-          onConflict: 'order_id, sequence, company_id'
-        });
+        .upsert(investmentData, { onConflict: 'order_id, sequence, company_id' });
 
-      if (error) {
-        console.error('Error submitting investment:', error);
-        alert('Failed to submit investment. Please try again.');
-        return;
+      if (productsError) {
+        console.error('Error saving product selections:', productsError);
       }
 
       alert('Investment submitted successfully!');
       setHasSubmitted(true);
-    } catch (err) {
-      console.error('Unexpected error:', err);
-      alert('An unexpected error occurred. Please try again.');
+      fetchData(); // Refresh data to show updated state
+    } catch (err: unknown) {
+      console.error('Error submitting investment:', err);
+      alert(`Failed to submit investment: ${err instanceof Error ? err.message : 'An unknown error occurred'}`);
+    } finally {
+      setIsSubmitting(false);
     }
-  }, [companyId, order, hasSubmitted, isOrderClosed, products, ungatedStatus, ungatedMinAmounts]);
-
-  // Memoize product table rows to prevent unnecessary re-renders
-  const productRows = useMemo(() => {
-    return products.map((product) => (
-      <tr key={product.sequence} className="hover:bg-[#35353580] transition-colors border-[#6a6a6a80]">
-        <td className="text-gray-200 p-4 align-middle" style={{ overflowWrap: 'break-word' }}>{product.asin}</td>
-        <td className="text-gray-200 p-4 align-middle" style={{ overflowWrap: 'break-word' }}>
-          <input
-            type="checkbox"
-            checked={ungatedStatus[product.sequence] || false}
-            onChange={(e) => handleUngatedChange(product.sequence, e.target.checked)}
-            className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded"
-            disabled={hasSubmitted || isOrderClosed}
-          />
-        </td>
-        <td className="text-gray-200 p-4 align-middle" style={{ overflowWrap: 'break-word' }}>
-          <Input
-            type="number"
-            value={ungatedMinAmounts[product.sequence] || ''}
-            onChange={(e) => handleMinAmountChange(product.sequence, e.target.value)}
-            className="bg-[#1f1f1f] border border-[#6a6a6a80] rounded px-3 py-2 w-full text-[#FFFFFF] placeholder:text-[#A7A7A7]"
-            placeholder="Min Amount"
-            min="0"
-            disabled={!ungatedStatus[product.sequence] || hasSubmitted || isOrderClosed}
-          />
-        </td>
-        <td className="text-gray-200 p-4 align-middle" style={{ overflowWrap: 'break-word' }}>
-          {product.hide_price_and_quantity ? '-' : `$${product.price}`}
-        </td>
-        <td className="text-gray-200 p-4 align-middle" style={{ overflowWrap: 'break-word' }}>
-          {product.hide_price_and_quantity ? '-' : product.quantity}
-        </td>
-        <td className="text-gray-200 p-4 align-middle" style={{ overflowWrap: 'break-word' }}>
-          {typeof product.roi === 'number' && !product.hide_price_and_quantity ? `${product.roi.toFixed(2)}%` : '-'}
-        </td>
-        {products.some(p => p.description) && (
-          <td className="text-gray-200 p-4 align-middle" style={{ overflowWrap: 'break-word' }}>{product.description}</td>
-        )}
-      </tr>
-    ));
-  }, [products, ungatedStatus, ungatedMinAmounts, hasSubmitted, isOrderClosed, handleUngatedChange, handleMinAmountChange]);
+  }, [companyId, order, hasSubmitted, isOrderClosed, products, ungatedStatus, ungatedMinAmounts, maxInvestment, investmentError, creditBalance, fetchData]);
 
   if (loading) {
-    return (
-      <div className="min-h-screen bg-[#14130F] p-6 flex items-center justify-center">
-        <p className="text-gray-400">Loading...</p>
-      </div>
-    );
+    return <div className="min-h-screen bg-[#14130F] p-6 flex items-center justify-center"><p className="text-gray-400">Loading...</p></div>;
   }
 
   if (!isAuthenticated) return null;
@@ -431,42 +369,37 @@ export default function OrderDetailPage() {
   return (
     <div className="min-h-screen bg-background p-6 w-full">
       <div className="w-full">
+        {/* Header and Alerts */}
         <div className="flex items-center mb-6">
-          <Link href="/orders" className="text-[#c8aa64] hover:text-[#9d864e] mr-4">
-            ← Back to Orders
-          </Link>
+          <Link href="/orders" className="text-[#c8aa64] hover:text-[#9d864e] mr-4">← Back to Orders</Link>
         </div>
-
         <div className="flex items-center mb-6">
           <h1 className="text-3xl font-bold text-[#bfbfbf]">Order #{order.order_id}</h1>
         </div>
-
+        
         {isOrderClosed && (
           <Alert className='mb-6 bg-[#7f1d1d] text-[#bfbfbf] w-fit'>
-            <AlertOctagon className="h-4 w-4 text-[#bfbfbf]" />
+            <AlertOctagon className="h-4 w-4" />
             <AlertTitle>Closed</AlertTitle>
-            <AlertDescription>
-              This order is closed. No further investments can be submitted.
-            </AlertDescription>
+            <AlertDescription>This order is closed. No further investments can be submitted.</AlertDescription>
           </Alert>
         )}
-
-        {hasSubmitted && (
+        
+        {hasSubmitted && !isOrderClosed && (
           <Alert className='mb-6 bg-[#235c12] text-[#bfbfbf] w-fit'>
-            <AlertOctagon className="h-4 w-4 text-[#bfbfbf]" />
+            <Check className="h-4 w-4" />
             <AlertTitle>Submitted</AlertTitle>
-            <AlertDescription>
-              Your investment has been submitted.
-            </AlertDescription>
+            <AlertDescription>Your application has been submitted. You have ${initialHeldAmount.toLocaleString()} held for this order.</AlertDescription>
           </Alert>
         )}
-
+        
+        {/* Order Details Card */}
         <div className="grid grid-cols-1 gap-6 mb-8 w-full">
           <div className="rounded-lg p-6 bg-gradient-to-br from-[#212121] via-[#0f0f0f] to-[#2b2b2b] shadow-lg w-full">
             <div className="flex flex-wrap gap-6 text-gray-300">
               <div className="flex flex-col">
                 <span className="font-medium">Status</span>
-                <Badge variant="outline" className="bg-[#c8aa64] text-[#242424]">{order.order_statuses?.description || 'N/A'}</Badge>
+                <Badge variant="outline" className='bg-[#c8aa64] text-[#242424]'>{order.order_statuses?.description || 'N/A'}</Badge>
               </div>
               <div className="flex flex-col">
                 <span className="font-medium">Lead Time</span>
@@ -484,55 +417,116 @@ export default function OrderDetailPage() {
           </div>
         </div>
 
+        {/* Products Table */}
         <div className="rounded-lg p-6 bg-gradient-to-br from-[#212121] via-[#0f0f0f] to-[#2b2b2b] shadow-lg w-full overflow-x-auto">
           {products.length === 0 ? (
             <p className="text-gray-400">No products found for this order.</p>
           ) : (
-            <div className="w-full">
-              <table className="w-full border-collapse" style={{ tableLayout: 'fixed' }}>
-                <thead>
-                  <tr className="border-[#2B2B2B] hover:bg-transparent">
-                    <th className="text-gray-300 w-[15%] h-12 px-4 text-left align-middle font-medium">ASIN</th>
-                    <th className="text-gray-300 w-[15%] h-12 px-4 text-left align-middle font-medium">Ungated?</th>
-                    <th className="text-gray-300 w-[15%] h-12 px-4 text-left align-middle font-medium">Min Ungated Amount</th>
-                    <th className="text-gray-300 w-[15%] h-12 px-4 text-left align-middle font-medium">Price</th>
-                    <th className="text-gray-300 w-[15%] h-12 px-4 text-left align-middle font-medium">Quantity</th>
-                    <th className="text-gray-300 w-[15%] h-12 px-4 text-left align-middle font-medium">ROI (%)</th>
+            <table className="w-full border-collapse" style={{ tableLayout: 'fixed' }}>
+              <thead>
+                <tr className="border-[#2B2B2B] hover:bg-transparent">
+                  <th className="text-gray-300 w-[15%] h-12 px-4 text-left align-middle font-medium">ASIN</th>
+                  <th className="text-gray-300 w-[15%] h-12 px-4 text-left align-middle font-medium">Ungated?</th>
+                  <th className="text-gray-300 w-[15%] h-12 px-4 text-left align-middle font-medium">Min Ungated Amount</th>
+                  <th className="text-gray-300 w-[15%] h-12 px-4 text-left align-middle font-medium">Price</th>
+                  <th className="text-gray-300 w-[15%] h-12 px-4 text-left align-middle font-medium">Quantity</th>
+                  <th className="text-gray-300 w-[15%] h-12 px-4 text-left align-middle font-medium">ROI (%)</th>
+                  {products.some(p => p.description) && (
+                    <th className="text-gray-300 w-[15%] h-12 px-4 text-left align-middle font-medium">Description</th>
+                  )}
+                </tr>
+              </thead>
+              <tbody>
+                {products.map((product) => (
+                  <tr key={product.sequence} className="hover:bg-[#35353580] transition-colors border-[#6a6a6a80]">
+                    <td className="text-gray-200 p-4 align-middle">{product.asin}</td>
+                    <td className="text-gray-200 p-4 align-middle">
+                      <input
+                        type="checkbox"
+                        checked={ungatedStatus[product.sequence] || false}
+                        onChange={(e) => handleUngatedChange(product.sequence, e.target.checked)}
+                        className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded"
+                        disabled={hasSubmitted || isOrderClosed}
+                      />
+                    </td>
+                    <td className="text-gray-200 p-4 align-middle">
+                      <Input
+                        type="number"
+                        value={ungatedMinAmounts[product.sequence] || ''}
+                        onChange={(e) => handleMinAmountChange(product.sequence, e.target.value)}
+                        className="bg-[#1f1f1f] border border-[#6a6a6a80] rounded px-3 py-2 w-full text-[#FFFFFF] placeholder:text-[#A7A7A7]"
+                        placeholder="Min Amount"
+                        min="0"
+                        disabled={!ungatedStatus[product.sequence] || hasSubmitted || isOrderClosed}
+                      />
+                    </td>
+                    <td className="text-gray-200 p-4 align-middle">
+                      {product.hide_price_and_quantity ? '-' : `$${product.price}`}
+                    </td>
+                    <td className="text-gray-200 p-4 align-middle">
+                      {product.hide_price_and_quantity ? '-' : product.quantity}
+                    </td>
+                    <td className="text-gray-200 p-4 align-middle">
+                      {typeof product.roi === 'number' && !product.hide_price_and_quantity ? `${product.roi.toFixed(2)}%` : '-'}
+                    </td>
                     {products.some(p => p.description) && (
-                      <th className="text-gray-300 w-[15%] h-12 px-4 text-left align-middle font-medium">Description</th>
+                      <td className="text-gray-200 p-4 align-middle">{product.description}</td>
                     )}
                   </tr>
-                </thead>
-                <tbody>
-                  {productRows}
-                </tbody>
-              </table>
-            </div>
+                ))}
+              </tbody>
+            </table>
           )}
         </div>
-
-        <div className="mb-4 flex flex-col items-end mt-14">
-          <label htmlFor="maxInvestment" className="text-gray-300 font-medium block mb-2">
-            Maximum Investment ($)
-          </label>
-          <Input
-            type="number"
-            id="maxInvestment"
-            value={maxInvestment || ''}
-            onChange={(e) => handleMaxInvestmentChange(e.target.value)}
-            className="bg-[#1f1f1f] border border-[#6a6a6a80] rounded px-3 py-2 w-full max-w-xs border-[#A7A7A7] text-[#FFFFFF] placeholder:text-[#A7A7A7]"
-            step="100"
-            min="1000"
-            disabled={hasSubmitted || isOrderClosed}
-          />
-          <Button
-            onClick={handleSubmitInvestment}
-            className="mt-4 bg-[#c8aa64] hover:bg-[#9d864e] text-[#242424]"
-            disabled={hasSubmitted || isOrderClosed}
-          >
-            <Check className="mr-2 h-4 w-4" />
-            Submit Investment
-          </Button>
+        
+        {/* Investment Section */}
+        <div className="mt-14 flex flex-col items-end">
+          <div className="w-full max-w-xs space-y-4">
+            <div className="flex justify-between items-center p-3 rounded-md bg-[#2a2a2a] border border-[#6a6a6a80]">
+              <div className='flex items-center gap-2'>
+                <CircleDollarSign className='h-5 w-5 text-[#c8aa64]'/>
+                <span className="text-gray-300 font-medium">Available Credit:</span>
+              </div>
+              <span className="text-lg font-semibold text-green-400">
+                ${creditBalance ? creditBalance.available_balance.toLocaleString() : '0'}
+              </span>
+            </div>
+            
+            {initialHeldAmount > 0 && (
+              <p className="text-sm text-gray-400 text-right">
+                You have ${initialHeldAmount.toLocaleString()} already held for this order.
+              </p>
+            )}
+            
+            <div>
+              <label htmlFor="maxInvestment" className="text-gray-300 font-medium block mb-2">
+                Maximum Investment ($)
+              </label>
+              <Input
+                type="number"
+                id="maxInvestment"
+                value={maxInvestment || ''}
+                onChange={(e) => handleMaxInvestmentChange(e.target.value)}
+                className={`bg-[#1f1f1f] border rounded px-3 py-2 w-full text-[#FFFFFF] placeholder:text-[#A7A7A7] ${
+                  investmentError ? 'border-red-500' : 'border-[#6a6a6a80]'
+                }`}
+                placeholder="Enter amount"
+                step="100"
+                min="0"
+                disabled={hasSubmitted || isOrderClosed || isSubmitting}
+              />
+              {investmentError && <p className="text-red-500 text-sm mt-1">{investmentError}</p>}
+            </div>
+            
+            <Button
+              onClick={handleSubmitInvestment}
+              className="w-full bg-[#c8aa64] hover:bg-[#9d864e] text-[#242424]"
+              disabled={hasSubmitted || isOrderClosed || !!investmentError || isSubmitting || maxInvestment === null || maxInvestment === 0}
+            >
+              <Check className="mr-2 h-4 w-4" />
+              {isSubmitting ? 'Submitting...' : 'Submit Investment'}
+            </Button>
+          </div>
         </div>
       </div>
     </div>
