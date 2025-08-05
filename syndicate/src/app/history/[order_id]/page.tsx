@@ -96,8 +96,6 @@ export default function HistoryOrderDetailPage() {
         return;
       }
 
-      const isAdmin = userData.role === 'admin';
-
       // Fetch order details
       const { data: orderData, error: orderError } = await supabase
         .from('orders')
