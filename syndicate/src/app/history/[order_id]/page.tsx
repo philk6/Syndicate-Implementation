@@ -96,8 +96,6 @@ export default function HistoryOrderDetailPage() {
         return;
       }
 
-      const isAdmin = userData.role === 'admin';
-
       // Fetch order details
       const { data: orderData, error: orderError } = await supabase
         .from('orders')
@@ -135,7 +133,7 @@ export default function HistoryOrderDetailPage() {
       }
 
       // Fetch allocation results for this company if not hidden or user is admin
-      if (userData.company_id && (!orderData?.hide_allocations || isAdmin)) {
+      if (userData.company_id) {
         const { data: allocationData, error: allocationError } = await supabase
           .from('allocation_results')
           .select(`
@@ -352,7 +350,7 @@ export default function HistoryOrderDetailPage() {
           </CardContent>
         </Card>
 
-        {(user?.role === 'admin' || (!order.hide_allocations && allocations.length > 0)) && (
+        {allocations.length > 0 && (
           <div className="rounded-lg p-6 bg-gradient-to-br from-[#212121] via-[#0f0f0f] to-[#2b2b2b] shadow-lg w-full overflow-x-auto">
             <h2 className="text-xl font-semibold text-gray-300 mb-4">Your Allocations</h2>
             {allocations.length === 0 ? (
