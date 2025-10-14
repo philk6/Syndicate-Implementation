@@ -242,76 +242,34 @@ export default function AdminOrdersPage() {
     if (selectedOrders.length === 0) return;
   
     try {
-      // Step 1: Delete dependent records from related tables for each selected order
-      const deletePromises = selectedOrders.map(async (orderId) => {
-        // Delete from order_products_company (depends on order_products)
-        const { error: productsCompanyError } = await supabase
-          .from('order_products_company')
-          .delete()
-          .eq('order_id', orderId);
-        if (productsCompanyError) {
-          throw new Error(`Failed to delete order_products_company for order ${orderId}: ${productsCompanyError.message}`);
-        }
+      // We need the current user's UUID for created_by
+      const authUser = (await supabase.auth.getUser()).data.user;
+      if (!authUser) throw new Error('Not authenticated');
   
-        // Delete from order_pre_assignments (depends on order_products)
-        const { error: preAssignmentsError } = await supabase
-          .from('order_pre_assignments')
-          .delete()
-          .eq('order_id', orderId);
-        if (preAssignmentsError) {
-          throw new Error(`Failed to delete order_pre_assignments for order ${orderId}: ${preAssignmentsError.message}`);
-        }
+      // Run the atomic server-side delete for each order
+      await Promise.all(
+        selectedOrders.map(async (orderId) => {
+          const { error } = await supabase.rpc('admin_release_credit_and_delete_order', {
+            p_order_id: orderId,
+            p_user_id: authUser.id, // UUID
+          });
+          if (error) {
+            throw new Error(`Failed to delete order ${orderId}: ${error.message}`);
+          }
+        })
+      );
   
-        // Delete from allocation_results (depends on order_products)
-        const { error: allocationError } = await supabase
-          .from('allocation_results')
-          .delete()
-          .eq('order_id', orderId);
-        if (allocationError) {
-          throw new Error(`Failed to delete allocation_results for order ${orderId}: ${allocationError.message}`);
-        }
-  
-        // Delete from order_products (now safe, as dependent records are gone)
-        const { error: productsError } = await supabase
-          .from('order_products')
-          .delete()
-          .eq('order_id', orderId);
-        if (productsError) {
-          throw new Error(`Failed to delete order_products for order ${orderId}: ${productsError.message}`);
-        }
-  
-        // Delete from order_company
-        const { error: companyError } = await supabase
-          .from('order_company')
-          .delete()
-          .eq('order_id', orderId);
-        if (companyError) {
-          throw new Error(`Failed to delete order_company for order ${orderId}: ${companyError.message}`);
-        }
-  
-        // Finally, delete the order
-        const { error: orderError } = await supabase
-          .from('orders')
-          .delete()
-          .eq('order_id', orderId);
-        if (orderError) {
-          throw new Error(`Failed to delete order ${orderId}: ${orderError.message}`);
-        }
-      });
-  
-      // Execute all deletions
-      await Promise.all(deletePromises);
-  
-      // Update state to remove deleted orders
-      setOrders((prev) => prev.filter((order) => !selectedOrders.includes(order.order_id)));
+      // Update UI
+      setOrders(prev => prev.filter(o => !selectedOrders.includes(o.order_id)));
       setSelectedOrders([]);
       setIsDeleteDialogOpen(false);
-      toast.success('Selected orders deleted successfully.');
+      toast.success('Selected orders deleted and credit released.');
     } catch (err) {
       console.error('Error deleting orders:', err);
       toast.error(`Failed to delete orders: ${(err as Error).message}`);
     }
   };
+  
 
   if (authLoading || loadingOrders) {
     return (
