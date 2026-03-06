@@ -13,8 +13,9 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
-import { Progress } from '@/components/ui/progress';
+import { StatusPill } from '@/components/ui/status-pill';
+import { GlassCard } from '@/components/ui/glass-card';
+import { History, Clock, ArrowRight } from 'lucide-react';
 
 interface Order {
   order_id: number;
@@ -40,7 +41,6 @@ export default function HistoryPage() {
 
     async function fetchOrders() {
       try {
-        // Fetch user's company_id
         const { data: userData, error: userError } = await supabase
           .from('users')
           .select('company_id')
@@ -56,8 +56,6 @@ export default function HistoryPage() {
 
         const companyId = userData.company_id;
 
-        // Fetch orders where the company has applied or been allocated
-        // Use a union of order_ids from order_company and allocation_results
         const { data: orderIdsData, error: orderIdsError } = await supabase
           .rpc('get_company_order_ids', { p_company_id: companyId });
 
@@ -76,7 +74,6 @@ export default function HistoryPage() {
           return;
         }
 
-        // Fetch order details for the relevant order IDs
         const { data, error } = await supabase
           .from('orders')
           .select(`
@@ -114,7 +111,7 @@ export default function HistoryPage() {
 
   const calculateProgress = (deadline: string): number => {
     const now = new Date();
-    const deadlineDate = new Date(deadline + 'Z'); // Treat as UTC
+    const deadlineDate = new Date(deadline + 'Z');
     if (isNaN(deadlineDate.getTime())) {
       return 0;
     }
@@ -132,53 +129,102 @@ export default function HistoryPage() {
   if (!isAuthenticated) return null;
 
   return (
-    <div className="min-h-screen bg-background p-6">
-      <div className="mx-auto">
-        <h1 className="text-3xl font-bold text-[#d1d5db] mb-6">Order History</h1>
-        <div className="card max-w-full border-[#2b2b2b] border-solid border">
-          {loadingOrders ? (
-            <p className="text-gray-400 text-center">Loading orders...</p>
-          ) : orders.length === 0 ? (
-            <p className="text-gray-400 text-center">No orders found in your history.</p>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow className="hover:bg-transparent">
-                  <TableHead className="text-gray-300">Order ID</TableHead>
-                  <TableHead className="text-gray-300">Status</TableHead>
-                  <TableHead className="text-gray-300">Lead Time (days)</TableHead>
-                  <TableHead className="text-gray-300">Application Deadline</TableHead>
-                  <TableHead className="text-gray-300">Label Upload Deadline</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {orders.map((order) => (
-                  <TableRow
-                    key={order.order_id}
-                    className="hover:bg-[#35353580] transition-colors focus:ring-[#35353580] border-[#2b2b2b] cursor-pointer"
-                    onClick={() => handleOrderClick(order.order_id)}
-                  >
-                    <TableCell className="text-gray-200">{order.order_id}</TableCell>
-                    <TableCell className="text-gray-200">
-                      <Badge>
-                        {order.order_statuses?.description || 'N/A'}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-gray-200">{order.leadtime}</TableCell>
-                    <TableCell className="text-gray-200">
-                      {new Date(order.deadline).toLocaleString()}
-                      <Progress value={calculateProgress(order.deadline)} />
-                    </TableCell>
-                    <TableCell className="text-gray-200">
-                      {new Date(order.label_upload_deadline).toLocaleString()}
-                      <Progress value={calculateProgress(order.label_upload_deadline)} />
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
+    <div className="min-h-screen p-6 w-full relative">
+      <div className="max-w-7xl mx-auto z-10 relative">
+        <div className="flex justify-between items-center mb-8">
+          <h1 className="text-3xl font-bold text-white tracking-tight flex items-center">
+            <History className="mr-3 h-8 w-8 text-amber-500" />
+            Order History
+          </h1>
         </div>
+
+        <GlassCard className="p-0 overflow-hidden">
+          <div className="p-6 border-b border-white/[0.05]">
+            <h2 className="text-lg font-semibold text-white">Your Orders</h2>
+            <p className="text-neutral-500 text-sm">View and manage your past and active orders</p>
+          </div>
+
+          {loadingOrders ? (
+            <div className="p-12 text-center text-neutral-500 italic flex flex-col items-center">
+              <div className="w-10 h-10 border-2 border-amber-500/20 border-t-amber-500 rounded-full animate-spin mb-4" />
+              Loading your history...
+            </div>
+          ) : orders.length === 0 ? (
+            <div className="p-12 text-center text-neutral-500 italic">
+              No orders found in your history.
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow className="hover:bg-transparent border-white/[0.05]">
+                    <TableHead className="text-neutral-400 font-medium py-4 px-6">ID</TableHead>
+                    <TableHead className="text-neutral-400 font-medium py-4 px-6">Status</TableHead>
+                    <TableHead className="text-neutral-400 font-medium py-4 px-6">Lead Time</TableHead>
+                    <TableHead className="text-neutral-400 font-medium py-4 px-6">Application Deadline</TableHead>
+                    <TableHead className="text-neutral-400 font-medium py-4 px-6">Upload Deadline</TableHead>
+                    <TableHead className="text-neutral-400 font-medium py-4 px-6 text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {orders.map((order) => (
+                    <TableRow
+                      key={order.order_id}
+                      className="hover:bg-white/[0.02] transition-colors border-white/[0.02] cursor-pointer group"
+                      onClick={() => handleOrderClick(order.order_id)}
+                    >
+                      <TableCell className="py-4 px-6 font-mono text-sm text-amber-500/80">#{order.order_id}</TableCell>
+                      <TableCell className="py-4 px-6">
+                        <StatusPill
+                          text={order.order_statuses?.description || 'N/A'}
+                          type={order.order_statuses?.description?.toLowerCase() || 'pending'}
+                        />
+                      </TableCell>
+                      <TableCell className="py-4 px-6 text-neutral-300 font-medium">{order.leadtime} Days</TableCell>
+                      <TableCell className="py-4 px-6">
+                        <div className="space-y-2">
+                          <div className="text-neutral-400 text-xs flex items-center">
+                            <Clock className="h-3 w-3 mr-1.5 text-neutral-500" />
+                            {new Date(order.deadline).toLocaleDateString()}
+                          </div>
+                          <div className="w-24 h-1.5 bg-white/[0.05] rounded-full overflow-hidden">
+                            <div
+                              className={`h-full transition-all duration-500 ${calculateProgress(order.deadline) < 30 ? 'bg-rose-500/50' :
+                                  calculateProgress(order.deadline) < 70 ? 'bg-amber-500/50' : 'bg-emerald-500/50'
+                                }`}
+                              style={{ width: `${calculateProgress(order.deadline)}%` }}
+                            />
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell className="py-4 px-6">
+                        <div className="space-y-2">
+                          <div className="text-neutral-400 text-xs flex items-center">
+                            <Clock className="h-3 w-3 mr-1.5 text-neutral-500" />
+                            {new Date(order.label_upload_deadline).toLocaleDateString()}
+                          </div>
+                          <div className="w-24 h-1.5 bg-white/[0.05] rounded-full overflow-hidden">
+                            <div
+                              className={`h-full transition-all duration-500 ${calculateProgress(order.label_upload_deadline) < 30 ? 'bg-rose-500/50' :
+                                  calculateProgress(order.label_upload_deadline) < 70 ? 'bg-amber-500/50' : 'bg-emerald-500/50'
+                                }`}
+                              style={{ width: `${calculateProgress(order.label_upload_deadline)}%` }}
+                            />
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell className="py-4 px-6 text-right">
+                        <div className="inline-flex items-center text-amber-500 font-medium text-sm group-hover:translate-x-1 transition-transform">
+                          Details <ArrowRight className="ml-1.5 h-4 w-4" />
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </GlassCard>
       </div>
     </div>
   );

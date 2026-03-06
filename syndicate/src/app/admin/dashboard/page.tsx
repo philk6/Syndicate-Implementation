@@ -5,12 +5,8 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '../../../../lib/auth';
 import { supabase } from '../../../../lib/supabase/client';
 import { PostgrestError } from '@supabase/supabase-js';
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
+import { GlassCard } from '@/components/ui/glass-card';
+import { StatusPill } from '@/components/ui/status-pill';
 import {
   Table,
   TableBody,
@@ -133,8 +129,8 @@ export default function AdminDashboardPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#14130F] p-6 flex items-center justify-center">
-        <p className="text-gray-400">Loading...</p>
+      <div className="min-h-screen p-6 flex items-center justify-center">
+        <p className="text-neutral-400">Loading...</p>
       </div>
     );
   }
@@ -142,79 +138,81 @@ export default function AdminDashboardPage() {
   if (!isAuthenticated || user?.role !== 'admin') return null;
 
   return (
-    <div className="min-h-screen bg-background p-6">
+    <div className="min-h-screen p-6 w-full">
       <div className="max-w-7xl mx-auto">
-        <h1 className="text-3xl font-bold text-[#d1d5db] mb-6">Admin Dashboard</h1>
+        <h1 className="text-3xl font-bold text-white mb-6">Admin Dashboard</h1>
 
         {/* Metric Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <Card className="bg-gradient-to-br from-[#212121] via-[#0f0f0f] to-[#2b2b2b] border-[#6a6a6a80]">
-            <CardHeader>
-              <CardTitle className="text-gray-300">Total Orders</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-bold text-[#c8aa64]">{metrics.totalOrders}</p>
-              <p className="text-sm text-gray-400">All orders processed</p>
-            </CardContent>
-          </Card>
-          <Card className="bg-gradient-to-br from-[#212121] via-[#0f0f0f] to-[#2b2b2b] border-[#6a6a6a80]">
-            <CardHeader>
-              <CardTitle className="text-gray-300">Total Revenue</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-bold text-[#c8aa64]">${metrics.totalRevenue.toLocaleString()}</p>
-              <p className="text-sm text-gray-400">Sum of order amounts</p>
-            </CardContent>
-          </Card>
-          <Card className="bg-gradient-to-br from-[#212121] via-[#0f0f0f] to-[#2b2b2b] border-[#6a6a6a80]">
-            <CardHeader>
-              <CardTitle className="text-gray-300">Average ROI</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-bold text-[#c8aa64]">
-                {metrics.averageRoi != null ? metrics.averageRoi.toFixed(2) : 'N/A'}
+          <GlassCard className="p-6">
+            <div className="mb-2">
+              <h3 className="text-sm font-medium text-neutral-400">Total Orders</h3>
+            </div>
+            <div>
+              <p className="text-2xl font-bold text-white tracking-tight">{metrics.totalOrders}</p>
+              <p className="text-xs text-neutral-500 mt-1">All orders processed</p>
+            </div>
+          </GlassCard>
+          <GlassCard className="p-6">
+            <div className="mb-2">
+              <h3 className="text-sm font-medium text-neutral-400">Total Revenue</h3>
+            </div>
+            <div>
+              <p className="text-2xl font-bold text-white tracking-tight">${metrics.totalRevenue.toLocaleString()}</p>
+              <p className="text-xs text-neutral-500 mt-1">Sum of order amounts</p>
+            </div>
+          </GlassCard>
+          <GlassCard className="p-6">
+            <div className="mb-2">
+              <h3 className="text-sm font-medium text-neutral-400">Average ROI</h3>
+            </div>
+            <div>
+              <p className="text-2xl font-bold text-white tracking-tight">
+                {metrics.averageRoi != null ? metrics.averageRoi.toFixed(2) : 'N/A'}%
               </p>
-              <p className="text-sm text-gray-400">Across all company investments</p>
-            </CardContent>
-          </Card>
+              <p className="text-xs text-neutral-500 mt-1">Across all company investments</p>
+            </div>
+          </GlassCard>
         </div>
 
         {/* Recent Orders Table */}
-        <Card className="bg-gradient-to-br from-[#212121] via-[#0f0f0f] to-[#2b2b2b] border-[#6a6a6a80]">
-          <CardHeader>
-            <CardTitle className="text-gray-300">Recent Orders</CardTitle>
-          </CardHeader>
-          <CardContent>
+        <GlassCard>
+          <div className="p-6 pb-2">
+            <h2 className="text-xl font-semibold text-white">Recent Orders</h2>
+          </div>
+          <div className="p-6 pt-0 overflow-x-auto">
             <Table>
               <TableHeader>
-                <TableRow className="border-[#2b2b2b] hover:bg-transparent">
-                  <TableHead className="text-gray-300">Order ID</TableHead>
-                  <TableHead className="text-gray-300">Status</TableHead>
-                  <TableHead className="text-gray-300">Deadline</TableHead>
-                  <TableHead className="text-gray-300">Total Amount</TableHead>
+                <TableRow className="border-b border-white/[0.05] hover:bg-transparent">
+                  <TableHead className="text-neutral-400">Order ID</TableHead>
+                  <TableHead className="text-neutral-400">Status</TableHead>
+                  <TableHead className="text-neutral-400">Deadline</TableHead>
+                  <TableHead className="text-neutral-400">Total Amount</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {recentOrders.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={4} className="text-gray-400 text-center">
+                    <TableCell colSpan={4} className="text-neutral-500 text-center py-8">
                       No recent orders found.
                     </TableCell>
                   </TableRow>
                 ) : (
                   recentOrders.map((order) => (
-                    <TableRow key={order.order_id} className="hover:bg-[#35353580] transition-colors border-[#2b2b2b]">
-                      <TableCell className="text-gray-200">{order.order_id}</TableCell>
-                      <TableCell className="text-gray-200">{order.status}</TableCell>
-                      <TableCell className="text-gray-200">{new Date(order.deadline).toLocaleString()}</TableCell>
-                      <TableCell className="text-gray-200">${order.total_amount.toLocaleString()}</TableCell>
+                    <TableRow key={order.order_id} className="hover:bg-white/[0.02] transition-colors border-b border-white/[0.02]">
+                      <TableCell className="text-neutral-200">#{order.order_id}</TableCell>
+                      <TableCell className="text-neutral-200">
+                        <StatusPill text={order.status} type={order.status} />
+                      </TableCell>
+                      <TableCell className="text-neutral-200">{new Date(order.deadline).toLocaleString()}</TableCell>
+                      <TableCell className="text-white font-medium">${order.total_amount.toLocaleString()}</TableCell>
                     </TableRow>
                   ))
                 )}
               </TableBody>
             </Table>
-          </CardContent>
-        </Card>
+          </div>
+        </GlassCard>
       </div>
     </div>
   );

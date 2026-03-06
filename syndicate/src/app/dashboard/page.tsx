@@ -4,13 +4,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@lib/auth';
 import { supabase } from '@lib/supabase/client';
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-} from '@/components/ui/card';
+import { GlassCard } from '@/components/ui/glass-card';
+import { StatusPill } from '@/components/ui/status-pill';
 import {
   Table,
   TableBody,
@@ -277,8 +272,8 @@ export default function UserDashboardPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#14130F] p-6 flex items-center justify-center">
-        <p className="text-gray-400">Loading...</p>
+      <div className="min-h-screen p-6 flex items-center justify-center">
+        <p className="text-neutral-400">Loading...</p>
       </div>
     );
   }
@@ -286,65 +281,65 @@ export default function UserDashboardPage() {
   if (!isAuthenticated) return null;
 
   return (
-    <div className="min-h-screen bg-background p-6">
+    <div className="min-h-screen p-6 w-full">
       <div className="max-w-7xl mx-auto">
-        <h1 className="text-3xl font-bold text-[#d1d5db] mb-6">Dashboard</h1>
+        <h1 className="text-3xl font-bold text-white mb-6">Dashboard</h1>
 
         {/* Metric Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-gray-300">Your Orders</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-bold text-[#c8aa64]">{metrics.totalOrders}</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-gray-300">Total Investment</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-bold text-[#c8aa64]">${metrics.totalInvestment.toLocaleString()}</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-gray-300">Average ROI</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-bold text-[#c8aa64]">
+          <GlassCard className="p-6">
+            <div className="mb-2">
+              <h3 className="font-semibold text-neutral-400">Your Orders</h3>
+            </div>
+            <div>
+              <p className="text-2xl font-bold text-white">{metrics.totalOrders}</p>
+            </div>
+          </GlassCard>
+          <GlassCard className="p-6">
+            <div className="mb-2">
+              <h3 className="font-semibold text-neutral-400">Total Investment</h3>
+            </div>
+            <div>
+              <p className="text-2xl font-bold text-white">${metrics.totalInvestment.toLocaleString()}</p>
+            </div>
+          </GlassCard>
+          <GlassCard className="p-6">
+            <div className="mb-2">
+              <h3 className="font-semibold text-neutral-400">Average ROI</h3>
+            </div>
+            <div>
+              <p className="text-2xl font-bold text-white">
                 {metrics.averageRoi != null ? metrics.averageRoi.toFixed(2) : 'N/A'}
               </p>
-            </CardContent>
-          </Card>
+            </div>
+          </GlassCard>
         </div>
 
         {/* Area Chart: Profit and Investment Over Time */}
-        <Card className="mb-8">
-          <CardHeader className="flex items-center gap-2 space-y-0 border-b py-5 sm:flex-row border-white/[0.05]">
+        <GlassCard className="mb-8">
+          <div className="flex items-center gap-2 space-y-0 border-b py-5 px-6 sm:flex-row border-white/[0.05]">
             <div className="grid flex-1 gap-1 text-center sm:text-left">
-              <CardTitle>Profit and Investment Over Time</CardTitle>
-              <CardDescription>
+              <h3 className="font-semibold text-white">Profit and Investment Over Time</h3>
+              <p className="text-sm text-neutral-500">
                 Showing total profit and invested amount for the selected time range
-              </CardDescription>
+              </p>
             </div>
             <Select
               value={timeFrame}
               onValueChange={handleTimeFrameChange}
             >
-              <SelectTrigger className="w-[160px] rounded-lg sm:ml-auto border-[#6a6a6a80]" aria-label="Select time range">
+              <SelectTrigger className="w-[160px] rounded-lg sm:ml-auto border-white/[0.05] bg-white/[0.02]" aria-label="Select time range">
                 <SelectValue placeholder="Last 30 days" />
               </SelectTrigger>
-              <SelectContent className="rounded-xl">
-                <SelectItem value="7d" className="rounded-lg">Last 7 days</SelectItem>
-                <SelectItem value="30d" className="rounded-lg">Last 30 days</SelectItem>
-                <SelectItem value="3m" className="rounded-lg">Last 3 months</SelectItem>
-                <SelectItem value="1y" className="rounded-lg">Last 1 year</SelectItem>
+              <SelectContent className="rounded-xl border-white/[0.05] bg-[#0a0a0a]/90 backdrop-blur-xl">
+                <SelectItem value="7d" className="rounded-lg hover:bg-white/[0.02]">Last 7 days</SelectItem>
+                <SelectItem value="30d" className="rounded-lg hover:bg-white/[0.02]">Last 30 days</SelectItem>
+                <SelectItem value="3m" className="rounded-lg hover:bg-white/[0.02]">Last 3 months</SelectItem>
+                <SelectItem value="1y" className="rounded-lg hover:bg-white/[0.02]">Last 1 year</SelectItem>
               </SelectContent>
             </Select>
-          </CardHeader>
-          <CardContent className="px-2 pt-4 sm:px-6 sm:pt-6">
+          </div>
+          <div className="px-2 pt-4 pb-6 sm:px-6 sm:pt-6">
             <ChartContainer config={chartConfig} className="aspect-auto h-[250px] w-full">
               <AreaChart data={chartData}>
                 <defs>
@@ -407,63 +402,65 @@ export default function UserDashboardPage() {
             {chartData.length === 0 && (
               <p className="text-gray-400 text-center mt-4">No data available for the selected time range.</p>
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </GlassCard>
 
         {/* Recent Orders Table */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-gray-300">Your Recent Orders</CardTitle>
-          </CardHeader>
-          <CardContent>
+        <GlassCard>
+          <div className="p-6 pb-2">
+            <h3 className="font-semibold text-white">Your Recent Orders</h3>
+          </div>
+          <div className="p-6 pt-0 overflow-x-auto">
             <Table>
               <TableHeader>
-                <TableRow className="border-[#2b2b2b] hover:bg-transparent">
-                  <TableHead className="text-gray-300">Order ID</TableHead>
-                  <TableHead className="text-gray-300">Status</TableHead>
-                  <TableHead className="text-gray-300">Deadline</TableHead>
-                  <TableHead className="text-gray-300">Total Amount</TableHead>
+                <TableRow className="border-b border-white/[0.05] hover:bg-transparent">
+                  <TableHead className="text-neutral-400">Order ID</TableHead>
+                  <TableHead className="text-neutral-400">Status</TableHead>
+                  <TableHead className="text-neutral-400">Deadline</TableHead>
+                  <TableHead className="text-neutral-400">Total Amount</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {recentOrders.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={4} className="text-gray-400 text-center">
+                  <TableRow className="border-b border-white/[0.02]">
+                    <TableCell colSpan={4} className="text-neutral-500 text-center">
                       No recent orders found.
                     </TableCell>
                   </TableRow>
                 ) : (
                   recentOrders.map((order) => (
-                    <TableRow key={order.order_id} className="hover:bg-[#35353580] transition-colors border-[#2b2b2b]">
-                      <TableCell className="text-gray-200">{order.order_id}</TableCell>
-                      <TableCell className="text-gray-200">{order.order_statuses.description}</TableCell>
-                      <TableCell className="text-gray-200">{new Date(order.deadline).toLocaleString()}</TableCell>
-                      <TableCell className="text-gray-200">${(order.total_amount || 0).toLocaleString()}</TableCell>
+                    <TableRow key={order.order_id} className="hover:bg-white/[0.02] transition-colors border-b border-white/[0.02]">
+                      <TableCell className="text-neutral-200">{order.order_id}</TableCell>
+                      <TableCell className="text-neutral-200">
+                        <StatusPill text={order.order_statuses.description} type={order.order_statuses.description} />
+                      </TableCell>
+                      <TableCell className="text-neutral-200">{new Date(order.deadline).toLocaleString()}</TableCell>
+                      <TableCell className="text-neutral-200">${(order.total_amount || 0).toLocaleString()}</TableCell>
                     </TableRow>
                   ))
                 )}
               </TableBody>
             </Table>
-          </CardContent>
-        </Card>
+          </div>
+        </GlassCard>
 
         {/* Company Check Popup */}
         <AlertDialog open={isCompanyPopupOpen} onOpenChange={setIsCompanyPopupOpen}>
-          <AlertDialogContent className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80]">
+          <AlertDialogContent className="bg-[#0a0a0a]/90 backdrop-blur-xl text-neutral-200 border border-white/[0.05] shadow-[0_8px_32px_0_rgba(0,0,0,0.3)]">
             <AlertDialogHeader>
-              <AlertDialogTitle>Add Company Information</AlertDialogTitle>
-              <AlertDialogDescription>
+              <AlertDialogTitle className="text-white">Add Company Information</AlertDialogTitle>
+              <AlertDialogDescription className="text-neutral-400">
                 Your account is not linked to a company. Please add your company details to continue.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel className="bg-[#2b2b2b] text-gray-300 border-[#6a6a6a80] hover:bg-[#353535]">
+              <AlertDialogCancel className="bg-white/[0.02] text-neutral-300 border-transparent hover:bg-white/[0.05] hover:text-white">
                 Cancel
               </AlertDialogCancel>
               <AlertDialogAction asChild>
                 <Button
                   onClick={handleRedirectToAccount}
-                  className="bg-[#c8aa64] hover:bg-[#9d864e] text-[#242424]"
+                  className="bg-gradient-to-t from-amber-700/50 to-amber-500/80 hover:from-amber-700/70 hover:to-amber-500 text-white border border-amber-500/20 shadow-lg shadow-amber-900/20"
                 >
                   Go to Account
                 </Button>

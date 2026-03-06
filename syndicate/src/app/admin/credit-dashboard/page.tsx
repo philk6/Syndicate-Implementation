@@ -13,7 +13,7 @@ import {
 } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { GlassCard } from '@/components/ui/glass-card';
 import {
   Dialog,
   DialogContent,
@@ -24,11 +24,11 @@ import {
   DialogClose,
 } from '@/components/ui/dialog';
 import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
 } from "@/components/ui/select"
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -81,7 +81,7 @@ export default function CreditDashboardPage() {
   const [filter, setFilter] = useState('');
   const [sortKey, setSortKey] = useState<SortKey>('company_id');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
-  
+
   // Add Credit Modal State
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [selectedCompany, setSelectedCompany] = useState<string>('');
@@ -100,21 +100,21 @@ export default function CreditDashboardPage() {
     if (!session) return;
     setLoadingData(true);
     setError(null);
-    
+
     try {
       const token = session.access_token;
       const headers = { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' };
       const summaryResponse = await fetch('/api/admin/credits/summary', { headers });
-      
+
       if (!summaryResponse.ok) {
         const summaryError = await summaryResponse.json();
         throw new Error(`Failed to fetch credit summary: ${summaryError.error}`);
       }
-      
+
       const data: SummaryResponse = await summaryResponse.json();
       setSummaries(data.summaries);
       setStats(data.totals);
-      
+
     } catch (e: unknown) {
       console.error('Error fetching data:', e);
       setError(e instanceof Error ? e.message : 'An unknown error occurred');
@@ -132,7 +132,7 @@ export default function CreditDashboardPage() {
   }, [isAuthenticated, authLoading, user, router]);
 
   useEffect(() => {
-    if(session) fetchData();
+    if (session) fetchData();
   }, [session, fetchData]);
 
   const handleViewHistory = useCallback(async (company: CompanySummary) => {
@@ -182,14 +182,14 @@ export default function CreditDashboardPage() {
     if (sortKey === key) setSortOrder(prev => (prev === 'asc' ? 'desc' : 'asc'));
     else { setSortKey(key); setSortOrder('asc'); }
   };
-  
+
   const resetAddModal = () => {
     setSelectedCompany(''); setAmount(''); setDescription(''); setModalFeedback(null); setIsSubmitting(false);
   }
-  
+
   const handleAddCredit = async () => {
     if (!selectedCompany || !amount || !description) {
-      setModalFeedback({ type: 'error', text: "All fields are required."});
+      setModalFeedback({ type: 'error', text: "All fields are required." });
       return;
     }
     setIsSubmitting(true);
@@ -204,7 +204,7 @@ export default function CreditDashboardPage() {
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || 'An unknown error occurred.');
-      setModalFeedback({ type: 'success', text: "Credit processed successfully! Refreshing data..."});
+      setModalFeedback({ type: 'success', text: "Credit processed successfully! Refreshing data..." });
       setTimeout(() => { setIsAddModalOpen(false); resetAddModal(); fetchData(); }, 1500);
     } catch (e: unknown) {
       setModalFeedback({ type: 'error', text: e instanceof Error ? e.message : 'An unknown error occurred' });
@@ -214,13 +214,13 @@ export default function CreditDashboardPage() {
   }
 
   if (authLoading || loadingData) {
-    return <div className="min-h-screen bg-[#14130F] p-6 flex items-center justify-center"><p className="text-gray-400">Loading Dashboard...</p></div>;
+    return <div className="min-h-screen p-6 flex items-center justify-center"><p className="text-neutral-400">Loading Dashboard...</p></div>;
   }
 
   if (error) {
     return (
-      <div className="min-h-screen bg-[#14130F] p-6">
-        <Alert variant="destructive" className="max-w-2xl mx-auto">
+      <div className="min-h-screen p-6">
+        <Alert variant="destructive" className="max-w-2xl mx-auto bg-rose-500/10 border-rose-500/20 text-rose-400 backdrop-blur-md">
           <AlertCircle className="h-4 w-4" /><AlertTitle>Error</AlertTitle><AlertDescription>{error}</AlertDescription>
         </Alert>
       </div>
@@ -228,82 +228,169 @@ export default function CreditDashboardPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background p-6">
+    <div className="min-h-screen p-6 w-full">
       <div className="mx-auto">
-        <h1 className="text-3xl font-bold text-[#d1d5db] mb-6">Credit Dashboard</h1>
-        
+        <h1 className="text-3xl font-bold text-white mb-6">Credit Dashboard</h1>
+
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-6">
           {/* Summary Cards */}
-          <Card className="bg-gradient-to-br from-[#212121] via-[#0f0f0f] to-[#2b2b2b]"><CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-sm font-medium text-gray-300">Total Credits</CardTitle><Landmark className="h-4 w-4 text-gray-400" /></CardHeader><CardContent><div className="text-2xl font-bold text-white">${stats.totalCredits.toLocaleString()}</div><p className="text-xs text-gray-400">Total value in the system</p></CardContent></Card>
-          <Card className="bg-gradient-to-br from-[#212121] via-[#0f0f0f] to-[#2b2b2b]"><CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-sm font-medium text-gray-300">Available Credits</CardTitle><Banknote className="h-4 w-4 text-gray-400" /></CardHeader><CardContent><div className="text-2xl font-bold text-white">${stats.totalAvailable.toLocaleString()}</div><p className="text-xs text-gray-400">Available for use</p></CardContent></Card>
-          <Card className="bg-gradient-to-br from-[#212121] via-[#0f0f0f] to-[#2b2b2b]"><CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-sm font-medium text-gray-300">Total Held</CardTitle><Wallet className="h-4 w-4 text-gray-400" /></CardHeader><CardContent><div className="text-2xl font-bold text-white">${stats.totalHeld.toLocaleString()}</div><p className="text-xs text-gray-400">Amount held in active orders</p></CardContent></Card>
-          <Card className="bg-gradient-to-br from-[#212121] via-[#0f0f0f] to-[#2b2b2b]"><CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-sm font-medium text-gray-300">Active Companies</CardTitle><Users className="h-4 w-4 text-gray-400" /></CardHeader><CardContent><div className="text-2xl font-bold text-white">{stats.activeCompanies}</div><p className="text-xs text-gray-400">Companies with a positive balance</p></CardContent></Card>
+          <GlassCard className="p-6">
+            <div className="flex flex-row items-center justify-between pb-2">
+              <h3 className="text-sm font-medium text-neutral-400">Total Credits</h3>
+              <Landmark className="h-4 w-4 text-neutral-500" />
+            </div>
+            <div>
+              <div className="text-2xl font-bold text-white">${stats.totalCredits.toLocaleString()}</div>
+              <p className="text-xs text-neutral-500 mt-1">Total value in the system</p>
+            </div>
+          </GlassCard>
+          <GlassCard className="p-6">
+            <div className="flex flex-row items-center justify-between pb-2">
+              <h3 className="text-sm font-medium text-neutral-400">Available Credits</h3>
+              <Banknote className="h-4 w-4 text-neutral-500" />
+            </div>
+            <div>
+              <div className="text-2xl font-bold text-white">${stats.totalAvailable.toLocaleString()}</div>
+              <p className="text-xs text-neutral-500 mt-1">Available for use</p>
+            </div>
+          </GlassCard>
+          <GlassCard className="p-6">
+            <div className="flex flex-row items-center justify-between pb-2">
+              <h3 className="text-sm font-medium text-neutral-400">Total Held</h3>
+              <Wallet className="h-4 w-4 text-neutral-500" />
+            </div>
+            <div>
+              <div className="text-2xl font-bold text-white">${stats.totalHeld.toLocaleString()}</div>
+              <p className="text-xs text-neutral-500 mt-1">Amount held in active orders</p>
+            </div>
+          </GlassCard>
+          <GlassCard className="p-6">
+            <div className="flex flex-row items-center justify-between pb-2">
+              <h3 className="text-sm font-medium text-neutral-400">Active Companies</h3>
+              <Users className="h-4 w-4 text-neutral-500" />
+            </div>
+            <div>
+              <div className="text-2xl font-bold text-white">{stats.activeCompanies}</div>
+              <p className="text-xs text-neutral-500 mt-1">Companies with a positive balance</p>
+            </div>
+          </GlassCard>
         </div>
 
-        <div className="card max-w-full border-[#2b2b2b] border-solid border p-4">
-          <div className="flex justify-between items-center mb-4">
-            <Input placeholder="Filter by company name..." value={filter} onChange={(e) => setFilter(e.target.value)} className="max-w-sm bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80]" />
-            <Button onClick={() => { resetAddModal(); setIsAddModalOpen(true); }} className="bg-[#c8aa64] hover:bg-[#9d864e] text-[#242424]"><PlusCircle className="mr-2 h-4 w-4" /> Add / Debit Credit</Button>
+        <GlassCard className="p-6">
+          <div className="flex justify-between items-center mb-6">
+            <Input placeholder="Filter by company name..." value={filter} onChange={(e) => setFilter(e.target.value)} className="max-w-sm bg-white/[0.02] text-neutral-200 border-white/[0.05] focus:border-amber-500/50" />
+            <Button onClick={() => { resetAddModal(); setIsAddModalOpen(true); }} className="bg-gradient-to-t from-amber-700/50 to-amber-500/80 hover:from-amber-700/70 hover:to-amber-500 text-white border border-amber-500/20 shadow-lg shadow-amber-900/20"><PlusCircle className="mr-2 h-4 w-4" /> Add / Debit Credit</Button>
           </div>
-          <Table>
-            <TableHeader><TableRow className="hover:bg-transparent"><TableHead className="text-gray-300 cursor-pointer" onClick={() => handleSort('company_id')}>Company <ArrowUpDown className="ml-2 h-4 w-4 inline" /></TableHead><TableHead className="text-gray-300 cursor-pointer" onClick={() => handleSort('total_balance')}>Total Balance <ArrowUpDown className="ml-2 h-4 w-4 inline" /></TableHead><TableHead className="text-gray-300 cursor-pointer" onClick={() => handleSort('available_balance')}>Available Balance <ArrowUpDown className="ml-2 h-4 w-4 inline" /></TableHead><TableHead className="text-gray-300 cursor-pointer" onClick={() => handleSort('held_balance')}>Held Balance <ArrowUpDown className="ml-2 h-4 w-4 inline" /></TableHead><TableHead className="text-gray-300">Actions</TableHead></TableRow></TableHeader>
-            <TableBody>
-              {filteredAndSortedSummaries.map((summary) => (
-                <TableRow key={summary.company_id} className="hover:bg-[#35353580] transition-colors border-[#2b2b2b]">
-                  <TableCell className="text-gray-200 font-medium">{summary.company?.name ?? 'N/A'}</TableCell>
-                  <TableCell className="text-gray-200">${summary.total_balance.toLocaleString()}</TableCell>
-                  <TableCell className="text-green-400 font-semibold">${summary.available_balance.toLocaleString()}</TableCell>
-                  <TableCell className="text-yellow-400">${summary.held_balance.toLocaleString()}</TableCell>
-                  <TableCell>
-                    <Button onClick={() => handleViewHistory(summary)} variant="outline" size="sm" className="border-[#c8aa64] text-[#c8aa64] hover:bg-[#c8aa64] hover:text-[#242424]"><History className="mr-2 h-4 w-4" />View History</Button>
-                  </TableCell>
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow className="border-b border-white/[0.05] hover:bg-transparent">
+                  <TableHead className="text-neutral-400 cursor-pointer" onClick={() => handleSort('company_id')}>Company <ArrowUpDown className="ml-2 h-4 w-4 inline" /></TableHead>
+                  <TableHead className="text-neutral-400 cursor-pointer" onClick={() => handleSort('total_balance')}>Total Balance <ArrowUpDown className="ml-2 h-4 w-4 inline" /></TableHead>
+                  <TableHead className="text-neutral-400 cursor-pointer" onClick={() => handleSort('available_balance')}>Available Balance <ArrowUpDown className="ml-2 h-4 w-4 inline" /></TableHead>
+                  <TableHead className="text-neutral-400 cursor-pointer" onClick={() => handleSort('held_balance')}>Held Balance <ArrowUpDown className="ml-2 h-4 w-4 inline" /></TableHead>
+                  <TableHead className="text-neutral-400">Actions</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
+              </TableHeader>
+              <TableBody>
+                {filteredAndSortedSummaries.map((summary) => (
+                  <TableRow key={summary.company_id} className="hover:bg-white/[0.02] transition-colors border-b border-white/[0.02]">
+                    <TableCell className="text-neutral-200 font-medium">{summary.company?.name ?? 'N/A'}</TableCell>
+                    <TableCell className="text-neutral-200 font-semibold">${summary.total_balance.toLocaleString()}</TableCell>
+                    <TableCell className="text-emerald-400 font-semibold">${summary.available_balance.toLocaleString()}</TableCell>
+                    <TableCell className="text-neutral-400">${summary.held_balance.toLocaleString()}</TableCell>
+                    <TableCell>
+                      <Button onClick={() => handleViewHistory(summary)} variant="outline" size="sm" className="bg-white/[0.05] border-white/[0.1] text-white hover:bg-white/[0.1]"><History className="mr-2 h-4 w-4" />View History</Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </GlassCard>
       </div>
 
       {/* Add Credit Modal */}
-      <Dialog open={isAddModalOpen} onOpenChange={setIsAddModalOpen}><DialogContent className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80]"><DialogHeader><DialogTitle>Add / Debit Credit</DialogTitle><DialogDescription>Select a company and enter an amount. Use a positive value for credits and a negative value for debits.</DialogDescription></DialogHeader><div className="grid gap-4 py-4"><div className="grid grid-cols-4 items-center gap-4"><Label htmlFor="company" className="text-right">Company</Label><Select value={selectedCompany} onValueChange={setSelectedCompany}><SelectTrigger className="col-span-3 bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80]"><SelectValue placeholder="Select a company" /></SelectTrigger><SelectContent>{summaries.map(s => (<SelectItem key={s.company_id} value={s.company_id.toString()}>{s.company?.name}</SelectItem>))}</SelectContent></Select></div><div className="grid grid-cols-4 items-center gap-4"><Label htmlFor="amount" className="text-right">Amount</Label><Input id="amount" type="number" value={amount} onChange={e => setAmount(e.target.value)} className="col-span-3 bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80]" placeholder="e.g., 5000 or -500"/></div><div className="grid grid-cols-4 items-center gap-4"><Label htmlFor="description" className="text-right">Description</Label><Textarea id="description" value={description} onChange={e => setDescription(e.target.value)} className="col-span-3 bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80]" placeholder="e.g., Initial funding, Refund for Order #123"/></div></div>{modalFeedback && (<Alert variant={modalFeedback.type === 'error' ? 'destructive' : 'default'} className={modalFeedback.type === 'success' ? 'bg-green-900/50 border-green-700' : ''}><AlertCircle className="h-4 w-4" /><AlertTitle>{modalFeedback.type === 'success' ? 'Success' : 'Error'}</AlertTitle><AlertDescription>{modalFeedback.text}</AlertDescription></Alert>)}<DialogFooter><DialogClose asChild><Button type="button" variant="secondary">Cancel</Button></DialogClose><Button onClick={handleAddCredit} disabled={isSubmitting}>{isSubmitting ? "Processing..." : "Confirm Transaction"}</Button></DialogFooter></DialogContent></Dialog>
-      
+      <Dialog open={isAddModalOpen} onOpenChange={setIsAddModalOpen}>
+        <DialogContent className="bg-[#0a0a0a]/90 backdrop-blur-xl border-white/[0.08] text-neutral-200">
+          <DialogHeader>
+            <DialogTitle className="text-white">Add / Debit Credit</DialogTitle>
+            <DialogDescription className="text-neutral-400">Select a company and enter an amount. Use a positive value for credits and a negative value for debits.</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="company" className="text-right text-neutral-400">Company</Label>
+              <Select value={selectedCompany} onValueChange={setSelectedCompany}>
+                <SelectTrigger className="col-span-3 bg-white/[0.02] text-neutral-200 border-white/[0.05]">
+                  <SelectValue placeholder="Select a company" />
+                </SelectTrigger>
+                <SelectContent className="bg-[#0a0a0a] border-white/[0.08] text-neutral-200">
+                  {summaries.map(s => (<SelectItem key={s.company_id} value={s.company_id.toString()}>{s.company?.name}</SelectItem>))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="amount" className="text-right text-neutral-400">Amount</Label>
+              <Input id="amount" type="number" value={amount} onChange={e => setAmount(e.target.value)} className="col-span-3 bg-white/[0.02] text-neutral-200 border-white/[0.05]" placeholder="e.g., 5000 or -500" />
+            </div>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="description" className="text-right text-neutral-400">Description</Label>
+              <Textarea id="description" value={description} onChange={e => setDescription(e.target.value)} className="col-span-3 bg-white/[0.02] text-neutral-200 border-white/[0.05]" placeholder="e.g., Initial funding, Refund for Order #123" />
+            </div>
+          </div>
+          {modalFeedback && (
+            <Alert variant={modalFeedback.type === 'error' ? 'destructive' : 'default'} className={modalFeedback.type === 'success' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' : 'bg-rose-500/10 border-rose-500/20 text-rose-400'}>
+              <AlertCircle className="h-4 w-4" />
+              <AlertTitle>{modalFeedback.type === 'success' ? 'Success' : 'Error'}</AlertTitle>
+              <AlertDescription>{modalFeedback.text}</AlertDescription>
+            </Alert>
+          )}
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button type="button" variant="secondary" className="bg-white/[0.05] hover:bg-white/[0.1] text-neutral-200 border-white/[0.1]">Cancel</Button>
+            </DialogClose>
+            <Button onClick={handleAddCredit} disabled={isSubmitting} className="bg-gradient-to-t from-amber-700/50 to-amber-500/80 hover:from-amber-700/70 hover:to-amber-500 text-white border border-amber-500/20">{isSubmitting ? "Processing..." : "Confirm Transaction"}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* History Modal */}
       <Dialog open={isHistoryModalOpen} onOpenChange={setIsHistoryModalOpen}>
-        <DialogContent className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80] max-w-4xl">
+        <DialogContent className="bg-[#0a0a0a]/95 backdrop-blur-xl border-white/[0.08] text-neutral-200 max-w-4xl">
           <DialogHeader>
-            <DialogTitle>Transaction History for {historyCompany?.company?.name}</DialogTitle>
-            <DialogDescription>
+            <DialogTitle className="text-white">Transaction History for {historyCompany?.company?.name}</DialogTitle>
+            <DialogDescription className="text-neutral-400">
               A log of all credit and debit transactions for this company.
             </DialogDescription>
           </DialogHeader>
           <div className="mt-4 max-h-[60vh] overflow-y-auto">
             {historyLoading ? (
-              <p>Loading history...</p>
+              <p className="text-neutral-500">Loading history...</p>
             ) : historyTransactions.length === 0 ? (
-              <p>No transactions found for this company.</p>
+              <p className="text-neutral-500">No transactions found for this company.</p>
             ) : (
               <Table>
                 <TableHeader>
-                  <TableRow>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Type</TableHead>
-                    <TableHead>Amount</TableHead>
-                    <TableHead>Description</TableHead>
-                    <TableHead>Order ID</TableHead>
-                    <TableHead>Processed By</TableHead>
+                  <TableRow className="border-b border-white/[0.05] hover:bg-transparent">
+                    <TableHead className="text-neutral-400">Date</TableHead>
+                    <TableHead className="text-neutral-400">Type</TableHead>
+                    <TableHead className="text-neutral-400">Amount</TableHead>
+                    <TableHead className="text-neutral-400">Description</TableHead>
+                    <TableHead className="text-neutral-400">Order ID</TableHead>
+                    <TableHead className="text-neutral-400">Processed By</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {historyTransactions.map((tx) => (
-                    <TableRow key={tx.transaction_id}>
-                      <TableCell>{new Date(tx.created_at).toLocaleString()}</TableCell>
-                      <TableCell className="capitalize">{tx.transaction_type}</TableCell>
-                      <TableCell className={tx.amount >= 0 ? 'text-green-400' : 'text-red-400'}>
-                        ${tx.amount.toLocaleString()}
+                    <TableRow key={tx.transaction_id} className="hover:bg-white/[0.02] transition-colors border-b border-white/[0.02]">
+                      <TableCell className="text-neutral-200">{new Date(tx.created_at).toLocaleString()}</TableCell>
+                      <TableCell className="text-neutral-200 capitalize">{tx.transaction_type}</TableCell>
+                      <TableCell className={tx.amount >= 0 ? 'text-emerald-400 font-semibold' : 'text-rose-400 font-semibold'}>
+                        {tx.amount >= 0 ? '+' : ''}${tx.amount.toLocaleString()}
                       </TableCell>
-                      <TableCell>{tx.description}</TableCell>
-                      <TableCell>{tx.order_id || 'N/A'}</TableCell>
-                      <TableCell>{tx.users?.email || 'System'}</TableCell>
+                      <TableCell className="text-neutral-400 text-sm">{tx.description}</TableCell>
+                      <TableCell className="text-neutral-200">{tx.order_id || 'N/A'}</TableCell>
+                      <TableCell className="text-neutral-400 text-sm">{tx.users?.email || 'System'}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
