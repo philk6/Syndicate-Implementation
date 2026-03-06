@@ -6,10 +6,27 @@ import { useAuth } from '@lib/auth';
 import { supabase } from '@lib/supabase/client';
 import { PostgrestError } from '@supabase/supabase-js';
 import Link from 'next/link';
-import { Badge } from '@/components/ui/badge';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
-import { Table, TableHeader, TableBody, TableCell, TableRow, TableHead } from '@/components/ui/table';
+import { GlassCard } from '@/components/ui/glass-card';
+import { StatusPill } from '@/components/ui/status-pill';
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableCell,
+  TableRow,
+  TableHead
+} from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
+import {
+  ArrowLeft,
+  FileText,
+  Clock,
+  TrendingUp,
+  Package,
+  DollarSign,
+  Calendar,
+  Eye
+} from 'lucide-react';
 
 interface Order {
   order_id: number;
@@ -35,7 +52,6 @@ interface AllocationResult {
   discounted_price: number | null;
 }
 
-// Type for the raw allocation data from the Supabase query
 interface AllocationResultFromQuery extends AllocationResult {
   company_id: number;
 }
@@ -54,7 +70,6 @@ interface Receipt {
   uploaded_at: string;
 }
 
-// Type for order_products_company data
 interface OrderProductCompanyData {
   sequence: number;
   company_id: number;
@@ -83,7 +98,6 @@ export default function HistoryOrderDetailPage() {
     async function fetchData() {
       setLoading(true);
 
-      // Fetch user's company_id and role
       const { data: userData, error: userError } = await supabase
         .from('users')
         .select('company_id, role')
@@ -96,7 +110,6 @@ export default function HistoryOrderDetailPage() {
         return;
       }
 
-      // Fetch order details
       const { data: orderData, error: orderError } = await supabase
         .from('orders')
         .select('order_id, leadtime, deadline, label_upload_deadline, order_statuses(description), hide_allocations')
@@ -104,12 +117,11 @@ export default function HistoryOrderDetailPage() {
         .single() as { data: Order | null, error: PostgrestError | null };
 
       if (orderError) {
-        console.error('Error fetching order:', orderError.message, orderError.details);
+        console.error('Error fetching order:', orderError.message);
         setLoading(false);
         return;
       }
 
-      // Fetch order_company data (max_investment, roi, needs_review, has_discounts)
       let hasDiscounts = false;
       if (userData.company_id) {
         const { data: companyOrderData, error: companyOrderError } = await supabase
@@ -120,7 +132,7 @@ export default function HistoryOrderDetailPage() {
           .single();
 
         if (companyOrderError && companyOrderError.code !== 'PGRST116') {
-          console.error('Error fetching order company data:', companyOrderError.message, companyOrderError.details);
+          console.error('Error fetching order company data:', companyOrderError.message);
         } else if (companyOrderData) {
           setOrderCompany({
             max_investment: companyOrderData.max_investment,
@@ -132,7 +144,6 @@ export default function HistoryOrderDetailPage() {
         }
       }
 
-      // Fetch allocation results for this company if not hidden or user is admin
       if (userData.company_id) {
         const { data: allocationData, error: allocationError } = await supabase
           .from('allocation_results')
@@ -155,11 +166,8 @@ export default function HistoryOrderDetailPage() {
           .returns<AllocationResultFromQuery[]>();
 
         if (allocationError) {
-          console.error('Error fetching allocation results:', allocationError.message, allocationError.details);
+          console.error('Error fetching allocation results:', allocationError.message);
         } else {
-          console.log('Allocation data:', allocationData);
-
-          // Fetch order_products_company data only if has_discounts is true
           let opcData: OrderProductCompanyData[] = [];
           if (hasDiscounts) {
             const { data, error: opcError } = await supabase
@@ -170,16 +178,12 @@ export default function HistoryOrderDetailPage() {
               .not('discounted_price', 'is', null);
 
             if (opcError) {
-              console.error('Error fetching order_products_company:', opcError.message, opcError.details);
+              console.error('Error fetching order_products_company:', opcError.message);
             } else {
               opcData = data || [];
-              console.log('Order products company data:', opcData);
             }
-          } else {
-            console.log('No discounts for this company (has_discounts = false)');
           }
 
-          // Merge discounted_price into allocation results
           const discountMap: { [key: string]: number } = {};
           opcData.forEach((opc: OrderProductCompanyData) => {
             const sequence = String(opc.sequence);
@@ -188,8 +192,6 @@ export default function HistoryOrderDetailPage() {
               discountMap[`${sequence}-${companyId}`] = opc.discounted_price;
             }
           });
-
-          console.log('Discount map:', discountMap);
 
           const processedAllocations = allocationData?.map((alloc: AllocationResultFromQuery) => {
             const sequence = String(alloc.sequence);
@@ -202,12 +204,10 @@ export default function HistoryOrderDetailPage() {
             };
           }) || [];
 
-          console.log('Processed allocations:', processedAllocations);
           setAllocations(processedAllocations as AllocationResult[]);
         }
       }
 
-      // Fetch receipts for this company and order
       if (userData.company_id) {
         const { data: receiptData, error: receiptError } = await supabase
           .from('order_receipts')
@@ -236,110 +236,175 @@ export default function HistoryOrderDetailPage() {
 
     if (error) {
       console.error('Error generating signed URL:', error);
-      alert('Failed to generate receipt view URL.');
     } else {
       window.open(data.signedUrl, '_blank');
     }
   };
 
-  if (loading) {
+  if (authLoading || loading) {
     return (
-      <div className="min-h-screen bg-[#14130F] p-6 flex items-center justify-center">
-        <p className="text-gray-400">Loading...</p>
+      <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center p-6">
+        <div className="flex flex-col items-center">
+          <div className="w-10 h-10 border-2 border-amber-500/20 border-t-amber-500 rounded-full animate-spin mb-4" />
+          <p className="text-neutral-500 animate-pulse font-medium">Fetching secure order details...</p>
+        </div>
       </div>
     );
   }
 
   if (!isAuthenticated) return null;
+
   if (!order) return (
-    <div className="min-h-screen bg-gray-900 p-6">
-      <div className="mx-auto">
-        <div className="flex items-center mb-6">
-          <Link href="/history" className="text-blue-500 hover:text-blue-400 mr-4">
-            ← Back to History
-          </Link>
-          <h1 className="text-3xl font-bold text-white">Order Not Found</h1>
-        </div>
-        <p className="text-gray-400">The requested order does not exist or you don&apos;t have permission to view it.</p>
-      </div>
+    <div className="min-h-screen p-6 w-full flex items-center justify-center">
+      <GlassCard className="max-w-md p-8 text-center">
+        <h1 className="text-2xl font-bold text-white mb-4 tracking-tight">Access Denied or Order Not Found</h1>
+        <p className="text-neutral-500 mb-8 leading-relaxed">The requested order does not exist or you don't have the required permissions to view it.</p>
+        <Link
+          href="/history"
+          className="inline-flex items-center px-6 py-2 bg-gradient-to-t from-amber-700/50 to-amber-500/80 hover:from-amber-700/70 hover:to-amber-500 text-white rounded-xl transition-all font-medium border border-amber-500/20"
+        >
+          <ArrowLeft className="mr-2 h-4 w-4" /> Return to History
+        </Link>
+      </GlassCard>
     </div>
   );
 
   return (
-    <div className="min-h-screen bg-background p-6 w-full">
-      <div className="w-full">
+    <div className="min-h-screen p-6 w-full">
+      <div className="max-w-7xl mx-auto">
         <div className="flex items-center mb-6">
-          <Link href="/history" className="text-[#c8aa64] hover:text-[#9d864e] mr-4">
-            ← Back to History
+          <Link
+            href="/history"
+            className="text-neutral-400 hover:text-white transition-colors text-sm flex items-center w-fit"
+          >
+            <ArrowLeft className="mr-2 h-4 w-4" /> Back to History
           </Link>
         </div>
 
-        <div className="flex items-center mb-6">
-          <h1 className="text-3xl font-bold text-[#bfbfbf]">Order #{order.order_id}</h1>
-        </div>
-
-        <div className="grid grid-cols-1 gap-6 mb-8 w-full">
-          <div className="rounded-lg p-6 bg-gradient-to-br from-[#212121] via-[#0f0f0f] to-[#2b2b2b] shadow-lg w-full">
-            <div className="flex flex-wrap gap-6 text-gray-300">
-              <div className="flex flex-col">
-                <span className="font-medium">Status</span>
-                <Badge>{order.order_statuses?.description || 'N/A'}</Badge>
-              </div>
-              <div className="flex flex-col">
-                <span className="font-medium">Lead Time</span>
-                <span>{order.leadtime} days</span>
-              </div>
-              <div className="flex flex-col">
-                <span className="font-medium">Deadline</span>
-                <span>{new Date(order.deadline).toLocaleString()}</span>
-              </div>
-              <div className="flex flex-col">
-                <span className="font-medium">Label Upload Deadline</span>
-                <span>{new Date(order.label_upload_deadline).toLocaleString()}</span>
-              </div>
-              {orderCompany && (
-                <>
-                  <div className="flex flex-col">
-                    <span className="font-medium">Average ROI</span>
-                    <span>{orderCompany.roi != null ? `${(orderCompany.roi).toFixed(2)}` : '-'}</span>
-                  </div>
-                  <div className="flex flex-col">
-                    <span className="font-medium">Needs Review</span>
-                    <span>{orderCompany.needs_review ? 'Yes' : 'No'}</span>
-                  </div>
-                </>
-              )}
-            </div>
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
+          <div>
+            <h1 className="text-3xl font-bold text-white tracking-tight">Order Details</h1>
+            <p className="text-neutral-500 mt-1 font-mono text-sm">#{order.order_id}</p>
+          </div>
+          <div className="flex items-center gap-3">
+            <StatusPill
+              text={order.order_statuses?.description || 'N/A'}
+              type={order.order_statuses?.description?.toLowerCase() || 'pending'}
+            />
           </div>
         </div>
 
-        <Card className="mb-8 bg-gradient-to-br from-[#212121] via-[#0f0f0f] to-[#2b2b2b] border-transparent">
-          <CardHeader>
-            <CardTitle className="text-xl font-semibold text-gray-300">Receipts</CardTitle>
-          </CardHeader>
-          <CardContent>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+          <GlassCard className="p-6 lg:col-span-2">
+            <div className="flex items-center mb-6 border-b border-white/[0.05] pb-4">
+              <Calendar className="mr-3 h-5 w-5 text-amber-500" />
+              <h2 className="text-lg font-semibold text-white">Scheduling & Terms</h2>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-8">
+              <div className="space-y-6">
+                <div>
+                  <label className="text-neutral-500 text-xs font-semibold uppercase tracking-wider block mb-1">Application Deadline</label>
+                  <div className="text-white font-medium flex items-center">
+                    <Clock className="mr-2 h-3.5 w-3.5 text-neutral-400" />
+                    {new Date(order.deadline).toLocaleString()}
+                  </div>
+                </div>
+                <div>
+                  <label className="text-neutral-500 text-xs font-semibold uppercase tracking-wider block mb-1">Label Upload Deadline</label>
+                  <div className="text-white font-medium flex items-center">
+                    <Clock className="mr-2 h-3.5 w-3.5 text-neutral-400" />
+                    {new Date(order.label_upload_deadline).toLocaleString()}
+                  </div>
+                </div>
+              </div>
+              <div className="space-y-6">
+                <div>
+                  <label className="text-neutral-500 text-xs font-semibold uppercase tracking-wider block mb-1">Lead Time</label>
+                  <div className="text-white font-medium flex items-center">
+                    <Package className="mr-2 h-3.5 w-3.5 text-neutral-400" />
+                    {order.leadtime} Days
+                  </div>
+                </div>
+                {orderCompany && (
+                  <div>
+                    <label className="text-neutral-500 text-xs font-semibold uppercase tracking-wider block mb-1">Estimated ROI</label>
+                    <div className="text-emerald-400 font-bold flex items-center">
+                      <TrendingUp className="mr-2 h-3.5 w-3.5" />
+                      {orderCompany.roi != null ? `${(orderCompany.roi).toFixed(2)}` : 'Calculated at allocation'}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </GlassCard>
+
+          <GlassCard className="p-6">
+            <div className="flex items-center mb-6 border-b border-white/[0.05] pb-4">
+              <DollarSign className="mr-3 h-5 w-5 text-amber-500" />
+              <h2 className="text-lg font-semibold text-white">Investment Limit</h2>
+            </div>
+            {orderCompany ? (
+              <div className="flex flex-col h-[calc(100%-4rem)] justify-center space-y-4">
+                <div className="bg-white/[0.02] border border-white/[0.05] rounded-2xl p-6 text-center">
+                  <div className="text-neutral-500 text-xs font-semibold uppercase tracking-wider mb-2">Maximum Commitment</div>
+                  <div className="text-4xl font-bold text-white tracking-tight">
+                    ${orderCompany.max_investment.toLocaleString()}
+                  </div>
+                </div>
+                <div className="text-center">
+                  <span className={`text-xs px-2.5 py-1 rounded-full border ${orderCompany.needs_review ? 'bg-amber-500/10 text-amber-500 border-amber-500/20' : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'}`}>
+                    {orderCompany.needs_review ? 'Requires Review' : 'Commitment Verified'}
+                  </span>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center justify-center h-48 text-neutral-500 italic text-center text-sm">
+                No commitment data found
+              </div>
+            )}
+          </GlassCard>
+        </div>
+
+        <div className="grid grid-cols-1 gap-6 mb-8">
+          <GlassCard className="p-0 overflow-hidden">
+            <div className="p-6 border-b border-white/[0.05]">
+              <h2 className="text-lg font-semibold text-white flex items-center">
+                <FileText className="mr-2 h-5 w-5 text-amber-500" />
+                Proof of Purchase (Receipts)
+              </h2>
+            </div>
             {receipts.length === 0 ? (
-              <p className="text-gray-400">No receipts available for this order.</p>
+              <div className="p-12 text-center text-neutral-500 italic">
+                No receipts have been issued for this order commit yet.
+              </div>
             ) : (
               <Table>
                 <TableHeader>
-                  <TableRow className="hover:bg-transparent">
-                    <TableHead className="text-gray-300">File Name</TableHead>
-                    <TableHead className="text-gray-300">Uploaded At</TableHead>
-                    <TableHead className="text-gray-300">Action</TableHead>
+                  <TableRow className="hover:bg-transparent border-white/[0.05]">
+                    <TableHead className="text-neutral-400 font-medium py-4 px-6">Filename</TableHead>
+                    <TableHead className="text-neutral-400 font-medium py-4 px-6">Uploaded At</TableHead>
+                    <TableHead className="text-neutral-400 font-medium py-4 px-6 text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {receipts.map((receipt) => (
-                    <TableRow key={receipt.receipt_id} className="hover:bg-[#35353580] transition-colors border-[#6a6a6a80]">
-                      <TableCell className="text-gray-200">{receipt.file_name}</TableCell>
-                      <TableCell className="text-gray-200">{new Date(receipt.uploaded_at).toLocaleString()}</TableCell>
-                      <TableCell className="text-gray-200">
+                    <TableRow key={receipt.receipt_id} className="hover:bg-white/[0.02] transition-colors border-white/[0.02]">
+                      <TableCell className="py-4 px-6 font-medium text-neutral-200">
+                        <div className="flex items-center">
+                          <FileText className="h-4 w-4 mr-3 text-neutral-500" />
+                          {receipt.file_name}
+                        </div>
+                      </TableCell>
+                      <TableCell className="py-4 px-6 text-neutral-400">
+                        {new Date(receipt.uploaded_at).toLocaleDateString()}
+                      </TableCell>
+                      <TableCell className="py-4 px-6 text-right">
                         <Button
+                          size="sm"
                           onClick={() => handleDownloadReceipt(receipt.file_path)}
-                          className="bg-[#c8aa64] hover:bg-[#9d864e] text-[#242424]"
+                          className="bg-white/[0.05] hover:bg-white/[0.1] text-white border border-white/[0.1]"
                         >
-                          View / Download
+                          <Eye className="h-4 w-4 mr-2" /> View Document
                         </Button>
                       </TableCell>
                     </TableRow>
@@ -347,80 +412,78 @@ export default function HistoryOrderDetailPage() {
                 </TableBody>
               </Table>
             )}
-          </CardContent>
-        </Card>
+          </GlassCard>
+        </div>
 
         {allocations.length > 0 && (
-          <div className="rounded-lg p-6 bg-gradient-to-br from-[#212121] via-[#0f0f0f] to-[#2b2b2b] shadow-lg w-full overflow-x-auto">
-            <h2 className="text-xl font-semibold text-gray-300 mb-4">Your Allocations</h2>
-            {allocations.length === 0 ? (
-              <p className="text-gray-400">No allocations found for this order.</p>
-            ) : (
-              <div className="w-full">
-                <table className="w-full border-collapse" style={{ tableLayout: 'fixed' }}>
-                  <thead>
-                    <tr className="border-[#2B2B2B] hover:bg-transparent">
-                      <th className="text-gray-300 w-[15%] h-12 px-4 text-left align-middle font-medium">ASIN</th>
-                      <th className="text-gray-300 w-[10%] h-12 px-4 text-left align-middle font-medium">Quantity</th>
-                      <th className="text-gray-300 w-[15%] h-12 px-4 text-left align-middle font-medium">Price</th>
-                      <th className="text-gray-300 w-[15%] h-12 px-4 text-left align-middle font-medium">Profit</th>
-                      <th className="text-gray-300 w-[30%] h-12 px-4 text-left align-middle font-medium">Description</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {allocations.map((allocation) => {
-                      const discountedPrice = allocation.discounted_price;
-                      const originalPrice = allocation.order_products.price;
-                      const discountPercentage = discountedPrice != null && originalPrice > 0
-                        ? ((originalPrice - discountedPrice) / originalPrice * 100).toFixed(1)
-                        : null;
-                      return (
-                        <tr key={`${allocation.order_id}-${allocation.sequence}`} className="hover:bg-[#35353580] transition-colors border-[#6a6a6a80]">
-                          <td className="text-gray-200 p-4 align-middle" style={{ overflowWrap: 'break-word' }}>
-                            {allocation.order_products.asin}
-                          </td>
-                          <td className="text-gray-200 p-4 align-middle" style={{ overflowWrap: 'break-word' }}>
-                            {allocation.quantity}
-                          </td>
-                          <td className="text-gray-200 p-4 align-middle" style={{ overflowWrap: 'break-word' }}>
-                            {discountedPrice != null ? (
-                              <div className="flex items-center gap-2">
-                                <span>${discountedPrice.toFixed(2)}</span>
-                                {discountPercentage != null && (
-                                  <Badge className="border-emerald-500/20 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20">
-                                    -{discountPercentage}%
-                                  </Badge>
-                                )}
-                              </div>
-                            ) : (
-                              `$${originalPrice.toFixed(2)}`
-                            )}
-                          </td>
-                          <td className="text-gray-200 p-4 align-middle" style={{ overflowWrap: 'break-word' }}>
-                            {allocation.profit != null ? `$${allocation.profit.toFixed(2)}` : '-'}
-                          </td>
-                          <td className="text-gray-200 p-4 align-middle" style={{ overflowWrap: 'break-word' }}>
-                            {allocation.order_products.description || '-'}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        )}
-
-        {orderCompany != null && orderCompany.max_investment != null && (
-          <div className="mb-4 flex flex-col items-end mt-14">
-            <label className="text-gray-300 font-medium block mb-2">
-              Maximum Investment ($)
-            </label>
-            <div className="text-gray-200 bg-[#1f1f1f] border border-[#6a6a6a80] rounded px-3 py-2 w-full max-w-xs">
-              {orderCompany.max_investment.toLocaleString()}
+          <GlassCard className="p-0 overflow-hidden">
+            <div className="p-6 border-b border-white/[0.05]">
+              <h2 className="text-lg font-semibold text-white flex items-center">
+                <Package className="mr-2 h-5 w-5 text-amber-500" />
+                Final Allocations & Distribution
+              </h2>
             </div>
-          </div>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow className="hover:bg-transparent border-white/[0.05]">
+                    <TableHead className="text-neutral-400 font-medium py-4 px-6">ASIN</TableHead>
+                    <TableHead className="text-neutral-400 font-medium py-4 px-6">Quantity</TableHead>
+                    <TableHead className="text-neutral-400 font-medium py-4 px-6 text-center">Price Arrangement</TableHead>
+                    <TableHead className="text-neutral-400 font-medium py-4 px-6">Projected Profit</TableHead>
+                    <TableHead className="text-neutral-400 font-medium py-4 px-6">Product Information</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {allocations.map((allocation) => {
+                    const discountedPrice = allocation.discounted_price;
+                    const originalPrice = allocation.order_products.price;
+                    const discountPercentage = discountedPrice != null && originalPrice > 0
+                      ? ((originalPrice - discountedPrice) / originalPrice * 100).toFixed(1)
+                      : null;
+                    return (
+                      <TableRow key={`${allocation.order_id}-${allocation.sequence}`} className="hover:bg-white/[0.02] transition-colors border-white/[0.02]">
+                        <TableCell className="py-4 px-6 font-mono text-sm text-neutral-300">
+                          {allocation.order_products.asin}
+                        </TableCell>
+                        <TableCell className="py-4 px-6">
+                          <span className="bg-white/[0.05] px-3 py-1 rounded-lg text-white font-medium">
+                            {allocation.quantity}
+                          </span>
+                        </TableCell>
+                        <TableCell className="py-4 px-6">
+                          <div className="flex flex-col items-center">
+                            {discountedPrice != null ? (
+                              <>
+                                <span className="text-white font-bold">${discountedPrice.toFixed(2)}</span>
+                                {discountPercentage != null && (
+                                  <span className="text-[10px] text-emerald-400 font-bold uppercase tracking-tighter">
+                                    -{discountPercentage}% SAVING
+                                  </span>
+                                )}
+                              </>
+                            ) : (
+                              <span className="text-neutral-400">${originalPrice.toFixed(2)}</span>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell className="py-4 px-6">
+                          <span className="text-emerald-400 font-mono font-bold">
+                            {allocation.profit != null ? `+$${allocation.profit.toFixed(2)}` : '-'}
+                          </span>
+                        </TableCell>
+                        <TableCell className="py-4 px-6 max-w-[200px]">
+                          <div className="text-neutral-500 text-xs truncate italic">
+                            {allocation.order_products.description || 'No additional details available'}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          </GlassCard>
         )}
       </div>
     </div>

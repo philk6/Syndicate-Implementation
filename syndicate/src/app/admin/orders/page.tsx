@@ -14,7 +14,8 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
+import { GlassCard } from '@/components/ui/glass-card';
+import { StatusPill } from '@/components/ui/status-pill';
 import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
@@ -273,8 +274,8 @@ export default function AdminOrdersPage() {
 
   if (authLoading || loadingOrders) {
     return (
-      <div className="min-h-screen bg-[#14130F] p-6 flex items-center justify-center">
-        <p className="text-gray-400">Loading...</p>
+      <div className="min-h-screen p-6 flex items-center justify-center">
+        <p className="text-neutral-400">Loading...</p>
       </div>
     );
   }
@@ -282,47 +283,47 @@ export default function AdminOrdersPage() {
   if (!isAuthenticated || user?.role !== 'admin') return null;
 
   return (
-    <div className="min-h-screen bg-background p-6">
+    <div className="min-h-screen p-6 w-full">
       <Toaster richColors position="bottom-right" closeButton={true} duration={3000} />
       <div className="mx-auto">
         <div className="flex justify-between items-center mb-6">
-          <h1 className="text-3xl font-bold text-[#d1d5db]">Admin - All Orders</h1>
-          <div className="flex items-center space-x-2">
+          <h1 className="text-3xl font-bold text-white">Admin - All Orders</h1>
+          <div className="flex items-center space-x-3">
             <Button
               onClick={handleCreateOrder}
-              className="bg-[#c8aa64] hover:bg-[#9d864e] text-[#242424]"
+              className="bg-gradient-to-t from-amber-700/50 to-amber-500/80 hover:from-amber-700/70 hover:to-amber-500 text-white border border-amber-500/20 shadow-lg shadow-amber-900/20"
             >
               Create New Order
             </Button>
             <Dialog open={isUploadOpen} onOpenChange={setIsUploadOpen}>
               <DialogTrigger asChild>
-                <Button className="bg-[#c8aa64] hover:bg-[#9d864e] text-[#242424]">
+                <Button className="bg-white/[0.05] hover:bg-white/[0.1] text-white border border-white/[0.1]">
                   <Upload className="mr-2 h-4 w-4" /> Upload Order
                 </Button>
               </DialogTrigger>
-              <DialogContent className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80]">
+              <DialogContent className="bg-[#0a0a0a]/90 backdrop-blur-xl border-white/[0.08] text-neutral-200">
                 <DialogHeader>
                   <DialogTitle>Upload Order File</DialogTitle>
                 </DialogHeader>
                 <div className="space-y-4">
-                  <p className="text-sm text-gray-400">
+                  <p className="text-sm text-neutral-400">
                     Upload an .xlsx file with columns: Lead Time (days), Deadline, Label Upload Deadline, Status, ASIN, Price, Quantity, Description.
                   </p>
                   <Input
                     type="file"
                     accept=".xlsx"
                     onChange={handleFileChange}
-                    className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80]"
+                    className="bg-white/[0.02] text-neutral-200 border-white/[0.05]"
                   />
                   <Button
                     onClick={handleFileSubmit}
-                    className="bg-[#c8aa64] hover:bg-[#9d864e] text-[#242424]"
+                    className="w-full bg-gradient-to-t from-amber-700/50 to-amber-500/80 hover:from-amber-700/70 hover:to-amber-500 text-white border border-amber-500/20"
                   >
                     Submit
                   </Button>
                   {uploadMessage && (
                     <p
-                      className={`text-sm ${uploadMessage.includes('successfully') ? 'text-green-400' : 'text-red-400'
+                      className={`text-sm ${uploadMessage.includes('successfully') ? 'text-emerald-400' : 'text-rose-400'
                         }`}
                     >
                       {uploadMessage}
@@ -335,68 +336,66 @@ export default function AdminOrdersPage() {
               variant="destructive"
               onClick={() => setIsDeleteDialogOpen(true)}
               disabled={selectedOrders.length === 0}
-              className="bg-red-600 hover:bg-red-500 text-white"
+              className="bg-rose-600/10 hover:bg-rose-600/20 text-rose-400 border border-rose-500/20"
             >
               <Trash2 className="mr-2 h-4 w-4" /> Delete Selected
             </Button>
           </div>
         </div>
-        <div className="card max-w-full border-[#2b2b2b] border-solid border">
+        <GlassCard>
           {orders.length === 0 ? (
-            <p className="text-gray-400 text-center">No orders found.</p>
+            <p className="text-neutral-500 text-center py-8">No orders found.</p>
           ) : (
             <Table>
               <TableHeader>
-                <TableRow className="border-[#2b2b2b] bg-transparent hover:bg-transparent">
-                  <TableHead className="text-gray-300 w-[5%]">
+                <TableRow className="border-b border-white/[0.05] hover:bg-transparent">
+                  <TableHead className="text-neutral-400 w-[5%] px-4">
                     <Checkbox
                       checked={selectedOrders.length === orders.length && orders.length > 0}
                       onCheckedChange={(checked) => {
                         setSelectedOrders(checked ? orders.map(order => order.order_id) : []);
                       }}
-                      className="h-4 w-4 text-[#c8aa64] bg-[#0d0d0d] border-[#a7a7a7] rounded"
+                      className="h-4 w-4 border-white/[0.2] data-[state=checked]:bg-amber-500 data-[state=checked]:border-amber-500"
                     />
                   </TableHead>
-                  <TableHead className="text-gray-300">Order ID</TableHead>
-                  <TableHead className="text-gray-300">Status</TableHead>
-                  <TableHead className="text-gray-300">Lead Time (days)</TableHead>
-                  <TableHead className="text-gray-300">Application Deadline</TableHead>
-                  <TableHead className="text-gray-300">Label Upload Deadline</TableHead>
-                  <TableHead className="text-gray-300">Actions</TableHead>
+                  <TableHead className="text-neutral-400">Order ID</TableHead>
+                  <TableHead className="text-neutral-400">Status</TableHead>
+                  <TableHead className="text-neutral-400">Lead Time (days)</TableHead>
+                  <TableHead className="text-neutral-400">Application Deadline</TableHead>
+                  <TableHead className="text-neutral-400">Label Upload Deadline</TableHead>
+                  <TableHead className="text-neutral-400">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {orders.map((order) => (
                   <TableRow
                     key={order.order_id}
-                    className="hover:bg-[#35353580] transition-colors border-[#2b2b2b]"
+                    className="hover:bg-white/[0.02] transition-colors border-b border-white/[0.02]"
                   >
-                    <TableCell>
+                    <TableCell className="px-4">
                       <Checkbox
                         checked={selectedOrders.includes(order.order_id)}
                         onCheckedChange={() => handleSelectOrder(order.order_id)}
-                        className="h-4 w-4 text-[#c8aa64] bg-[#0d0d0d] border-[#a7a7a7] rounded"
+                        className="h-4 w-4 border-white/[0.2] data-[state=checked]:bg-amber-500 data-[state=checked]:border-amber-500"
                       />
                     </TableCell>
-                    <TableCell className="text-gray-200">{order.order_id}</TableCell>
-                    <TableCell className="text-gray-200">
-                      <Badge>
-                        {order.order_statuses?.description || 'N/A'}
-                      </Badge>
+                    <TableCell className="text-neutral-200">#{order.order_id}</TableCell>
+                    <TableCell className="text-neutral-200">
+                      <StatusPill text={order.order_statuses?.description || 'N/A'} type={order.order_statuses?.description || 'N/A'} />
                     </TableCell>
-                    <TableCell className="text-gray-200">{order.leadtime}</TableCell>
-                    <TableCell className="text-gray-200">
-                      {new Date(order.deadline).toLocaleString()}
-                      <Progress value={calculateProgress(order.deadline)} />
+                    <TableCell className="text-neutral-200">{order.leadtime}</TableCell>
+                    <TableCell className="text-neutral-200">
+                      <div className="mb-1">{new Date(order.deadline).toLocaleString()}</div>
+                      <Progress value={calculateProgress(order.deadline)} className="h-1 bg-white/[0.05]" />
                     </TableCell>
-                    <TableCell className="text-gray-200">
-                      {new Date(order.label_upload_deadline).toLocaleString()}
-                      <Progress value={calculateProgress(order.label_upload_deadline)} />
+                    <TableCell className="text-neutral-200">
+                      <div className="mb-1">{new Date(order.label_upload_deadline).toLocaleString()}</div>
+                      <Progress value={calculateProgress(order.label_upload_deadline)} className="h-1 bg-white/[0.05]" />
                     </TableCell>
                     <TableCell>
                       <Button
                         asChild
-                        className="bg-[#c8aa64] hover:bg-[#9d864e] text-[#242424]"
+                        className="bg-white/[0.05] hover:bg-white/[0.1] text-white border border-white/[0.1] h-8 text-xs"
                       >
                         <Link href={`/admin/orders/${order.order_id}`}>Manage</Link>
                       </Button>
@@ -406,20 +405,20 @@ export default function AdminOrdersPage() {
               </TableBody>
             </Table>
           )}
-        </div>
+        </GlassCard>
         <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
-          <AlertDialogContent className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80]">
+          <AlertDialogContent className="bg-[#0a0a0a]/95 backdrop-blur-xl border-white/[0.08] text-neutral-200">
             <AlertDialogHeader>
-              <AlertDialogTitle>Are you sure you want to delete the selected orders?</AlertDialogTitle>
-              <AlertDialogDescription>
+              <AlertDialogTitle className="text-white">Confirm Deletion</AlertDialogTitle>
+              <AlertDialogDescription className="text-neutral-400">
                 This action cannot be undone. Deleting these orders will remove all associated data, including products, pre-assignments, company applications, and allocation results.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel className="bg-gray-600 hover:bg-gray-500 text-gray-200">Cancel</AlertDialogCancel>
+              <AlertDialogCancel className="bg-white/[0.05] hover:bg-white/[0.1] text-neutral-200 border-white/[0.1]">Cancel</AlertDialogCancel>
               <AlertDialogAction
                 onClick={handleDeleteOrders}
-                className="bg-red-600 hover:bg-red-500 text-white"
+                className="bg-rose-600 hover:bg-rose-500 text-white"
               >
                 Delete
               </AlertDialogAction>

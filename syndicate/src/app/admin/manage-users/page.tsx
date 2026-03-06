@@ -13,7 +13,8 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
+import { GlassCard } from '@/components/ui/glass-card';
+import { StatusPill } from '@/components/ui/status-pill';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Check, Plus } from 'lucide-react';
 
@@ -151,8 +152,8 @@ export default function ManageUsersPage() {
 
   if (authLoading || loading) {
     return (
-      <div className="min-h-screen bg-background p-6 flex items-center justify-center">
-        <p className="text-gray-400">Loading...</p>
+      <div className="min-h-screen p-6 flex items-center justify-center">
+        <p className="text-neutral-400">Loading...</p>
       </div>
     );
   }
@@ -160,81 +161,86 @@ export default function ManageUsersPage() {
   if (!isAuthenticated || user?.role !== 'admin') return null;
 
   return (
-    <div className="min-h-screen bg-background p-6">
+    <div className="min-h-screen p-6 w-full">
       <div className="mx-auto">
-        <h1 className="text-3xl font-bold text-[#d1d5db] mb-6">Manage Users</h1>
+        <h1 className="text-3xl font-bold text-white mb-6">Manage Users</h1>
 
         {/* Invite Code Section */}
-        <div className="mb-8">
+        <GlassCard className="p-6 mb-8">
+          <div className="mb-4">
+            <h3 className="font-semibold text-white">Invite Users</h3>
+          </div>
           <Button
             onClick={generateInviteCode}
-            className="bg-[#c8aa64] hover:bg-[#9d864e] text-[#242424] mb-4"
+            className="bg-gradient-to-t from-amber-700/50 to-amber-500/80 hover:from-amber-700/70 hover:to-amber-500 text-white border border-amber-500/20 shadow-lg shadow-amber-900/20 mb-4"
           >
             <Plus className="mr-2 h-4 w-4" />
             Generate Invite Code
           </Button>
           {inviteCode && (
-            <Alert className="bg-[#235c12] text-[#bfbfbf] w-fit">
-              <Check className="h-4 w-4 text-[#bfbfbf]" />
-              <AlertTitle>New Invite Code</AlertTitle>
+            <Alert className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 w-fit backdrop-blur-md">
+              <Check className="h-4 w-4 text-emerald-400" />
+              <AlertTitle className="text-emerald-300">New Invite Code</AlertTitle>
               <AlertDescription>
-                <span className="font-mono text-lg">{inviteCode}</span>
-                <p className="mt-1">Share this code with the user to allow signup.</p>
+                <span className="font-mono text-lg text-white">{inviteCode}</span>
+                <p className="mt-1 text-emerald-400/80">Share this code with the user to allow signup.</p>
               </AlertDescription>
             </Alert>
           )}
           {message && (
             <p
-              className={`text-sm mt-2 ${message.includes('successfully') ? 'text-green-400' : 'text-red-400'
-                }`}
+              className={`text-sm mt-2 ${message.includes('successfully') ? 'text-emerald-400' : 'text-rose-400'}`}
             >
               {message}
             </p>
           )}
-        </div>
+        </GlassCard>
 
         {/* Users Table */}
-        <div className="card max-w-full border-[#2b2b2b] border-solid border">
-          {users.length === 0 ? (
-            <p className="text-gray-400 text-center">No users found.</p>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow className="hover:bg-transparent">
-                  <TableHead className="text-gray-300">User ID</TableHead>
-                  <TableHead className="text-gray-300">Email</TableHead>
-                  <TableHead className="text-gray-300">Name</TableHead>
-                  <TableHead className="text-gray-300">Role</TableHead>
-                  <TableHead className="text-gray-300">Company</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {users.map((user) => (
-                  <TableRow
-                    key={user.user_id}
-                    className="hover:bg-[#35353580] transition-colors border-[#2b2b2b]"
-                  >
-                    <TableCell className="text-gray-200">{user.user_id}</TableCell>
-                    <TableCell className="text-gray-200">{user.email}</TableCell>
-                    <TableCell className="text-gray-200">
-                      {user.firstname || user.lastname
-                        ? `${user.firstname || ''} ${user.lastname || ''}`.trim()
-                        : 'N/A'}
-                    </TableCell>
-                    <TableCell className="text-gray-200">
-                      <Badge>
-                        {user.role}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-gray-200">
-                      {user.company?.name || 'N/A'}
-                    </TableCell>
+        <GlassCard>
+          <div className="p-6 pb-2">
+            <h3 className="font-semibold text-white">All Users</h3>
+          </div>
+          <div className="p-6 pt-0 overflow-x-auto">
+            {users.length === 0 ? (
+              <p className="text-neutral-500 text-center">No users found.</p>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow className="border-b border-white/[0.05] hover:bg-transparent">
+                    <TableHead className="text-neutral-400">User ID</TableHead>
+                    <TableHead className="text-neutral-400">Email</TableHead>
+                    <TableHead className="text-neutral-400">Name</TableHead>
+                    <TableHead className="text-neutral-400">Role</TableHead>
+                    <TableHead className="text-neutral-400">Company</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </div>
+                </TableHeader>
+                <TableBody>
+                  {users.map((user) => (
+                    <TableRow
+                      key={user.user_id}
+                      className="hover:bg-white/[0.02] transition-colors border-b border-white/[0.02]"
+                    >
+                      <TableCell className="text-neutral-200">{user.user_id}</TableCell>
+                      <TableCell className="text-neutral-200">{user.email}</TableCell>
+                      <TableCell className="text-neutral-200">
+                        {user.firstname || user.lastname
+                          ? `${user.firstname || ''} ${user.lastname || ''}`.trim()
+                          : 'N/A'}
+                      </TableCell>
+                      <TableCell className="text-neutral-200">
+                        <StatusPill text={user.role} type={user.role} />
+                      </TableCell>
+                      <TableCell className="text-neutral-200">
+                        {user.company?.name || 'N/A'}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </div>
+        </GlassCard>
       </div>
     </div>
   );

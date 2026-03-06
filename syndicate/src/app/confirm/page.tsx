@@ -6,6 +6,9 @@ import { supabase } from '@lib/supabase/client';
 import { Button } from '@/components/ui/button';
 import Image from 'next/image';
 
+import { GlassCard } from '@/components/ui/glass-card';
+import { MailCheck, AlertCircle, RefreshCw } from 'lucide-react';
+
 function ConfirmEmailComponent() {
   const [message, setMessage] = useState('Confirming your email...');
   const [error, setError] = useState<string | null>(null);
@@ -48,30 +51,70 @@ function ConfirmEmailComponent() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-[#060606] p-4">
-      <Image
-        src="/syndicate_logo.jpeg"
-        alt="Syndicate Logo"
-        width={519}
-        height={519}
-        className="w-32 h-auto mb-4"
-      />
-      <h1 className="text-2xl font-bold text-[#ffffff] text-center mb-6">
-        Email Confirmation
-      </h1>
-      <div className="card p-6 bg-[#1f1f1f] border-[#6a6a6a80] rounded-lg">
-        {message && (
-          <p className="text-center text-sm text-green-400 mb-4">{message}</p>
-        )}
-        {error && <p className="text-center text-sm text-red-400 mb-4">{error}</p>}
-        {message && !error && (
-          <Button
-            onClick={handleLoginRedirect}
-            className="bg-[#c8aa64] hover:bg-[#9d864e] text-[#242424] w-full"
-          >
-            Proceed to Login
-          </Button>
-        )}
+    <div className="min-h-screen w-full flex flex-col items-center justify-center p-6 bg-transparent relative">
+      <div className="w-full max-w-[420px] z-10">
+        <div className="flex flex-col items-center mb-10">
+          <div className="w-16 h-16 bg-gradient-to-t from-amber-700/20 to-amber-500/10 rounded-2xl flex items-center justify-center mb-6 border border-amber-500/20 shadow-xl shadow-amber-900/10">
+            {error ? (
+              <AlertCircle className="w-8 h-8 text-rose-500" />
+            ) : (
+              <MailCheck className="w-8 h-8 text-amber-500" />
+            )}
+          </div>
+          <h1 className="text-3xl font-bold text-white tracking-tight text-center">
+            {error ? 'Verification Alert' : 'Email Verified'}
+          </h1>
+          <p className="text-neutral-500 mt-2 text-center text-sm font-medium leading-relaxed max-w-[280px]">
+            {error ? 'There was a problem confirming your identity' : 'Your account has been officially activated'}
+          </p>
+        </div>
+
+        <GlassCard className="p-8">
+          <div className="space-y-6">
+            {message && !error && (
+              <div className="p-6 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl text-center">
+                <p className="text-emerald-400 font-bold text-sm">{message}</p>
+                <p className="text-emerald-400/60 text-[10px] mt-2 font-mono uppercase tracking-widest">
+                  Secure Identity Validated
+                </p>
+              </div>
+            )}
+
+            {error && (
+              <div className="p-6 bg-rose-500/10 border border-rose-500/20 rounded-2xl text-center">
+                <p className="text-rose-400 font-bold text-sm leading-relaxed">{error}</p>
+              </div>
+            )}
+
+            {message && !error ? (
+              <Button
+                onClick={handleLoginRedirect}
+                className="w-full h-12 bg-gradient-to-t from-amber-700/50 to-amber-500/80 hover:from-amber-700/70 hover:to-amber-500 text-white border border-amber-500/20 shadow-xl shadow-amber-900/20 rounded-xl font-bold tracking-wide transition-all active:scale-[0.98]"
+              >
+                Proceed to Dashboard
+              </Button>
+            ) : error ? (
+              <Button
+                onClick={() => router.push('/signup')}
+                className="w-full h-12 bg-white/[0.05] hover:bg-white/[0.1] text-white border border-white/[0.1] rounded-xl font-bold transition-all"
+              >
+                <RefreshCw className="w-4 h-4 mr-2" /> Try Signing Up Again
+              </Button>
+            ) : (
+              <div className="flex flex-col items-center justify-center py-4">
+                <div className="w-8 h-8 border-2 border-amber-500/20 border-t-amber-500 rounded-full animate-spin mb-4" />
+                <p className="text-neutral-500 text-sm font-medium animate-pulse">{message}</p>
+              </div>
+            )}
+
+            <button
+              onClick={() => router.push('/login')}
+              className="text-neutral-500 hover:text-white transition-colors text-sm flex items-center justify-center w-full group mt-2"
+            >
+              Sign in anyway
+            </button>
+          </div>
+        </GlassCard>
       </div>
     </div>
   );
@@ -80,8 +123,8 @@ function ConfirmEmailComponent() {
 export default function ConfirmPage() {
   return (
     <Suspense fallback={
-      <div className="min-h-screen flex flex-col items-center justify-center bg-[#060606] p-4">
-        <p className="text-white">Loading...</p>
+      <div className="min-h-screen flex items-center justify-center bg-transparent">
+        <div className="w-10 h-10 border-2 border-amber-500/20 border-t-amber-500 rounded-full animate-spin" />
       </div>
     }>
       <ConfirmEmailComponent />

@@ -14,7 +14,8 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
+import { GlassCard } from '@/components/ui/glass-card';
+import { StatusPill } from '@/components/ui/status-pill';
 import { Progress } from '@/components/ui/progress';
 
 interface Order {
@@ -124,21 +125,19 @@ export default function OrdersPage() {
     orders.map((order) => (
       <TableRow
         key={order.order_id}
-        className="hover:bg-[#35353580] transition-colors focus:ring-[#35353580] border-[#2b2b2b] cursor-pointer"
+        className="hover:bg-white/[0.02] transition-colors focus:ring-white/[0.05] border-b border-white/[0.02] cursor-pointer"
         onClick={() => handleOrderClick(order.order_id)}
       >
-        <TableCell className="text-gray-200">{order.order_id}</TableCell>
-        <TableCell className="text-gray-200">
-          <Badge>
-            {order.order_statuses?.description || 'N/A'}
-          </Badge>
+        <TableCell className="text-neutral-200">{order.order_id}</TableCell>
+        <TableCell className="text-neutral-200">
+          <StatusPill text={order.order_statuses?.description || 'N/A'} type={order.order_statuses?.description || 'N/A'} />
         </TableCell>
-        <TableCell className="text-gray-200">{order.leadtime}</TableCell>
-        <TableCell className="text-gray-200">
+        <TableCell className="text-neutral-200">{order.leadtime}</TableCell>
+        <TableCell className="text-neutral-200">
           {new Date(order.deadline).toLocaleString()}
           <Progress value={calculateProgress(order.deadline)} />
         </TableCell>
-        <TableCell className="text-gray-200">
+        <TableCell className="text-neutral-200">
           {new Date(order.label_upload_deadline).toLocaleString()}
           <Progress value={calculateProgress(order.label_upload_deadline)} />
         </TableCell>
@@ -148,8 +147,8 @@ export default function OrdersPage() {
 
   if (loading || loadingOrders) { // Combined loading states
     return (
-      <div className="min-h-screen bg-[#14130F] p-6 flex items-center justify-center">
-        <p className="text-gray-400">Loading...</p>
+      <div className="min-h-screen p-6 flex items-center justify-center">
+        <p className="text-neutral-400">Loading...</p>
       </div>
     );
   }
@@ -157,29 +156,34 @@ export default function OrdersPage() {
   if (!isAuthenticated) return null; // Should be handled by router.push('/login')
 
   return (
-    <div className="min-h-screen bg-background p-6">
+    <div className="min-h-screen p-6 w-full">
       <div className="mx-auto">
-        <h1 className="text-3xl font-bold text-[#d1d5db] mb-6">Orders</h1>
-        <div className="card max-w-full border-[#2b2b2b] border-solid border">
-          {orders.length === 0 ? (
-            <p className="text-gray-400 text-center">No orders found.</p>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow className="hover:bg-transparent">
-                  <TableHead className="text-gray-300">Order ID</TableHead>
-                  <TableHead className="text-gray-300">Status</TableHead>
-                  <TableHead className="text-gray-300">Lead Time (days)</TableHead>
-                  <TableHead className="text-gray-300">Application Deadline</TableHead>
-                  <TableHead className="text-gray-300">Label Upload Deadline</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {orderRows}
-              </TableBody>
-            </Table>
-          )}
-        </div>
+        <h1 className="text-3xl font-bold text-white mb-6">Orders</h1>
+        <GlassCard>
+          <div className="p-6 pb-2">
+            <h3 className="font-semibold text-white">All Orders</h3>
+          </div>
+          <div className="p-6 pt-0 overflow-x-auto">
+            {orders.length === 0 ? (
+              <p className="text-neutral-500 text-center">No orders found.</p>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow className="border-b border-white/[0.05] hover:bg-transparent">
+                    <TableHead className="text-neutral-400">Order ID</TableHead>
+                    <TableHead className="text-neutral-400">Status</TableHead>
+                    <TableHead className="text-neutral-400">Lead Time (days)</TableHead>
+                    <TableHead className="text-neutral-400">Application Deadline</TableHead>
+                    <TableHead className="text-neutral-400">Label Upload Deadline</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {orderRows}
+                </TableBody>
+              </Table>
+            )}
+          </div>
+        </GlassCard>
       </div>
     </div>
   );

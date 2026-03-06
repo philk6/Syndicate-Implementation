@@ -5,6 +5,8 @@ import { useAuth } from '@lib/auth';
 import { supabase } from '@lib/supabase/client';
 import { PostgrestError } from '@supabase/supabase-js';
 import Link from 'next/link';
+import { CalendarIcon, Download, Trash2, Plus, Percent, Save, Edit, XCircle, CheckCircle, ListPlus, Search, TrendingUp, PackageSearch, DollarSign, Info, Clock, Upload, ArrowLeft, FileText } from 'lucide-react';
+import { GlassCard } from '@/components/ui/glass-card';
 import {
   Table,
   TableBody,
@@ -16,7 +18,6 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Trash2, Upload } from 'lucide-react';
 
 interface Company {
   company_id: number;
@@ -49,6 +50,7 @@ export default function AdminOrderReceiptsPage() {
   const [selectedCompanyId, setSelectedCompanyId] = useState<number | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploadMessage, setUploadMessage] = useState('');
+  const [isUploading, setIsUploading] = useState(false);
   const { isAuthenticated, loading: authLoading, user } = useAuth();
   const router = useRouter();
 
@@ -118,17 +120,17 @@ export default function AdminOrderReceiptsPage() {
       return;
     }
 
-    // Get current user ID from Supabase Auth
+    setIsUploading(true);
     const { data: { user: authUser }, error: authError } = await supabase.auth.getUser();
     if (authError || !authUser) {
       console.error('Error fetching auth user:', authError);
       setUploadMessage('Could not verify user. Please try again.');
+      setIsUploading(false);
       return;
     }
     const userId = authUser.id;
 
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    // const fileExt = selectedFile.name.split('.').pop();
     const fileName = `${timestamp}_${selectedFile.name}`;
     const filePath = `receipts/order_${orderId}/company_${selectedCompanyId}/${fileName}`;
 
@@ -139,6 +141,7 @@ export default function AdminOrderReceiptsPage() {
     if (uploadError) {
       console.error('Error uploading file:', uploadError);
       setUploadMessage('Failed to upload file: ' + uploadError.message);
+      setIsUploading(false);
       return;
     }
 
@@ -161,10 +164,11 @@ export default function AdminOrderReceiptsPage() {
     } else {
       setReceipts(prev => [...prev, insertData]);
       setUploadMessage('Receipt uploaded successfully!');
-      setUploadDialogOpen(false);
+      setTimeout(() => setUploadDialogOpen(false), 1500);
       setSelectedFile(null);
       setSelectedCompanyId(null);
     }
+    setIsUploading(false);
   };
 
   const handleViewReceipt = async (filePath: string) => {
@@ -174,7 +178,6 @@ export default function AdminOrderReceiptsPage() {
 
     if (error) {
       console.error('Error generating signed URL:', error);
-      alert('Failed to generate receipt URL.');
     } else {
       window.open(data.signedUrl, '_blank');
     }
@@ -190,7 +193,6 @@ export default function AdminOrderReceiptsPage() {
 
     if (deleteError) {
       console.error('Error deleting receipt:', deleteError);
-      alert('Failed to delete receipt.');
     } else {
       setReceipts(prev => prev.filter(r => r.receipt_id !== receiptId));
       await supabase.storage.from('receipts').remove([filePath]);
@@ -199,8 +201,11 @@ export default function AdminOrderReceiptsPage() {
 
   if (authLoading || loading) {
     return (
-      <div className="min-h-screen bg-[#14130F] p-6 flex items-center justify-center">
-        <p className="text-gray-400">Loading...</p>
+      <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center">
+        <div className="flex flex-col items-center">
+          <div className="w-12 h-12 border-4 border-amber-500/20 border-t-amber-500 rounded-full animate-spin mb-4" />
+          <p className="text-neutral-500 animate-pulse">Loading certificates...</p>
+        </div>
       </div>
     );
   }
@@ -208,127 +213,159 @@ export default function AdminOrderReceiptsPage() {
   if (!isAuthenticated || user?.role !== 'admin') return null;
 
   return (
-    <div className="min-h-screen bg-background p-6 w-full">
-      <div className="w-full">
-        <Link href={`/admin/orders/${orderId}`} className="text-[#c8aa64] hover:text-[#9d864e] mb-6 inline-block">
-          ← Back to Order #{orderId}
+    <div className="min-h-screen p-6 w-full relative">
+      <div className="max-w-7xl mx-auto z-10 relative">
+        <Link
+          href={`/admin/orders/${orderId}`}
+          className="text-neutral-400 hover:text-white transition-colors text-sm flex items-center mb-6 w-fit"
+        >
+          <ArrowLeft className="mr-2 h-4 w-4" /> Back to Order #{orderId}
         </Link>
-        <h1 className="text-3xl font-bold text-[#bfbfbf] mb-6">Manage Receipts for Order #{orderId}</h1>
-        <div className="rounded-lg p-6 bg-gradient-to-br from-[#212121] via-[#0f0f0f] to-[#2b2b2b] shadow-lg w-full overflow-x-auto">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-xl font-semibold text-gray-300">Company Receipts</h2>
-            <Dialog open={uploadDialogOpen} onOpenChange={setUploadDialogOpen}>
-              <DialogTrigger asChild>
-                <Button className="bg-[#c8aa64] hover:bg-[#9d864e] text-[#242424]">
-                  <Upload className="mr-2 h-4 w-4" /> Upload Receipt
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80]">
-                <DialogHeader>
-                  <DialogTitle>Upload Receipt</DialogTitle>
-                </DialogHeader>
-                <div className="space-y-4">
-                  <div>
-                    <label className="text-gray-300 font-medium block mb-2">Company</label>
-                    <select
-                      value={selectedCompanyId || ''}
-                      onChange={(e) => setSelectedCompanyId(parseInt(e.target.value))}
-                      className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80] rounded px-3 py-2 w-full"
-                    >
-                      <option value="">Select a company</option>
-                      {companies.map(company => (
-                        <option key={company.company_id} value={company.company_id}>
-                          {company.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="text-gray-300 font-medium block mb-2">Receipt File</label>
-                    <Input
-                      type="file"
-                      accept=".pdf,.png,.jpg,.jpeg"
-                      onChange={handleFileChange}
-                      className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80]"
-                    />
-                  </div>
-                  <Button
-                    onClick={handleUpload}
-                    className="bg-[#c8aa64] hover:bg-[#9d864e] text-[#242424]"
+
+        <div className="flex justify-between items-center mb-8">
+          <h1 className="text-3xl font-bold text-white tracking-tight">
+            Manage Receipts
+          </h1>
+          <Dialog open={uploadDialogOpen} onOpenChange={setUploadDialogOpen}>
+            <DialogTrigger asChild>
+              <Button className="bg-gradient-to-t from-amber-700/50 to-amber-500/80 hover:from-amber-700/70 hover:to-amber-500 text-white border border-amber-500/20 shadow-lg shadow-amber-900/20 rounded-xl">
+                <Upload className="mr-2 h-4 w-4" /> Upload Receipt
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="bg-[#0a0a0a]/90 backdrop-blur-xl border-white/[0.08] text-white">
+              <DialogHeader>
+                <DialogTitle>Upload Receipt</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-6 pt-4">
+                <div>
+                  <label className="text-neutral-400 font-medium block mb-2 text-sm italic">Assign to Company</label>
+                  <select
+                    value={selectedCompanyId || ''}
+                    onChange={(e) => setSelectedCompanyId(parseInt(e.target.value))}
+                    className="bg-white/[0.02] text-white border border-white/[0.05] rounded-xl px-4 py-2.5 w-full focus:outline-none focus:ring-1 focus:ring-amber-500/50 transition-all appearance-none"
                   >
-                    Upload
-                  </Button>
-                  {uploadMessage && (
-                    <p className={`text-sm ${uploadMessage.includes('successfully') ? 'text-green-400' : 'text-red-400'}`}>
-                      {uploadMessage}
-                    </p>
-                  )}
+                    <option value="" className="bg-[#0a0a0a]">Select a company</option>
+                    {companies.map(company => (
+                      <option key={company.company_id} value={company.company_id} className="bg-[#0a0a0a]">
+                        {company.name}
+                      </option>
+                    ))}
+                  </select>
                 </div>
-              </DialogContent>
-            </Dialog>
+                <div>
+                  <label className="text-neutral-400 font-medium block mb-2 text-sm italic">Receipt File (PDF, PNG, JPG)</label>
+                  <Input
+                    type="file"
+                    accept=".pdf,.png,.jpg,.jpeg"
+                    onChange={handleFileChange}
+                    className="bg-white/[0.02] text-white border-white/[0.05] file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-amber-500/10 file:text-amber-500 hover:file:bg-amber-500/20 transition-all cursor-pointer h-auto py-2"
+                  />
+                </div>
+                <Button
+                  onClick={handleUpload}
+                  disabled={isUploading || !selectedFile || !selectedCompanyId}
+                  className="w-full bg-gradient-to-t from-amber-700/50 to-amber-500/80 hover:from-amber-700/70 hover:to-amber-500 text-white border border-amber-500/20 shadow-lg rounded-xl"
+                >
+                  {isUploading ? 'Uploading...' : 'Confirm Upload'}
+                </Button>
+                {uploadMessage && (
+                  <div className={`p-3 rounded-lg text-sm text-center ${uploadMessage.includes('successfully') ? 'bg-emerald-500/10 text-emerald-400' : 'bg-rose-500/10 text-rose-400'}`}>
+                    {uploadMessage}
+                  </div>
+                )}
+              </div>
+            </DialogContent>
+          </Dialog>
+        </div>
+
+        <GlassCard className="p-0 overflow-hidden">
+          <div className="p-6 border-b border-white/[0.05]">
+            <h2 className="text-lg font-semibold text-white flex items-center">
+              <FileText className="mr-2 h-5 w-5 text-amber-500" />
+              Company Receipts
+            </h2>
           </div>
           {companies.length === 0 ? (
-            <p className="text-gray-400">No companies have applied for this order.</p>
+            <div className="p-12 text-center text-neutral-500 italic">
+              No companies have applied for this order.
+            </div>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow className="hover:bg-transparent">
-                  <TableHead className="text-gray-300">Company</TableHead>
-                  <TableHead className="text-gray-300">Max Investment ($)</TableHead>
-                  <TableHead className="text-gray-300">Receipt</TableHead>
-                  <TableHead className="text-gray-300">Uploaded At</TableHead>
-                  <TableHead className="text-gray-300">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {companies.map((company) => {
-                  const companyReceipt = receipts.find(r => r.company_id === company.company_id);
-                  return (
-                    <TableRow key={company.company_id} className="hover:bg-[#35353580] transition-colors border-[#6a6a6a80]">
-                      <TableCell className="text-gray-200">{company.name}</TableCell>
-                      <TableCell className="text-gray-200">${company.max_investment.toLocaleString()}</TableCell>
-                      <TableCell className="text-gray-200">
-                        {companyReceipt ? companyReceipt.file_name : 'No receipt uploaded'}
-                      </TableCell>
-                      <TableCell className="text-gray-200">
-                        {companyReceipt ? new Date(companyReceipt.uploaded_at).toLocaleString() : '-'}
-                      </TableCell>
-                      <TableCell className="text-gray-200">
-                        {companyReceipt ? (
-                          <div className="flex gap-2">
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow className="hover:bg-transparent border-white/[0.05]">
+                    <TableHead className="text-neutral-400 font-medium py-4 px-6">Company</TableHead>
+                    <TableHead className="text-neutral-400 font-medium py-4 px-6">Investment</TableHead>
+                    <TableHead className="text-neutral-400 font-medium py-4 px-6">Receipt Filename</TableHead>
+                    <TableHead className="text-neutral-400 font-medium py-4 px-6">Uploaded At</TableHead>
+                    <TableHead className="text-neutral-400 font-medium py-4 px-6 text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {companies.map((company) => {
+                    const companyReceipt = receipts.find(r => r.company_id === company.company_id);
+                    return (
+                      <TableRow key={company.company_id} className="hover:bg-white/[0.02] transition-colors border-white/[0.02]">
+                        <TableCell className="py-4 px-6 font-medium text-white">{company.name}</TableCell>
+                        <TableCell className="py-4 px-6 text-neutral-400">${company.max_investment.toLocaleString()}</TableCell>
+                        <TableCell className="py-4 px-6">
+                          {companyReceipt ? (
+                            <span className="text-neutral-300 flex items-center">
+                              <FileText className="h-3 w-3 mr-2 text-amber-500/50" />
+                              {companyReceipt.file_name}
+                            </span>
+                          ) : (
+                            <span className="text-neutral-600 text-sm italic">Pending upload</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="py-4 px-6 text-neutral-500 text-sm">
+                          {companyReceipt ? (
+                            <div className="flex items-center">
+                              <Clock className="h-3 w-3 mr-2" />
+                              {new Date(companyReceipt.uploaded_at).toLocaleDateString()}
+                            </div>
+                          ) : '-'}
+                        </TableCell>
+                        <TableCell className="py-4 px-6 text-right">
+                          {companyReceipt ? (
+                            <div className="flex justify-end gap-2">
+                              <Button
+                                size="sm"
+                                onClick={() => handleViewReceipt(companyReceipt.file_path)}
+                                className="bg-white/[0.05] hover:bg-white/[0.1] text-white border border-white/[0.1]"
+                              >
+                                View
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleDeleteReceipt(companyReceipt.receipt_id, companyReceipt.file_path)}
+                                className="text-rose-400 hover:text-rose-300 hover:bg-rose-500/10"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          ) : (
                             <Button
-                              onClick={() => handleViewReceipt(companyReceipt.file_path)}
-                              className="bg-[#c8aa64] hover:bg-[#9d864e] text-[#242424]"
-                            >
-                              View
-                            </Button>
-                            <Button
-                              variant="destructive"
                               size="sm"
-                              onClick={() => handleDeleteReceipt(companyReceipt.receipt_id, companyReceipt.file_path)}
+                              onClick={() => {
+                                setSelectedCompanyId(company.company_id);
+                                setUploadDialogOpen(true);
+                              }}
+                              className="bg-white/[0.05] hover:bg-white/[0.1] text-amber-500 border border-amber-500/20"
                             >
-                              <Trash2 className="h-4 w-4" />
+                              <Upload className="h-4 w-4 mr-2" /> Upload
                             </Button>
-                          </div>
-                        ) : (
-                          <Button
-                            onClick={() => {
-                              setSelectedCompanyId(company.company_id);
-                              setUploadDialogOpen(true);
-                            }}
-                            className="bg-[#c8aa64] hover:bg-[#9d864e] text-[#242424]"
-                          >
-                            Upload
-                          </Button>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
           )}
-        </div>
+        </GlassCard>
       </div>
     </div>
   );
