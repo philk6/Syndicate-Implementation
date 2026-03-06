@@ -14,15 +14,22 @@ export const metadata = {
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en" className="dark">
-      <body className="min-h-screen bg-[#14130F] text-gray-100 flex">
-        <ErrorBoundary>
-        <AuthProvider>
-          <ClientLayoutWithConditionalSidebar>
-            <TosWrapper>{children}</TosWrapper>
-          </ClientLayoutWithConditionalSidebar>
-            <LoadingOverlay />
-        </AuthProvider>
-        </ErrorBoundary>
+      <body className="min-h-screen bg-[#0a0a0a] text-neutral-200 flex relative overflow-x-hidden">
+        {/* Ambient Lighting Orbs */}
+        <div className="fixed top-[-10%] left-[-10%] w-[40vw] h-[40vw] rounded-full bg-amber-600/10 blur-[120px] mix-blend-screen pointer-events-none z-0"></div>
+        <div className="fixed bottom-[-10%] right-[-10%] w-[40vw] h-[40vw] rounded-full bg-emerald-600/10 blur-[120px] mix-blend-screen pointer-events-none z-0"></div>
+        <div className="fixed top-[40%] left-[60%] w-[30vw] h-[30vw] rounded-full bg-orange-600/10 blur-[100px] mix-blend-screen pointer-events-none z-0"></div>
+
+        <div className="relative z-10 w-full flex min-h-screen">
+          <ErrorBoundary>
+            <AuthProvider>
+              <ClientLayoutWithConditionalSidebar>
+                <TosWrapper>{children}</TosWrapper>
+              </ClientLayoutWithConditionalSidebar>
+              <LoadingOverlay />
+            </AuthProvider>
+          </ErrorBoundary>
+        </div>
       </body>
     </html>
   );

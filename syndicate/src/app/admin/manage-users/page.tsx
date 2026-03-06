@@ -185,9 +185,8 @@ export default function ManageUsersPage() {
           )}
           {message && (
             <p
-              className={`text-sm mt-2 ${
-                message.includes('successfully') ? 'text-green-400' : 'text-red-400'
-              }`}
+              className={`text-sm mt-2 ${message.includes('successfully') ? 'text-green-400' : 'text-red-400'
+                }`}
             >
               {message}
             </p>
@@ -223,7 +222,7 @@ export default function ManageUsersPage() {
                         : 'N/A'}
                     </TableCell>
                     <TableCell className="text-gray-200">
-                      <Badge variant="outline" className="bg-[#c8aa64] text-[#242424]">
+                      <Badge>
                         {user.role}
                       </Badge>
                     </TableCell>

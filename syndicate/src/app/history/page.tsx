@@ -160,7 +160,7 @@ export default function HistoryPage() {
                   >
                     <TableCell className="text-gray-200">{order.order_id}</TableCell>
                     <TableCell className="text-gray-200">
-                      <Badge variant="outline" className="bg-[#c8aa64] text-[#242424]">
+                      <Badge>
                         {order.order_statuses?.description || 'N/A'}
                       </Badge>
                     </TableCell>

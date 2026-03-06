@@ -240,12 +240,12 @@ export default function AdminOrdersPage() {
 
   const handleDeleteOrders = async () => {
     if (selectedOrders.length === 0) return;
-  
+
     try {
       // We need the current user's UUID for created_by
       const authUser = (await supabase.auth.getUser()).data.user;
       if (!authUser) throw new Error('Not authenticated');
-  
+
       // Run the atomic server-side delete for each order
       await Promise.all(
         selectedOrders.map(async (orderId) => {
@@ -258,7 +258,7 @@ export default function AdminOrdersPage() {
           }
         })
       );
-  
+
       // Update UI
       setOrders(prev => prev.filter(o => !selectedOrders.includes(o.order_id)));
       setSelectedOrders([]);
@@ -269,7 +269,7 @@ export default function AdminOrdersPage() {
       toast.error(`Failed to delete orders: ${(err as Error).message}`);
     }
   };
-  
+
 
   if (authLoading || loadingOrders) {
     return (
@@ -283,7 +283,7 @@ export default function AdminOrdersPage() {
 
   return (
     <div className="min-h-screen bg-background p-6">
-      <Toaster richColors position="bottom-right" closeButton={true} duration={3000}/>
+      <Toaster richColors position="bottom-right" closeButton={true} duration={3000} />
       <div className="mx-auto">
         <div className="flex justify-between items-center mb-6">
           <h1 className="text-3xl font-bold text-[#d1d5db]">Admin - All Orders</h1>
@@ -322,9 +322,8 @@ export default function AdminOrdersPage() {
                   </Button>
                   {uploadMessage && (
                     <p
-                      className={`text-sm ${
-                        uploadMessage.includes('successfully') ? 'text-green-400' : 'text-red-400'
-                      }`}
+                      className={`text-sm ${uploadMessage.includes('successfully') ? 'text-green-400' : 'text-red-400'
+                        }`}
                     >
                       {uploadMessage}
                     </p>
@@ -381,7 +380,7 @@ export default function AdminOrdersPage() {
                     </TableCell>
                     <TableCell className="text-gray-200">{order.order_id}</TableCell>
                     <TableCell className="text-gray-200">
-                      <Badge variant="outline" className="bg-[#c8aa64] text-[#242424]">
+                      <Badge>
                         {order.order_statuses?.description || 'N/A'}
                       </Badge>
                     </TableCell>

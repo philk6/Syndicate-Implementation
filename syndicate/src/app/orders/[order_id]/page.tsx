@@ -78,16 +78,16 @@ export default function OrderDetailPage() {
         return;
       }
       setCompanyId(userData.company_id);
-      
+
       // Fetch credit balance with proper error handling
       try {
         const balanceResponse = await fetch('/api/credits/balance', {
-          headers: { 
+          headers: {
             'Authorization': `Bearer ${session.access_token}`,
             'Content-Type': 'application/json'
           }
         });
-        
+
         if (balanceResponse.ok) {
           const balanceData = await balanceResponse.json();
           setCreditBalance(balanceData);
@@ -126,13 +126,13 @@ export default function OrderDetailPage() {
       // Normalize the order_statuses property
       const orderData = rawOrderData
         ? {
-            ...rawOrderData,
-            order_statuses: Array.isArray(rawOrderData.order_statuses)
-              ? rawOrderData.order_statuses[0]
-              : rawOrderData.order_statuses,
-          } as Order
+          ...rawOrderData,
+          order_statuses: Array.isArray(rawOrderData.order_statuses)
+            ? rawOrderData.order_statuses[0]
+            : rawOrderData.order_statuses,
+        } as Order
         : null;
-      
+
       setOrder(orderData);
       if (orderData?.order_statuses.description.toLowerCase() === 'closed') {
         setIsOrderClosed(true);
@@ -162,14 +162,14 @@ export default function OrderDetailPage() {
           setHasSubmitted(true);
         }
       }
-      
+
       // Fetch ungated status
       const { data: ungatedData } = await supabase
         .from('order_products_company')
         .select('sequence, ungated, ungated_min_amount')
         .eq('order_id', orderId)
         .eq('company_id', userData.company_id);
-      
+
       if (ungatedData) {
         setUngatedStatus(ungatedData.reduce((acc, item) => ({ ...acc, [item.sequence]: item.ungated }), {}));
         setUngatedMinAmounts(ungatedData.reduce((acc, item) => ({ ...acc, [item.sequence]: item.ungated_min_amount }), {}));
@@ -193,10 +193,10 @@ export default function OrderDetailPage() {
 
   const updateUngatedStatus = useCallback(async (sequence: number, checked: boolean) => {
     if (!companyId || hasSubmitted || isOrderClosed) return;
-    
+
     const product = products.find(p => p.sequence === sequence);
     if (!product) return;
-    
+
     const { error } = await supabase
       .from('order_products_company')
       .upsert({
@@ -207,7 +207,7 @@ export default function OrderDetailPage() {
         quantity: product.quantity || 0,
         ungated_min_amount: checked ? ungatedMinAmounts[sequence] : null,
       }, { onConflict: 'order_id, sequence, company_id' });
-    
+
     if (error) {
       console.error('Error updating ungated status:', error);
     }
@@ -220,13 +220,13 @@ export default function OrderDetailPage() {
     if (!checked) setUngatedMinAmounts(prev => ({ ...prev, [sequence]: null }));
     debouncedUngatedUpdate(sequence, checked);
   }, [debouncedUngatedUpdate]);
-  
+
   const updateMinAmount = useCallback(async (sequence: number, minAmount: number | null) => {
     if (!companyId || hasSubmitted || isOrderClosed || !ungatedStatus[sequence]) return;
-    
+
     const product = products.find(p => p.sequence === sequence);
     if (!product) return;
-    
+
     const { error } = await supabase
       .from('order_products_company')
       .upsert({
@@ -237,7 +237,7 @@ export default function OrderDetailPage() {
         quantity: product.quantity || 0,
         ungated_min_amount: minAmount,
       }, { onConflict: 'order_id, sequence, company_id' });
-    
+
     if (error) {
       console.error('Error updating min amount:', error);
     }
@@ -268,12 +268,12 @@ export default function OrderDetailPage() {
       alert("Please correct any errors or complete the form before submitting.");
       return;
     }
-    
+
     if (!creditBalance || creditBalance.available_balance === 0) {
       alert("You have no available credit. Please contact support.");
       return;
     }
-    
+
     setIsSubmitting(true);
 
     try {
@@ -327,7 +327,7 @@ export default function OrderDetailPage() {
         ungated: ungatedStatus[product.sequence] || false,
         ungated_min_amount: ungatedStatus[product.sequence] ? ungatedMinAmounts[product.sequence] : null,
       }));
-      
+
       const { error: productsError } = await supabase
         .from('order_products_company')
         .upsert(investmentData, { onConflict: 'order_id, sequence, company_id' });
@@ -376,7 +376,7 @@ export default function OrderDetailPage() {
         <div className="flex items-center mb-6">
           <h1 className="text-3xl font-bold text-[#bfbfbf]">Order #{order.order_id}</h1>
         </div>
-        
+
         {isOrderClosed && (
           <Alert className='mb-6 bg-[#7f1d1d] text-[#bfbfbf] w-fit'>
             <AlertOctagon className="h-4 w-4" />
@@ -384,7 +384,7 @@ export default function OrderDetailPage() {
             <AlertDescription>This order is closed. No further investments can be submitted.</AlertDescription>
           </Alert>
         )}
-        
+
         {hasSubmitted && !isOrderClosed && (
           <Alert className='mb-6 bg-[#235c12] text-[#bfbfbf] w-fit'>
             <Check className="h-4 w-4" />
@@ -392,14 +392,14 @@ export default function OrderDetailPage() {
             <AlertDescription>Your application has been submitted. You have ${initialHeldAmount.toLocaleString()} held for this order.</AlertDescription>
           </Alert>
         )}
-        
+
         {/* Order Details Card */}
         <div className="grid grid-cols-1 gap-6 mb-8 w-full">
           <div className="rounded-lg p-6 bg-gradient-to-br from-[#212121] via-[#0f0f0f] to-[#2b2b2b] shadow-lg w-full">
             <div className="flex flex-wrap gap-6 text-gray-300">
               <div className="flex flex-col">
                 <span className="font-medium">Status</span>
-                <Badge variant="outline" className='bg-[#c8aa64] text-[#242424]'>{order.order_statuses?.description || 'N/A'}</Badge>
+                <Badge>{order.order_statuses?.description || 'N/A'}</Badge>
               </div>
               <div className="flex flex-col">
                 <span className="font-medium">Lead Time</span>
@@ -478,26 +478,26 @@ export default function OrderDetailPage() {
             </table>
           )}
         </div>
-        
+
         {/* Investment Section */}
         <div className="mt-14 flex flex-col items-end">
           <div className="w-full max-w-xs space-y-4">
             <div className="flex justify-between items-center p-3 rounded-md bg-[#2a2a2a] border border-[#6a6a6a80]">
               <div className='flex items-center gap-2'>
-                <CircleDollarSign className='h-5 w-5 text-[#c8aa64]'/>
+                <CircleDollarSign className='h-5 w-5 text-[#c8aa64]' />
                 <span className="text-gray-300 font-medium">Available Credit:</span>
               </div>
               <span className="text-lg font-semibold text-green-400">
                 ${creditBalance ? creditBalance.available_balance.toLocaleString() : '0'}
               </span>
             </div>
-            
+
             {initialHeldAmount > 0 && (
               <p className="text-sm text-gray-400 text-right">
                 You have ${initialHeldAmount.toLocaleString()} already held for this order.
               </p>
             )}
-            
+
             <div>
               <label htmlFor="maxInvestment" className="text-gray-300 font-medium block mb-2">
                 Maximum Investment ($)
@@ -507,9 +507,8 @@ export default function OrderDetailPage() {
                 id="maxInvestment"
                 value={maxInvestment || ''}
                 onChange={(e) => handleMaxInvestmentChange(e.target.value)}
-                className={`bg-[#1f1f1f] border rounded px-3 py-2 w-full text-[#FFFFFF] placeholder:text-[#A7A7A7] ${
-                  investmentError ? 'border-red-500' : 'border-[#6a6a6a80]'
-                }`}
+                className={`bg-[#1f1f1f] border rounded px-3 py-2 w-full text-[#FFFFFF] placeholder:text-[#A7A7A7] ${investmentError ? 'border-red-500' : 'border-[#6a6a6a80]'
+                  }`}
                 placeholder="Enter amount"
                 step="100"
                 min="0"
@@ -517,7 +516,7 @@ export default function OrderDetailPage() {
               />
               {investmentError && <p className="text-red-500 text-sm mt-1">{investmentError}</p>}
             </div>
-            
+
             <Button
               onClick={handleSubmitInvestment}
               className="w-full bg-[#c8aa64] hover:bg-[#9d864e] text-[#242424]"
