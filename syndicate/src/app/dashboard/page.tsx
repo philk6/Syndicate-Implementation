@@ -76,11 +76,11 @@ interface AggregateAllocationResult {
 const chartConfig = {
   profit: {
     label: 'Profit',
-    color: '#c8aa64',
+    color: '#f59e0b',
   },
   invested_amount: {
     label: 'Invested Amount',
-    color: '#6a6a6a',
+    color: '#71717a',
   },
 } satisfies ChartConfig;
 
@@ -292,7 +292,7 @@ export default function UserDashboardPage() {
 
         {/* Metric Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <Card className="bg-gradient-to-br from-[#212121] via-[#0f0f0f] to-[#2b2b2b] border-[#6a6a6a80]">
+          <Card>
             <CardHeader>
               <CardTitle className="text-gray-300">Your Orders</CardTitle>
             </CardHeader>
@@ -300,7 +300,7 @@ export default function UserDashboardPage() {
               <p className="text-2xl font-bold text-[#c8aa64]">{metrics.totalOrders}</p>
             </CardContent>
           </Card>
-          <Card className="bg-gradient-to-br from-[#212121] via-[#0f0f0f] to-[#2b2b2b] border-[#6a6a6a80]">
+          <Card>
             <CardHeader>
               <CardTitle className="text-gray-300">Total Investment</CardTitle>
             </CardHeader>
@@ -308,7 +308,7 @@ export default function UserDashboardPage() {
               <p className="text-2xl font-bold text-[#c8aa64]">${metrics.totalInvestment.toLocaleString()}</p>
             </CardContent>
           </Card>
-          <Card className="bg-gradient-to-br from-[#212121] via-[#0f0f0f] to-[#2b2b2b] border-[#6a6a6a80]">
+          <Card>
             <CardHeader>
               <CardTitle className="text-gray-300">Average ROI</CardTitle>
             </CardHeader>
@@ -321,16 +321,16 @@ export default function UserDashboardPage() {
         </div>
 
         {/* Area Chart: Profit and Investment Over Time */}
-        <Card className="bg-gradient-to-br from-[#212121] via-[#0f0f0f] to-[#2b2b2b] border-[#6a6a6a80] mb-8">
-          <CardHeader className="flex items-center gap-2 space-y-0 border-b py-5 sm:flex-row">
+        <Card className="mb-8">
+          <CardHeader className="flex items-center gap-2 space-y-0 border-b py-5 sm:flex-row border-white/[0.05]">
             <div className="grid flex-1 gap-1 text-center sm:text-left">
               <CardTitle>Profit and Investment Over Time</CardTitle>
               <CardDescription>
                 Showing total profit and invested amount for the selected time range
               </CardDescription>
             </div>
-            <Select 
-              value={timeFrame} 
+            <Select
+              value={timeFrame}
               onValueChange={handleTimeFrameChange}
             >
               <SelectTrigger className="w-[160px] rounded-lg sm:ml-auto border-[#6a6a6a80]" aria-label="Select time range">
@@ -349,15 +349,15 @@ export default function UserDashboardPage() {
               <AreaChart data={chartData}>
                 <defs>
                   <linearGradient id="fillProfit" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#c8aa64" stopOpacity={0.8} />
-                    <stop offset="95%" stopColor="#c8aa64" stopOpacity={0.1} />
+                    <stop offset="0%" stopColor="#f59e0b" stopOpacity={0.8} />
+                    <stop offset="100%" stopColor="#b45309" stopOpacity={0.2} />
                   </linearGradient>
                   <linearGradient id="fillInvested" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#6a6a6a" stopOpacity={0.8} />
-                    <stop offset="95%" stopColor="#6a6a6a" stopOpacity={0.1} />
+                    <stop offset="0%" stopColor="#52525b" stopOpacity={0.6} />
+                    <stop offset="100%" stopColor="#27272a" stopOpacity={0.1} />
                   </linearGradient>
                 </defs>
-                <CartesianGrid vertical={false} stroke="#6a6a6a80" />
+                <CartesianGrid vertical={false} stroke="rgba(255,255,255,0.05)" />
                 <XAxis
                   dataKey="date"
                   tickLine={false}
@@ -391,14 +391,14 @@ export default function UserDashboardPage() {
                   dataKey="profit"
                   type="natural"
                   fill="url(#fillProfit)"
-                  stroke="#c8aa64"
+                  stroke="#f59e0b"
                   stackId="a"
                 />
                 <Area
                   dataKey="invested_amount"
                   type="natural"
                   fill="url(#fillInvested)"
-                  stroke="#6a6a6a"
+                  stroke="#71717a"
                   stackId="a"
                 />
                 <ChartLegend content={<ChartLegendContent />} />
@@ -411,7 +411,7 @@ export default function UserDashboardPage() {
         </Card>
 
         {/* Recent Orders Table */}
-        <Card className="bg-gradient-to-br from-[#212121] via-[#0f0f0f] to-[#2b2b2b] border-[#6a6a6a80]">
+        <Card>
           <CardHeader>
             <CardTitle className="text-gray-300">Your Recent Orders</CardTitle>
           </CardHeader>

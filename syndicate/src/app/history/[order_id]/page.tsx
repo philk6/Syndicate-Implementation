@@ -283,7 +283,7 @@ export default function HistoryOrderDetailPage() {
             <div className="flex flex-wrap gap-6 text-gray-300">
               <div className="flex flex-col">
                 <span className="font-medium">Status</span>
-                <Badge variant="outline" className="bg-[#c8aa64] text-[#242424]">{order.order_statuses?.description || 'N/A'}</Badge>
+                <Badge>{order.order_statuses?.description || 'N/A'}</Badge>
               </div>
               <div className="flex flex-col">
                 <span className="font-medium">Lead Time</span>
@@ -387,7 +387,7 @@ export default function HistoryOrderDetailPage() {
                               <div className="flex items-center gap-2">
                                 <span>${discountedPrice.toFixed(2)}</span>
                                 {discountPercentage != null && (
-                                  <Badge variant="secondary" className="bg-green-900 text-green-200">
+                                  <Badge className="border-emerald-500/20 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20">
                                     -{discountPercentage}%
                                   </Badge>
                                 )}

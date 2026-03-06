@@ -44,12 +44,12 @@ export default function OrdersPage() {
 
     try {
       await withNetworkResilience(async (signal) => {
-    // The RLS policy on the 'orders' table will now filter based on 'is_public'
-    // and 'order_whitelists' for the authenticated user.
-    // So, we don't need complex .or() conditions here.
+        // The RLS policy on the 'orders' table will now filter based on 'is_public'
+        // and 'order_whitelists' for the authenticated user.
+        // So, we don't need complex .or() conditions here.
         let query = supabase
-      .from('orders')
-      .select(`
+          .from('orders')
+          .select(`
         order_id,
         leadtime,
         deadline,
@@ -57,8 +57,8 @@ export default function OrdersPage() {
         order_statuses!order_status_id (description),
         is_public
       `)
-      .neq('order_status_id', 3) // Filter out order_status_id = 3 (Draft)
-      .not('order_statuses.description', 'eq', 'Draft') // Filter out 'Draft' status explicitly
+          .neq('order_status_id', 3) // Filter out order_status_id = 3 (Draft)
+          .not('order_statuses.description', 'eq', 'Draft') // Filter out 'Draft' status explicitly
           .order('deadline', { ascending: true });
 
         if (signal) {
@@ -67,19 +67,19 @@ export default function OrdersPage() {
 
         const { data, error } = await query as { data: Order[] | null, error: PostgrestError | null };
 
-    if (error) {
-      console.error('Error fetching orders:', error);
+        if (error) {
+          console.error('Error fetching orders:', error);
           throw error;
-    } else {
-      console.log('Fetched orders:', data);
-      setOrders(data || []);
-    }
+        } else {
+          console.log('Fetched orders:', data);
+          setOrders(data || []);
+        }
       }, { timeout: 10000, retries: 2 });
     } catch (error) {
       console.error('Failed to fetch orders after retries:', error);
       // Don't clear orders on error, keep showing previous data
     } finally {
-    setLoadingOrders(false);
+      setLoadingOrders(false);
     }
   }, [withNetworkResilience]); // Include withNetworkResilience as dependency
 
@@ -129,7 +129,7 @@ export default function OrdersPage() {
       >
         <TableCell className="text-gray-200">{order.order_id}</TableCell>
         <TableCell className="text-gray-200">
-          <Badge variant="outline" className="bg-[#c8aa64] text-[#242424]">
+          <Badge>
             {order.order_statuses?.description || 'N/A'}
           </Badge>
         </TableCell>
@@ -144,7 +144,7 @@ export default function OrdersPage() {
         </TableCell>
       </TableRow>
     )),
-  [orders, handleOrderClick, calculateProgress]);
+    [orders, handleOrderClick, calculateProgress]);
 
   if (loading || loadingOrders) { // Combined loading states
     return (
