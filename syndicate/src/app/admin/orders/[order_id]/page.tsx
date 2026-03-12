@@ -1462,16 +1462,6 @@ export default function AdminOrderManagementPage() {
       .reduce((sum, ar) => sum + ar.quantity, 0)
     : undefined;
 
-  // START: Handlers for Dialog onOpenChange to reset state
-  const _handleAddAllocationDialogVisibilityChange = (open: boolean) => {
-    setIsAddAllocationDialogOpen(open);
-    if (!open) {
-      setNewAllocationSequence('');
-      setNewAllocationCompanyId('');
-      setNewAllocationQuantity('');
-    }
-  };
-
   const handlePreAssignDialogControl = (isOpen: boolean) => {
     setIsPreAssignDialogOpen(isOpen);
     if (!isOpen) {
