@@ -39,7 +39,7 @@ function ResetPasswordContent() {
             setIsValidToken(true);
             window.history.replaceState({}, document.title, window.location.pathname);
           }
-        } catch (_error) {
+        } catch {
           setMessage('Error processing reset link. Please try again.');
           setIsValidToken(false);
         }
@@ -87,7 +87,7 @@ function ResetPasswordContent() {
           router.push('/login');
         }, 2000);
       }
-    } catch (_error) {
+    } catch {
       setMessage('An unexpected error occurred. Please try again.');
     } finally {
       setIsLoading(false);
