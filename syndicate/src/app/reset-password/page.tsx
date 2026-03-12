@@ -39,7 +39,7 @@ function ResetPasswordContent() {
             setIsValidToken(true);
             window.history.replaceState({}, document.title, window.location.pathname);
           }
-        } catch (error) {
+        } catch (_error) {
           setMessage('Error processing reset link. Please try again.');
           setIsValidToken(false);
         }
@@ -87,7 +87,7 @@ function ResetPasswordContent() {
           router.push('/login');
         }, 2000);
       }
-    } catch (error) {
+    } catch (_error) {
       setMessage('An unexpected error occurred. Please try again.');
     } finally {
       setIsLoading(false);
@@ -103,7 +103,7 @@ function ResetPasswordContent() {
   };
 
   // Shared Header
-  const Header = ({ title, subtitle, icon: Icon }: { title: string, subtitle: string, icon: any }) => (
+  const Header = ({ title, subtitle, icon: Icon }: { title: string, subtitle: string, icon: React.ComponentType<{ className?: string }> }) => (
     <div className="flex flex-col items-center mb-10">
       <div className="w-16 h-16 bg-gradient-to-t from-amber-700/20 to-amber-500/10 rounded-2xl flex items-center justify-center mb-6 border border-amber-500/20 shadow-xl shadow-amber-900/10">
         <Icon className="w-8 h-8 text-amber-500" />

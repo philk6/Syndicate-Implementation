@@ -6,7 +6,7 @@ import { useAuth } from '@lib/auth';
 import { supabase } from '@lib/supabase/client';
 import { PostgrestError } from '@supabase/supabase-js';
 import Link from 'next/link';
-import { CalendarIcon, Download, Trash2, Plus, Percent, Save, Edit, XCircle, CheckCircle, ListPlus, Search, TrendingUp, PackageSearch, DollarSign, Info, Clock } from 'lucide-react'; // Added DollarSign, Info, Clock
+import { CalendarIcon, Download, Trash2, Plus, Percent, Save, Edit, XCircle, CheckCircle, ListPlus, Search, TrendingUp, PackageSearch, DollarSign, Info } from 'lucide-react';
 import { GlassCard } from '@/components/ui/glass-card';
 import { StatusPill } from '@/components/ui/status-pill';
 import {
@@ -1463,7 +1463,7 @@ export default function AdminOrderManagementPage() {
     : undefined;
 
   // START: Handlers for Dialog onOpenChange to reset state
-  const handleAddAllocationDialogVisibilityChange = (open: boolean) => {
+  const _handleAddAllocationDialogVisibilityChange = (open: boolean) => {
     setIsAddAllocationDialogOpen(open);
     if (!open) {
       setNewAllocationSequence('');
