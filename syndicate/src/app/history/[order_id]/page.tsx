@@ -261,7 +261,7 @@ export default function HistoryOrderDetailPage() {
         <p className="text-neutral-500 mb-8 leading-relaxed">The requested order does not exist or you don't have the required permissions to view it.</p>
         <Link
           href="/history"
-          className="inline-flex items-center px-6 py-2 bg-gradient-to-t from-amber-700/50 to-amber-500/80 hover:from-amber-700/70 hover:to-amber-500 text-white rounded-xl transition-all font-medium border border-amber-500/20"
+          className="inline-flex items-center px-6 py-2 bg-amber-500/10 text-amber-400 font-medium border border-amber-500/20 shadow-[0_0_15px_rgba(245,158,11,0.05)] hover:bg-amber-500/20 hover:shadow-[0_0_20px_rgba(245,158,11,0.1)] hover:border-amber-500/30 rounded-xl transition-all duration-300"
         >
           <ArrowLeft className="mr-2 h-4 w-4" /> Return to History
         </Link>
@@ -402,7 +402,7 @@ export default function HistoryOrderDetailPage() {
                         <Button
                           size="sm"
                           onClick={() => handleDownloadReceipt(receipt.file_path)}
-                          className="bg-white/[0.05] hover:bg-white/[0.1] text-white border border-white/[0.1]"
+                          className="bg-amber-500/10 text-amber-400 font-medium border border-amber-500/20 shadow-[0_0_15px_rgba(245,158,11,0.05)] hover:bg-amber-500/20 hover:shadow-[0_0_20px_rgba(245,158,11,0.1)] hover:border-amber-500/30 transition-all duration-300"
                         >
                           <Eye className="h-4 w-4 mr-2" /> View Document
                         </Button>

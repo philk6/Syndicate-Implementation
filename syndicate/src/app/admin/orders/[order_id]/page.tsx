@@ -1528,7 +1528,7 @@ export default function AdminOrderManagementPage() {
           <Button
             onClick={handleCalculateAllocation}
             disabled={isPending || !isOrderEditable}
-            className="bg-gradient-to-t from-amber-700/50 to-amber-500/80 hover:from-amber-700/70 hover:to-amber-500 text-white border border-amber-500/20 shadow-lg shadow-amber-900/20 disabled:opacity-50"
+            className="bg-amber-500/10 text-amber-400 font-medium border border-amber-500/20 shadow-[0_0_15px_rgba(245,158,11,0.05)] hover:bg-amber-500/20 hover:shadow-[0_0_20px_rgba(245,158,11,0.1)] hover:border-amber-500/30 transition-all duration-300 disabled:opacity-50"
           >
             {isPending ? 'Calculating...' : 'Calculate Order'}
           </Button>
@@ -1623,7 +1623,7 @@ export default function AdminOrderManagementPage() {
               <div className="flex items-end">
                 <Button
                   onClick={() => setIsWhitelistDialogOpen(true)}
-                  className="w-full bg-white/[0.05] hover:bg-white/[0.1] text-white border border-white/[0.1]"
+                  className="w-full bg-amber-500/10 text-amber-400 font-medium border border-amber-500/20 shadow-[0_0_15px_rgba(245,158,11,0.05)] hover:bg-amber-500/20 hover:shadow-[0_0_20px_rgba(245,158,11,0.1)] hover:border-amber-500/30 transition-all duration-300"
                   disabled={!isOrderEditable}
                 >
                   <ListPlus className="mr-2 h-4 w-4" /> Manage Whitelist
@@ -1764,7 +1764,7 @@ export default function AdminOrderManagementPage() {
                             variant="ghost"
                             size="sm"
                             onClick={() => handleEditApplicationClick(app)}
-                            className="bg-white/[0.05] hover:bg-white/[0.1] text-neutral-200"
+                            className="bg-amber-500/10 text-amber-400 font-medium border border-amber-500/20 hover:bg-amber-500/20 hover:border-amber-500/30 transition-all duration-300"
                             disabled={!isOrderEditable}
                           >
                             <Edit className="h-4 w-4 mr-1.5" /> Edit
@@ -1846,13 +1846,13 @@ export default function AdminOrderManagementPage() {
               <Button
                 variant="outline"
                 onClick={() => setIsEditApplicationDialogOpen(false)}
-                className="bg-gray-700 hover:bg-gray-600 text-gray-200"
+                className="bg-amber-500/5 text-amber-400 font-medium border border-amber-500/15 hover:bg-amber-500/10 hover:border-amber-500/25 transition-all duration-300"
               >
                 Cancel
               </Button>
               <Button
                 onClick={handleSaveApplicationChanges}
-                className="bg-[#c8aa64] hover:bg-[#9d864e] text-[#242424]"
+                className="bg-amber-500/10 text-amber-400 font-medium border border-amber-500/20 shadow-[0_0_15px_rgba(245,158,11,0.05)] hover:bg-amber-500/20 hover:shadow-[0_0_20px_rgba(245,158,11,0.1)] hover:border-amber-500/30 transition-all duration-300"
               >
                 Save Changes
               </Button>
@@ -1873,7 +1873,7 @@ export default function AdminOrderManagementPage() {
               <Button
                 variant="outline"
                 onClick={() => setIsDeleteApplicationDialogOpen(false)}
-                className="bg-gray-700 hover:bg-gray-600 text-gray-200"
+                className="bg-amber-500/5 text-amber-400 font-medium border border-amber-500/15 hover:bg-amber-500/10 hover:border-amber-500/25 transition-all duration-300"
               >
                 Cancel
               </Button>
@@ -1934,7 +1934,7 @@ export default function AdminOrderManagementPage() {
                               variant="ghost"
                               size="sm"
                               onClick={() => openDiscountDialog(discount.sequence, discount.company_id, discount.discounted_price)}
-                              className="bg-white/[0.05] hover:bg-white/[0.1] text-neutral-200"
+                              className="bg-amber-500/10 text-amber-400 font-medium border border-amber-500/20 hover:bg-amber-500/20 hover:border-amber-500/30 transition-all duration-300"
                               disabled={!isOrderEditable}
                             >
                               <Edit className="h-4 w-4 mr-1.5" /> Edit
@@ -1968,14 +1968,14 @@ export default function AdminOrderManagementPage() {
             <div className="flex gap-3">
               <Button
                 onClick={() => openDiscountDialog()}
-                className="bg-white/[0.05] hover:bg-white/[0.1] text-white border border-white/[0.1]"
+                className="bg-amber-500/10 text-amber-400 font-medium border border-amber-500/20 shadow-[0_0_15px_rgba(245,158,11,0.05)] hover:bg-amber-500/20 hover:shadow-[0_0_20px_rgba(245,158,11,0.1)] hover:border-amber-500/30 transition-all duration-300"
                 disabled={!isOrderEditable}
               >
                 <Percent className="mr-2 h-4 w-4" /> Discounts
               </Button>
               <Button
                 onClick={handleProductAdd}
-                className="bg-gradient-to-t from-amber-700/50 to-amber-500/80 hover:from-amber-700/70 hover:to-amber-500 text-white border border-amber-500/20 shadow-lg shadow-amber-900/20"
+                className="bg-amber-500/10 text-amber-400 font-medium border border-amber-500/20 shadow-[0_0_15px_rgba(245,158,11,0.05)] hover:bg-amber-500/20 hover:shadow-[0_0_20px_rgba(245,158,11,0.1)] hover:border-amber-500/30 transition-all duration-300"
                 disabled={!isOrderEditable}
               >
                 <Plus className="mr-2 h-4 w-4" /> Add Product
@@ -2099,7 +2099,7 @@ export default function AdminOrderManagementPage() {
                                 <Button
                                   variant="outline"
                                   size="sm"
-                                  className="mt-1 h-8 text-xs bg-white/[0.05] hover:bg-white/[0.1] border-white/[0.1]"
+                                  className="mt-1 h-8 text-xs bg-amber-500/10 text-amber-400 font-medium border border-amber-500/20 hover:bg-amber-500/20 hover:border-amber-500/30 transition-all duration-300"
                                   disabled={!isOrderEditable}
                                   onClick={() => {
                                     setSelectedSequence(product.sequence);
@@ -2144,7 +2144,7 @@ export default function AdminOrderManagementPage() {
                                   </div>
                                   <Button
                                     onClick={handlePreAssign}
-                                    className="w-full bg-gradient-to-t from-amber-700/50 to-amber-500/80 hover:from-amber-700/70 hover:to-amber-500 text-white border border-amber-500/20 shadow-lg shadow-amber-900/20"
+                                    className="w-full bg-amber-500/10 text-amber-400 font-medium border border-amber-500/20 shadow-[0_0_15px_rgba(245,158,11,0.05)] hover:bg-amber-500/20 hover:shadow-[0_0_20px_rgba(245,158,11,0.1)] hover:border-amber-500/30 transition-all duration-300"
                                   >
                                     Confirm Pre-Assignment
                                   </Button>
@@ -2261,7 +2261,7 @@ export default function AdminOrderManagementPage() {
                 </Button>
                 <Button
                   onClick={handleDiscountSave}
-                  className="bg-gradient-to-t from-amber-700/50 to-amber-500/80 hover:from-amber-700/70 hover:to-amber-500 text-white border border-amber-500/20 shadow-lg shadow-amber-900/20"
+                  className="bg-amber-500/10 text-amber-400 font-medium border border-amber-500/20 shadow-[0_0_15px_rgba(245,158,11,0.05)] hover:bg-amber-500/20 hover:shadow-[0_0_20px_rgba(245,158,11,0.1)] hover:border-amber-500/30 transition-all duration-300"
                 >
                   Save Discount
                 </Button>
@@ -2286,26 +2286,26 @@ export default function AdminOrderManagementPage() {
                   setNewAllocationQuantity('');
                   setIsAddAllocationDialogOpen(true);
                 }}
-                className="bg-white/[0.05] hover:bg-white/[0.1] text-white border border-white/[0.1]"
+                className="bg-amber-500/10 text-amber-400 font-medium border border-amber-500/20 shadow-[0_0_15px_rgba(245,158,11,0.05)] hover:bg-amber-500/20 hover:shadow-[0_0_20px_rgba(245,158,11,0.1)] hover:border-amber-500/30 transition-all duration-300"
                 disabled={!isOrderEditable || availableProductsForNewAllocation.length === 0}
               >
                 <Plus className="mr-2 h-4 w-4" /> Add Allocation
               </Button>
               <Button
                 onClick={() => setIsCompanyAllocationSummaryDialogOpen(true)}
-                className="bg-white/[0.05] hover:bg-white/[0.1] text-white border border-white/[0.1]"
+                className="bg-amber-500/10 text-amber-400 font-medium border border-amber-500/20 shadow-[0_0_15px_rgba(245,158,11,0.05)] hover:bg-amber-500/20 hover:shadow-[0_0_20px_rgba(245,158,11,0.1)] hover:border-amber-500/30 transition-all duration-300"
               >
                 <TrendingUp className="mr-2 h-4 w-4" /> Summary
               </Button>
               <Button
                 onClick={() => setIsUnallocatedProductsDialogOpen(true)}
-                className="bg-white/[0.05] hover:bg-white/[0.1] text-white border border-white/[0.1]"
+                className="bg-amber-500/10 text-amber-400 font-medium border border-amber-500/20 shadow-[0_0_15px_rgba(245,158,11,0.05)] hover:bg-amber-500/20 hover:shadow-[0_0_20px_rgba(245,158,11,0.1)] hover:border-amber-500/30 transition-all duration-300"
               >
                 <PackageSearch className="mr-2 h-4 w-4" /> Unallocated
               </Button>
               <Button
                 onClick={handleDownloadAllocationResults}
-                className="bg-gradient-to-t from-amber-700/50 to-amber-500/80 hover:from-amber-700/70 hover:to-amber-500 text-white border border-amber-500/20 shadow-lg shadow-amber-900/20"
+                className="bg-amber-500/10 text-amber-400 font-medium border border-amber-500/20 shadow-[0_0_15px_rgba(245,158,11,0.05)] hover:bg-amber-500/20 hover:shadow-[0_0_20px_rgba(245,158,11,0.1)] hover:border-amber-500/30 transition-all duration-300"
               >
                 <Download className="mr-2 h-4 w-4" /> Download
               </Button>
@@ -2347,7 +2347,7 @@ export default function AdminOrderManagementPage() {
                       <div className="flex justify-end space-x-2">
                         <Button
                           onClick={() => handleAllocationSave(result.id)}
-                          className="bg-white/[0.05] hover:bg-white/[0.1] text-emerald-400 h-9"
+                          className="bg-amber-500/10 text-amber-400 font-medium border border-amber-500/20 hover:bg-amber-500/20 hover:border-amber-500/30 transition-all duration-300 h-9"
                           disabled={!isOrderEditable || (edited?.quantity === result.quantity)}
                           size="sm"
                         >
@@ -2450,7 +2450,7 @@ export default function AdminOrderManagementPage() {
             </Button>
             <Button
               onClick={handleAddNewAllocationSave}
-              className="bg-gradient-to-t from-amber-700/50 to-amber-500/80 hover:from-amber-700/70 hover:to-amber-500 text-white border border-amber-500/20 shadow-lg shadow-amber-900/20"
+              className="bg-amber-500/10 text-amber-400 font-medium border border-amber-500/20 shadow-[0_0_15px_rgba(245,158,11,0.05)] hover:bg-amber-500/20 hover:shadow-[0_0_20px_rgba(245,158,11,0.1)] hover:border-amber-500/30 transition-all duration-300"
               disabled={!newAllocationSequence || !newAllocationCompanyId || !newAllocationQuantity || parseInt(newAllocationQuantity) <= 0 || (maxAllocatableForDialog !== undefined && parseInt(newAllocationQuantity) > maxAllocatableForDialog)}
             >
               Save Allocation

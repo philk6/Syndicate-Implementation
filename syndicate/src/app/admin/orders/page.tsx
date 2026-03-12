@@ -291,13 +291,13 @@ export default function AdminOrdersPage() {
           <div className="flex items-center space-x-3">
             <Button
               onClick={handleCreateOrder}
-              className="bg-gradient-to-t from-amber-700/50 to-amber-500/80 hover:from-amber-700/70 hover:to-amber-500 text-white border border-amber-500/20 shadow-lg shadow-amber-900/20"
+              className="bg-amber-500/10 text-amber-400 font-medium border border-amber-500/20 shadow-[0_0_15px_rgba(245,158,11,0.05)] hover:bg-amber-500/20 hover:shadow-[0_0_20px_rgba(245,158,11,0.1)] hover:border-amber-500/30 transition-all duration-300"
             >
               Create New Order
             </Button>
             <Dialog open={isUploadOpen} onOpenChange={setIsUploadOpen}>
               <DialogTrigger asChild>
-                <Button className="bg-white/[0.05] hover:bg-white/[0.1] text-white border border-white/[0.1]">
+                <Button className="bg-amber-500/10 text-amber-400 font-medium border border-amber-500/20 shadow-[0_0_15px_rgba(245,158,11,0.05)] hover:bg-amber-500/20 hover:shadow-[0_0_20px_rgba(245,158,11,0.1)] hover:border-amber-500/30 transition-all duration-300">
                   <Upload className="mr-2 h-4 w-4" /> Upload Order
                 </Button>
               </DialogTrigger>
@@ -317,7 +317,7 @@ export default function AdminOrdersPage() {
                   />
                   <Button
                     onClick={handleFileSubmit}
-                    className="w-full bg-gradient-to-t from-amber-700/50 to-amber-500/80 hover:from-amber-700/70 hover:to-amber-500 text-white border border-amber-500/20"
+                    className="w-full bg-amber-500/10 text-amber-400 font-medium border border-amber-500/20 shadow-[0_0_15px_rgba(245,158,11,0.05)] hover:bg-amber-500/20 hover:shadow-[0_0_20px_rgba(245,158,11,0.1)] hover:border-amber-500/30 transition-all duration-300"
                   >
                     Submit
                   </Button>
@@ -395,7 +395,7 @@ export default function AdminOrdersPage() {
                     <TableCell>
                       <Button
                         asChild
-                        className="bg-white/[0.05] hover:bg-white/[0.1] text-white border border-white/[0.1] h-8 text-xs"
+                        className="bg-amber-500/10 text-amber-400 font-medium border border-amber-500/20 shadow-[0_0_15px_rgba(245,158,11,0.05)] hover:bg-amber-500/20 hover:shadow-[0_0_20px_rgba(245,158,11,0.1)] hover:border-amber-500/30 transition-all duration-300 h-8 text-xs"
                       >
                         <Link href={`/admin/orders/${order.order_id}`}>Manage</Link>
                       </Button>
@@ -415,10 +415,10 @@ export default function AdminOrdersPage() {
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel className="bg-white/[0.05] hover:bg-white/[0.1] text-neutral-200 border-white/[0.1]">Cancel</AlertDialogCancel>
+              <AlertDialogCancel className="bg-amber-500/10 text-amber-400 font-medium border border-amber-500/20 hover:bg-amber-500/20 hover:border-amber-500/30 transition-all duration-300">Cancel</AlertDialogCancel>
               <AlertDialogAction
                 onClick={handleDeleteOrders}
-                className="bg-rose-600 hover:bg-rose-500 text-white"
+                className="bg-rose-500/10 text-rose-400 font-medium border border-rose-500/20 shadow-[0_0_15px_rgba(244,63,94,0.05)] hover:bg-rose-500/20 hover:shadow-[0_0_20px_rgba(244,63,94,0.1)] hover:border-rose-500/30 transition-all duration-300"
               >
                 Delete
               </AlertDialogAction>

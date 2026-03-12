@@ -23,7 +23,7 @@ export default function UnauthorizedPage() {
           </p>
           <Link href="/dashboard" passHref>
             <Button
-              className="w-full h-12 bg-white/[0.05] hover:bg-white/[0.1] text-white border border-white/[0.1] rounded-xl font-bold transition-all group"
+              className="w-full h-12 bg-amber-500/10 text-amber-400 font-medium border border-amber-500/20 shadow-[0_0_15px_rgba(245,158,11,0.05)] hover:bg-amber-500/20 hover:shadow-[0_0_20px_rgba(245,158,11,0.1)] hover:border-amber-500/30 rounded-xl transition-all duration-300 group"
             >
               <ArrowLeft className="mr-2 h-4 w-4 group-hover:-translate-x-1 transition-transform" /> Return to Dashboard
             </Button>

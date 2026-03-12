@@ -228,7 +228,7 @@ export default function AdminOrderReceiptsPage() {
           </h1>
           <Dialog open={uploadDialogOpen} onOpenChange={setUploadDialogOpen}>
             <DialogTrigger asChild>
-              <Button className="bg-gradient-to-t from-amber-700/50 to-amber-500/80 hover:from-amber-700/70 hover:to-amber-500 text-white border border-amber-500/20 shadow-lg shadow-amber-900/20 rounded-xl">
+              <Button className="bg-amber-500/10 text-amber-400 font-medium border border-amber-500/20 shadow-[0_0_15px_rgba(245,158,11,0.05)] hover:bg-amber-500/20 hover:shadow-[0_0_20px_rgba(245,158,11,0.1)] hover:border-amber-500/30 transition-all duration-300 rounded-xl">
                 <Upload className="mr-2 h-4 w-4" /> Upload Receipt
               </Button>
             </DialogTrigger>
@@ -264,7 +264,7 @@ export default function AdminOrderReceiptsPage() {
                 <Button
                   onClick={handleUpload}
                   disabled={isUploading || !selectedFile || !selectedCompanyId}
-                  className="w-full bg-gradient-to-t from-amber-700/50 to-amber-500/80 hover:from-amber-700/70 hover:to-amber-500 text-white border border-amber-500/20 shadow-lg rounded-xl"
+                  className="w-full bg-amber-500/10 text-amber-400 font-medium border border-amber-500/20 shadow-[0_0_15px_rgba(245,158,11,0.05)] hover:bg-amber-500/20 hover:shadow-[0_0_20px_rgba(245,158,11,0.1)] hover:border-amber-500/30 transition-all duration-300 rounded-xl"
                 >
                   {isUploading ? 'Uploading...' : 'Confirm Upload'}
                 </Button>
@@ -332,7 +332,7 @@ export default function AdminOrderReceiptsPage() {
                               <Button
                                 size="sm"
                                 onClick={() => handleViewReceipt(companyReceipt.file_path)}
-                                className="bg-white/[0.05] hover:bg-white/[0.1] text-white border border-white/[0.1]"
+                                className="bg-amber-500/10 text-amber-400 font-medium border border-amber-500/20 shadow-[0_0_15px_rgba(245,158,11,0.05)] hover:bg-amber-500/20 hover:shadow-[0_0_20px_rgba(245,158,11,0.1)] hover:border-amber-500/30 transition-all duration-300"
                               >
                                 View
                               </Button>
@@ -352,7 +352,7 @@ export default function AdminOrderReceiptsPage() {
                                 setSelectedCompanyId(company.company_id);
                                 setUploadDialogOpen(true);
                               }}
-                              className="bg-white/[0.05] hover:bg-white/[0.1] text-amber-500 border border-amber-500/20"
+                              className="bg-amber-500/10 text-amber-400 font-medium border border-amber-500/20 hover:bg-amber-500/20 hover:border-amber-500/30 transition-all duration-300"
                             >
                               <Upload className="h-4 w-4 mr-2" /> Upload
                             </Button>

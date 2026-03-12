@@ -89,14 +89,14 @@ function ConfirmEmailComponent() {
             {message && !error ? (
               <Button
                 onClick={handleLoginRedirect}
-                className="w-full h-12 bg-gradient-to-t from-amber-700/50 to-amber-500/80 hover:from-amber-700/70 hover:to-amber-500 text-white border border-amber-500/20 shadow-xl shadow-amber-900/20 rounded-xl font-bold tracking-wide transition-all active:scale-[0.98]"
+                className="w-full h-12 bg-amber-500/10 text-amber-400 font-medium border border-amber-500/20 shadow-[0_0_15px_rgba(245,158,11,0.05)] hover:bg-amber-500/20 hover:shadow-[0_0_20px_rgba(245,158,11,0.1)] hover:border-amber-500/30 rounded-xl tracking-wide transition-all duration-300 active:scale-[0.98]"
               >
                 Proceed to Dashboard
               </Button>
             ) : error ? (
               <Button
                 onClick={() => router.push('/signup')}
-                className="w-full h-12 bg-white/[0.05] hover:bg-white/[0.1] text-white border border-white/[0.1] rounded-xl font-bold transition-all"
+                className="w-full h-12 bg-amber-500/10 text-amber-400 font-medium border border-amber-500/20 shadow-[0_0_15px_rgba(245,158,11,0.05)] hover:bg-amber-500/20 hover:shadow-[0_0_20px_rgba(245,158,11,0.1)] hover:border-amber-500/30 rounded-xl transition-all duration-300"
               >
                 <RefreshCw className="w-4 h-4 mr-2" /> Try Signing Up Again
               </Button>
