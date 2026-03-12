@@ -460,7 +460,7 @@ export default function UserDashboardPage() {
               <AlertDialogAction asChild>
                 <Button
                   onClick={handleRedirectToAccount}
-                  className="bg-gradient-to-t from-amber-700/50 to-amber-500/80 hover:from-amber-700/70 hover:to-amber-500 text-white border border-amber-500/20 shadow-lg shadow-amber-900/20"
+                  className="bg-amber-500/10 text-amber-400 font-medium border border-amber-500/20 shadow-[0_0_15px_rgba(245,158,11,0.05)] hover:bg-amber-500/20 hover:shadow-[0_0_20px_rgba(245,158,11,0.1)] hover:border-amber-500/30 transition-all duration-300"
                 >
                   Go to Account
                 </Button>

@@ -3,7 +3,6 @@
 import { useState, useEffect, Suspense } from 'react';
 import { supabase } from '@lib/supabase/client';
 import { useAuth } from '../../../lib/auth';
-import Image from 'next/image';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -99,7 +98,7 @@ function ForgotPasswordContent() {
 
             <Button
               onClick={handleResetPassword}
-              className="w-full h-12 bg-gradient-to-t from-amber-700/50 to-amber-500/80 hover:from-amber-700/70 hover:to-amber-500 text-white border border-amber-500/20 shadow-xl shadow-amber-900/20 rounded-xl font-bold tracking-wide transition-all active:scale-[0.98]"
+              className="w-full h-12 bg-amber-500/10 text-amber-400 font-medium border border-amber-500/20 shadow-[0_0_15px_rgba(245,158,11,0.05)] hover:bg-amber-500/20 hover:shadow-[0_0_20px_rgba(245,158,11,0.1)] hover:border-amber-500/30 rounded-xl tracking-wide transition-all duration-300 active:scale-[0.98]"
               disabled={isLoading}
             >
               {isLoading ? (
@@ -121,8 +120,8 @@ function ForgotPasswordContent() {
 
             {message && (
               <div className={`p-4 rounded-xl text-xs font-semibold text-center mt-4 transition-all animate-in fade-in slide-in-from-top-2 ${message.includes('sent') || message.includes('check your email')
-                  ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                  : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
+                ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
                 }`}>
                 {message}
               </div>

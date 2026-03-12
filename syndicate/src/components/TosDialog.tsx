@@ -125,14 +125,14 @@ export default function TosDialog({ isOpen, onClose }: TosDialogProps) {
           <Button
             variant="outline"
             onClick={handleCancel}
-            className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80]"
+            className="bg-amber-500/5 text-amber-400 font-medium border border-amber-500/15 hover:bg-amber-500/10 hover:border-amber-500/25 transition-all duration-300"
             disabled={isSubmitting}
           >
             Cancel
           </Button>
           <Button
             onClick={handleAgree}
-            className="bg-[#c8aa64] hover:bg-[#9d864e] text-[#242424]"
+            className="bg-amber-500/10 text-amber-400 font-medium border border-amber-500/20 shadow-[0_0_15px_rgba(245,158,11,0.05)] hover:bg-amber-500/20 hover:shadow-[0_0_20px_rgba(245,158,11,0.1)] hover:border-amber-500/30 transition-all duration-300"
             disabled={isSubmitting}
           >
             {isSubmitting ? 'Submitting...' : 'I Agree'}
