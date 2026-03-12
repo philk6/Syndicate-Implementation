@@ -10,10 +10,9 @@ interface SidebarLinkProps {
   href: string;
   children: React.ReactNode;
   className?: string;
-  isActive?: boolean;
 }
 
-export default function SidebarLink({ href, children, className, isActive }: SidebarLinkProps) {
+export default function SidebarLink({ href, children, className }: SidebarLinkProps) {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false); // Local loading state for the link itself
   const { session, isAuthenticated, loading: authLoading } = useAuth(); // Get auth state from context

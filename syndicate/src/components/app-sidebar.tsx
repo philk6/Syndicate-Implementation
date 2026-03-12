@@ -228,7 +228,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                   {item.items.map((subItem) => (
                     <SidebarMenuItem key={subItem.title}>
                       <SidebarMenuButton asChild isActive={pathname.startsWith(subItem.url)}>
-                        <SidebarLink href={subItem.url} isActive={pathname.startsWith(subItem.url)}>
+                        <SidebarLink href={subItem.url}>
                           {subItem.icon && <subItem.icon className="mr-2 h-4 w-4" />}
                           <span>{subItem.title}</span>
                         </SidebarLink>
