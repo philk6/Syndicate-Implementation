@@ -4,7 +4,7 @@ import { useEffect, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@lib/supabase/client';
 import { Button } from '@/components/ui/button';
-import Image from 'next/image';
+
 
 import { GlassCard } from '@/components/ui/glass-card';
 import { MailCheck, AlertCircle, RefreshCw } from 'lucide-react';

@@ -258,7 +258,7 @@ export default function HistoryOrderDetailPage() {
     <div className="min-h-screen p-6 w-full flex items-center justify-center">
       <GlassCard className="max-w-md p-8 text-center">
         <h1 className="text-2xl font-bold text-white mb-4 tracking-tight">Access Denied or Order Not Found</h1>
-        <p className="text-neutral-500 mb-8 leading-relaxed">The requested order does not exist or you don't have the required permissions to view it.</p>
+        <p className="text-neutral-500 mb-8 leading-relaxed">The requested order does not exist or you don&apos;t have the required permissions to view it.</p>
         <Link
           href="/history"
           className="inline-flex items-center px-6 py-2 bg-amber-500/10 text-amber-400 font-medium border border-amber-500/20 shadow-[0_0_15px_rgba(245,158,11,0.05)] hover:bg-amber-500/20 hover:shadow-[0_0_20px_rgba(245,158,11,0.1)] hover:border-amber-500/30 rounded-xl transition-all duration-300"

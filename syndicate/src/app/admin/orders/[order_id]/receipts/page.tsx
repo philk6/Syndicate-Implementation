@@ -5,7 +5,7 @@ import { useAuth } from '@lib/auth';
 import { supabase } from '@lib/supabase/client';
 import { PostgrestError } from '@supabase/supabase-js';
 import Link from 'next/link';
-import { CalendarIcon, Download, Trash2, Plus, Percent, Save, Edit, XCircle, CheckCircle, ListPlus, Search, TrendingUp, PackageSearch, DollarSign, Info, Clock, Upload, ArrowLeft, FileText } from 'lucide-react';
+import { Trash2, Upload, ArrowLeft, FileText, Clock } from 'lucide-react';
 import { GlassCard } from '@/components/ui/glass-card';
 import {
   Table,
