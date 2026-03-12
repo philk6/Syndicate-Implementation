@@ -86,6 +86,8 @@ export default function UserDashboardPage() {
   const [timeFrame, setTimeFrame] = useState<'7d' | '30d' | '3m' | '1y'>('30d');
   const [loading, setLoading] = useState(true);
   const [isCompanyPopupOpen, setIsCompanyPopupOpen] = useState(false);
+  const [firstName, setFirstName] = useState<string>('');
+  const [openOrderCount, setOpenOrderCount] = useState<number>(0);
   const { isAuthenticated, loading: authLoading, user } = useAuth();
   const router = useRouter();
 
@@ -157,7 +159,7 @@ export default function UserDashboardPage() {
       // Fetch user's company_id
       const { data: userData, error: userError } = await supabase
         .from('users')
-        .select('company_id')
+        .select('company_id, firstname')
         .eq('user_id', user.user_id)
         .single();
 
@@ -174,7 +176,25 @@ export default function UserDashboardPage() {
         return;
       }
 
+      // Set the user's first name for the greeting
+      if (userData.firstname) {
+        const name = userData.firstname;
+        setFirstName(name.charAt(0).toUpperCase() + name.slice(1).toLowerCase());
+      }
+
       const companyId = userData.company_id;
+
+      // Fetch count of open orders (order_status_id = 1)
+      const { count: openCount, error: openError } = await supabase
+        .from('orders')
+        .select('*', { count: 'exact', head: true })
+        .eq('order_status_id', 1);
+
+      if (openError) {
+        console.error('Error fetching open order count:', openError.message);
+      } else {
+        setOpenOrderCount(openCount || 0);
+      }
 
       // Check if company_id is null and show popup
       if (!companyId) {
@@ -283,7 +303,12 @@ export default function UserDashboardPage() {
   return (
     <div className="min-h-screen p-6 w-full">
       <div className="max-w-7xl mx-auto">
-        <h1 className="text-3xl font-bold text-white mb-6">Dashboard</h1>
+        <h1 className="text-3xl font-bold text-white mb-1">
+          Welcome Back, {firstName || 'User'}!
+        </h1>
+        <p className="text-lg text-neutral-400 mb-6">
+          Today there are <span className="text-amber-500 font-semibold">{openOrderCount} open order{openOrderCount !== 1 ? 's' : ''}!</span>
+        </p>
 
         {/* Metric Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
