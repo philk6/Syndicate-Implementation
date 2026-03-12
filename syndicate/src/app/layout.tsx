@@ -14,7 +14,7 @@ export const metadata = {
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en" className="dark">
-      <body className="min-h-screen bg-[#0a0a0a] text-neutral-200 font-sans overflow-hidden relative flex">
+      <body className="min-h-screen bg-[#0a0a0a] text-neutral-200 font-sans overflow-x-hidden relative flex">
         {/* Ambient Background Glows */}
         <div className="absolute top-[-10%] left-[-5%] w-[40vw] h-[40vw] rounded-full bg-amber-600/10 blur-[120px] pointer-events-none mix-blend-screen" />
         <div className="absolute bottom-[10%] right-[-5%] w-[50vw] h-[50vw] rounded-full bg-orange-600/5 blur-[150px] pointer-events-none mix-blend-screen" />
