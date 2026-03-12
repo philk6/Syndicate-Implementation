@@ -522,7 +522,7 @@ const SidebarMenuItem = React.forwardRef<
 SidebarMenuItem.displayName = "SidebarMenuItem"
 
 const sidebarMenuButtonVariants = cva(
-  "peer/menu-button flex w-full items-center gap-3 overflow-hidden rounded-xl px-4 py-2.5 text-left text-sm outline-none ring-sidebar-ring transition-all duration-300 disabled:pointer-events-none disabled:opacity-50 group-has-[[data-sidebar=menu-action]]/menu-item:pr-8 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[active=true]:bg-amber-500/10 data-[active=true]:text-amber-400 data-[active=true]:font-medium data-[active=true]:border data-[active=true]:border-amber-500/20 data-[active=true]:shadow-[0_0_15px_rgba(245,158,11,0.05)] data-[state=open]:hover:bg-white/5 group-data-[collapsible=icon]:!size-8 group-data-[collapsible=icon]:!p-2 [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0",
+  "peer/menu-button flex w-full items-center gap-3 overflow-hidden rounded-xl px-4 py-2.5 text-left text-sm outline-none ring-sidebar-ring transition-all duration-300 disabled:pointer-events-none disabled:opacity-50 group-has-[[data-sidebar=menu-action]]/menu-item:pr-8 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[state=open]:hover:bg-white/5 group-data-[collapsible=icon]:!size-8 group-data-[collapsible=icon]:!p-2 [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0",
   {
     variants: {
       variant: {
@@ -572,7 +572,11 @@ const SidebarMenuButton = React.forwardRef<
         data-sidebar="menu-button"
         data-size={size}
         data-active={isActive}
-        className={cn(sidebarMenuButtonVariants({ variant, size }), className)}
+        className={cn(
+          sidebarMenuButtonVariants({ variant, size }),
+          isActive && "bg-gradient-to-t from-amber-700/50 to-amber-500/80 text-white font-semibold shadow-[0_4px_12px_#f59e0b33] border-0 [&>svg]:text-white",
+          className
+        )}
         {...props}
       />
     )
