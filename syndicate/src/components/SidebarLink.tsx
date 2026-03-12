@@ -73,7 +73,7 @@ export default function SidebarLink({ href, children, className, isActive }: Sid
     <Link
       href={href} // href is still useful for right-click > open in new tab, and semantics
       onClick={handleClick}
-      className={`${className} ${isActive ? 'bg-[#35353580] text-[#c8aa64]' : ''} ${isLoading ? 'opacity-50 cursor-wait' : ''}`}
+      className={`${className} ${isLoading ? 'opacity-50 cursor-wait' : ''}`}
       aria-disabled={isLoading || authLoading} // Indicate disabled state if local or auth is loading
     >
       {children}

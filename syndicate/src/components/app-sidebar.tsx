@@ -200,14 +200,14 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 
   return (
     <Sidebar {...props}>
-      <SidebarHeader>
+      <SidebarHeader className="px-4 py-5 border-b border-white/[0.05]">
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton size="lg" asChild>
               <SidebarLink href="/dashboard">
                 <div className="flex flex-col gap-0.5 leading-none">
-                  <span className="text-[#c8aa64] font-bold">The Syndicate - Buyers Portal</span>
-                  <span className="text-[#bfbfbf]">v1.0.0 Beta</span>
+                  <span className="text-amber-400 font-bold tracking-tight">The Syndicate</span>
+                  <span className="text-neutral-500 text-xs">Buyers Portal · v1.0.0</span>
                 </div>
               </SidebarLink>
             </SidebarMenuButton>
@@ -242,7 +242,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         })}
       </SidebarContent>
       <SidebarRail />
-      <SidebarFooter>
+      <SidebarFooter className="border-t border-white/[0.05] px-3 py-3">
         <NavUser user={userData} onLogout={handleLogout} />
       </SidebarFooter>
     </Sidebar>
