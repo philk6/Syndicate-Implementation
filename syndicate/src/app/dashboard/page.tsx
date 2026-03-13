@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { useAuth } from '@lib/auth';
 import { supabase } from '@lib/supabase/client';
 import { GlassCard } from '@/components/ui/glass-card';
@@ -307,7 +308,10 @@ export default function UserDashboardPage() {
           Welcome Back, {firstName || 'User'}!
         </h1>
         <p className="text-lg text-neutral-400 mb-6">
-          Today there are <span className="text-amber-500 font-semibold">{openOrderCount} open order{openOrderCount !== 1 ? 's' : ''}!</span>
+          Today there are{' '}
+          <Link href="/orders" className="text-amber-400 font-semibold hover:text-amber-400 hover:underline underline-offset-4 decoration-amber-500/40 transition-colors cursor-pointer">
+            {openOrderCount} open order{openOrderCount !== 1 ? 's' : ''}!
+          </Link>
         </p>
 
         {/* Metric Cards */}
