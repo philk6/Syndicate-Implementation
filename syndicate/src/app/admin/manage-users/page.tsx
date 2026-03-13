@@ -397,18 +397,6 @@ export default function ManageUsersPage() {
 
   if (!isAuthenticated || user?.role !== 'admin') return null;
 
-  // ── Helpers ──────────────────────────────────────────────────────────────
-
-  const getRoleBadgeClass = (role: string) => {
-    switch (role) {
-      case 'mentor':
-        return 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20';
-      case 'student':
-        return 'bg-blue-500/10 text-blue-400 border-blue-500/20';
-      default:
-        return 'bg-neutral-500/10 text-neutral-400 border-neutral-500/20';
-    }
-  };
 
   return (
     <div className="min-h-screen p-6 w-full">
