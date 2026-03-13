@@ -205,9 +205,26 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           <SidebarMenuItem>
             <SidebarMenuButton size="lg" asChild>
               <SidebarLink href="/dashboard">
-                <div className="flex flex-col gap-0.5 leading-none">
-                  <span className="text-amber-400 font-bold tracking-tight">The Syndicate</span>
-                  <span className="text-neutral-500 text-xs">Buyers Portal · v1.0.0</span>
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-amber-300 to-amber-600 flex items-center justify-center shadow-lg shadow-amber-500/20 shrink-0">
+                    <svg
+                      className="w-5 h-5 text-black"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <polygon points="12 2 2 7 12 12 22 7 12 2" />
+                      <polyline points="2 17 12 22 22 17" />
+                      <polyline points="2 12 12 17 22 12" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h1 className="font-semibold text-white tracking-wide text-base">The Syndicate</h1>
+                    <p className="text-[10px] text-neutral-500 font-medium tracking-wider uppercase">v1.0.0 Beta</p>
+                  </div>
                 </div>
               </SidebarLink>
             </SidebarMenuButton>
