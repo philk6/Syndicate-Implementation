@@ -18,7 +18,7 @@ import {
 } from '@/components/ui/sidebar';
 import { NavUser } from '@/components/nav-user';
 import { useRouter, usePathname } from 'next/navigation';
-import { ShoppingCart, History, Settings, Users, LayoutDashboard, CreditCard } from 'lucide-react';
+import { ShoppingCart, History, Settings, Users, LayoutDashboard, CreditCard, MessageCircle } from 'lucide-react';
 import SidebarLink from '@/components/SidebarLink';
 
 const data = {
@@ -32,6 +32,7 @@ const data = {
         { title: 'Open Orders', url: '/orders', icon: ShoppingCart },
         { title: 'History', url: '/history', icon: History },
         { title: 'Credit Overview', url: '/credit-overview', icon: CreditCard },
+        { title: 'Chat', url: '/chat', icon: MessageCircle },
       ],
     },
     {
