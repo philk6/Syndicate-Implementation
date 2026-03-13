@@ -53,8 +53,12 @@ export function useChat() {
   // ── Fetch rooms the current user participates in ─────────────────────────
 
   const fetchRooms = useCallback(async () => {
-    if (!user?.user_id) return;
+    if (!user?.user_id) {
+      console.log('[useChat] fetchRooms: no user_id, skipping');
+      return;
+    }
     setLoadingRooms(true);
+    console.log('[useChat] fetchRooms: starting for user_id:', user.user_id);
 
     try {
       // Get room IDs the user participates in
@@ -63,19 +67,23 @@ export function useChat() {
         .select('room_id')
         .eq('user_id', user.user_id);
 
+      console.log('[useChat] participant query result:', { data: participantRows, error: pErr });
+
       if (pErr) {
-        console.error('Error fetching participant rows:', pErr.message);
+        console.error('[useChat] Error fetching participant rows:', pErr.message, pErr);
         setLoadingRooms(false);
         return;
       }
 
       if (!participantRows || participantRows.length === 0) {
+        console.log('[useChat] No participant rows found for this user');
         setRooms([]);
         setLoadingRooms(false);
         return;
       }
 
       const roomIds = participantRows.map((p) => p.room_id);
+      console.log('[useChat] room IDs to fetch:', roomIds);
 
       const { data: roomData, error: rErr } = await supabase
         .from('chat_rooms')
@@ -84,8 +92,10 @@ export function useChat() {
         .order('type', { ascending: true }) // global first
         .order('created_at', { ascending: true });
 
+      console.log('[useChat] rooms query result:', { data: roomData, error: rErr });
+
       if (rErr) {
-        console.error('Error fetching rooms:', rErr.message);
+        console.error('[useChat] Error fetching rooms:', rErr.message, rErr);
       } else {
         setRooms(roomData ?? []);
         // Auto-select the first room if none selected
@@ -94,7 +104,7 @@ export function useChat() {
         }
       }
     } catch (err) {
-      console.error('Exception fetching rooms:', err);
+      console.error('[useChat] Exception fetching rooms:', err);
     } finally {
       setLoadingRooms(false);
     }
