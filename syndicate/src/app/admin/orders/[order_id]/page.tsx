@@ -2434,12 +2434,12 @@ export default function AdminOrderManagementPage() {
                     <strong className="text-white">Company:</strong> {revokeTarget.company?.name || 'Unknown'}<br />
                     <strong className="text-white">Product:</strong> {revokeTarget.order_products?.asin || 'N/A'}<br />
                     <strong className="text-white">Quantity:</strong> {revokeTarget.quantity}<br />
-                    <strong className="text-white">Refund Amount:</strong>{' '}
-                    <span className="text-emerald-400 font-semibold">${revokeTarget.invested_amount?.toFixed(2) || '0.00'}</span>
+                    <strong className="text-white">Product Value:</strong>{' '}
+                    <span className="text-neutral-200">${revokeTarget.invested_amount?.toFixed(2) || '0.00'}</span>
                   </span>
                 )}
                 <span className="block text-sm">
-                  The invested amount will be refunded to the company&apos;s credit balance.
+                  The system will <strong className="text-white">recalculate</strong> the company&apos;s true financial charge based on their remaining allocations vs their Max Investment, and refund any excess credit. The exact refund amount will be shown after confirmation.
                 </span>
                 <span className="block text-rose-400 font-semibold text-sm">
                   ⚠️ Manual Action Required: You must manually add this product to the next open order.

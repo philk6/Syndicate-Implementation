@@ -28,8 +28,8 @@ export async function revokeAndRefundAllocationAction(
     return { success: false, message: 'Forbidden: Only administrators can revoke allocations.' };
   }
 
-  // Call the RPC function (which also verifies admin role at the DB level)
-  const { error: rpcError } = await supabase.rpc('remove_allocation_and_refund', {
+  // Call the RPC function — it now RETURNS NUMERIC (the actual refund amount)
+  const { data: refundAmount, error: rpcError } = await supabase.rpc('remove_allocation_and_refund', {
     p_allocation_id: allocationId,
     p_admin_user_id: adminUserId,
   });
@@ -42,7 +42,20 @@ export async function revokeAndRefundAllocationAction(
   // Revalidate the admin order page so the UI updates
   revalidatePath('/admin/orders/[order_id]');
 
-  return { success: true, message: 'Allocation revoked and credit refunded successfully.' };
+  // Build a dynamic message based on the actual refund amount
+  const amount = typeof refundAmount === 'number' ? refundAmount : parseFloat(refundAmount ?? '0');
+
+  if (amount > 0) {
+    return {
+      success: true,
+      message: `Successfully removed allocation. Refunded $${amount.toFixed(2)} based on recalculated order charge.`,
+    };
+  } else {
+    return {
+      success: true,
+      message: `Allocation removed. $0.00 refunded (company's remaining allocations still exceed their max investment cap).`,
+    };
+  }
 }
 
 export async function calculateOrderAllocation(orderId: number) {

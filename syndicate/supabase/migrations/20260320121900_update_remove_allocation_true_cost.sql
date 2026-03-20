@@ -1,13 +1,13 @@
--- Migration generated on 2026-03-20 (updated)
--- Description: Creates the RPC function to remove a single allocation and refund the company's
--- credit balance using TRUE COST RECALCULATION, not the raw invested_amount.
---
--- Why: The Fair Share algorithm can allocate more product value to a company than their
--- max_investment (e.g., $34k of product to a $2k investor). Refunding invested_amount
--- would over-credit. Instead, we recalculate the company's true financial charge based
--- on their REMAINING allocations vs their max_investment, and only refund the difference.
+-- Migration generated on 2026-03-20
+-- Description: Updates remove_allocation_and_refund to use TRUE COST RECALCULATION.
+-- Must DROP first because the return type changes from VOID to NUMERIC
+-- (PostgreSQL does not allow CREATE OR REPLACE to change return types).
 
-CREATE OR REPLACE FUNCTION public.remove_allocation_and_refund(
+-- Drop the old function (RETURNS VOID signature)
+DROP FUNCTION IF EXISTS public.remove_allocation_and_refund(INT, UUID);
+
+-- Recreate with the new return type and True Cost Recalculation logic
+CREATE FUNCTION public.remove_allocation_and_refund(
     p_allocation_id INT,
     p_admin_user_id UUID
 )
@@ -107,7 +107,7 @@ BEGIN
                 || 'Order #' || v_order_id || ' charge recalculated: '
                 || 'remaining product value $' || ROUND(v_remaining_product_value, 2)
                 || ' vs max investment $' || ROUND(v_max_investment, 2)
-                || ' → new charge $' || ROUND(v_new_charge, 2)
+                || ', new charge $' || ROUND(v_new_charge, 2)
                 || ', refunded $' || ROUND(v_refund_amount, 2) || '.',
             v_order_id,
             p_admin_user_id
