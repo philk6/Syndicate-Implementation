@@ -1,6 +1,62 @@
 'use server';
 
 import { createClient } from '@supabase/supabase-js';
+import { revalidatePath } from 'next/cache';
+
+export async function revokeAndRefundAllocationAction(
+  allocationId: number,
+  adminUserId: string
+): Promise<{ success: boolean; message: string }> {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+
+  if (!adminUserId) {
+    return { success: false, message: 'Unauthorized: No admin user ID provided.' };
+  }
+
+  // Use service-role client (same pattern as calculateOrderAllocation)
+  const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+  // Double-check admin role on the server side before calling the RPC
+  const { data: userData, error: userError } = await supabase
+    .from('users')
+    .select('role')
+    .eq('user_id', adminUserId)
+    .single();
+
+  if (userError || !userData || userData.role !== 'admin') {
+    return { success: false, message: 'Forbidden: Only administrators can revoke allocations.' };
+  }
+
+  // Call the RPC function — it now RETURNS NUMERIC (the actual refund amount)
+  const { data: refundAmount, error: rpcError } = await supabase.rpc('remove_allocation_and_refund', {
+    p_allocation_id: allocationId,
+    p_admin_user_id: adminUserId,
+  });
+
+  if (rpcError) {
+    console.error('RPC remove_allocation_and_refund error:', rpcError);
+    return { success: false, message: `Failed to revoke allocation: ${rpcError.message}` };
+  }
+
+  // Revalidate the admin order page so the UI updates
+  revalidatePath('/admin/orders/[order_id]');
+
+  // Build a dynamic message based on the actual refund amount
+  const amount = typeof refundAmount === 'number' ? refundAmount : parseFloat(refundAmount ?? '0');
+
+  if (amount > 0) {
+    return {
+      success: true,
+      message: `Successfully removed allocation. Refunded $${amount.toFixed(2)} based on recalculated order charge.`,
+    };
+  } else {
+    return {
+      success: true,
+      message: `Allocation removed. $0.00 refunded (company's remaining allocations still exceed their max investment cap).`,
+    };
+  }
+}
 
 export async function calculateOrderAllocation(orderId: number) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;

@@ -25,9 +25,19 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
 import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
-import { calculateOrderAllocation } from './actions';
+import { calculateOrderAllocation, revokeAndRefundAllocationAction } from './actions';
 import { utils, write } from 'xlsx';
 import { debounce } from 'lodash';
 
@@ -95,6 +105,7 @@ interface AllocationResult {
   sequence: number;
   company_id: number;
   quantity: number;
+  invested_amount: number;
   created_at: string;
   company: { name: string } | null;
   order_products: { asin: string; price: number; cost_price: number; description: string | null } | null;
@@ -249,6 +260,35 @@ export default function AdminOrderManagementPage() {
   const [newAllocationCompanyId, setNewAllocationCompanyId] = useState<string>('');
   const [newAllocationQuantity, setNewAllocationQuantity] = useState<string>('');
 
+
+  // State for Revoke & Refund dialog
+  const [revokeDialogAllocationId, setRevokeDialogAllocationId] = useState<number | null>(null);
+  const revokeTarget = allocationResults.find(a => a.id === revokeDialogAllocationId);
+
+  const handleRevokeAndRefund = async () => {
+    if (!revokeDialogAllocationId || !user?.user_id) return;
+    const targetId = revokeDialogAllocationId;
+    setRevokeDialogAllocationId(null); // Close dialog immediately
+
+    startTransition(async () => {
+      try {
+        const response = await revokeAndRefundAllocationAction(targetId, user.user_id);
+        if (response.success) {
+          setFeedbackMessage({ type: 'success', text: response.message });
+          // Remove allocation from local state
+          setAllocationResults(prev => prev.filter(a => a.id !== targetId));
+          setEditedAllocations(prev => prev.filter(a => a.id !== targetId));
+          // Refresh company applications to show updated amounts
+          await fetchCompanyApplications(orderId);
+        } else {
+          setFeedbackMessage({ type: 'error', text: response.message });
+        }
+      } catch (err) {
+        console.error('Revoke and refund error:', err);
+        setFeedbackMessage({ type: 'error', text: 'An unexpected error occurred while revoking the allocation.' });
+      }
+    });
+  };
 
   const fetchCompanyApplications = async (currentOrderId: number) => {
     interface CompanyApplicationResult {
@@ -2309,6 +2349,7 @@ export default function AdminOrderManagementPage() {
                 <TableHead className="text-neutral-400 font-medium h-12">Quantity</TableHead>
                 <TableHead className="text-neutral-400 font-medium h-12">Price</TableHead>
                 <TableHead className="text-neutral-400 font-medium h-12">Cost</TableHead>
+                <TableHead className="text-neutral-400 font-medium h-12">Invested</TableHead>
                 <TableHead className="text-neutral-400 font-medium h-12">Description</TableHead>
                 <TableHead className="text-neutral-400 font-medium h-12 text-right">Actions</TableHead>
               </TableRow>
@@ -2332,6 +2373,7 @@ export default function AdminOrderManagementPage() {
                     </TableCell>
                     <TableCell className="py-4 text-neutral-400">${result.order_products?.price?.toFixed(2) || '0.00'}</TableCell>
                     <TableCell className="py-4 text-neutral-400">${result.order_products?.cost_price?.toFixed(2) || '0.00'}</TableCell>
+                    <TableCell className="py-4 text-emerald-400 font-medium">${result.invested_amount?.toFixed(2) || '0.00'}</TableCell>
                     <TableCell className="py-4 text-neutral-400 text-sm">{result.order_products?.description || 'N/A'}</TableCell>
                     <TableCell className="py-4 text-right">
                       <div className="flex justify-end space-x-2">
@@ -2352,6 +2394,16 @@ export default function AdminOrderManagementPage() {
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>
+                        {/* Revoke & Refund: always enabled, even on closed orders */}
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          className="h-9"
+                          disabled={isPending}
+                          onClick={() => setRevokeDialogAllocationId(result.id)}
+                        >
+                          <DollarSign className="h-4 w-4 mr-1" /> Revoke & Refund
+                        </Button>
                       </div>
                     </TableCell>
                   </TableRow>
@@ -2361,6 +2413,53 @@ export default function AdminOrderManagementPage() {
           </Table>
         </GlassCard>
       )}
+
+      {/* Revoke & Refund Confirmation Dialog (controlled, outside the table) */}
+      <AlertDialog
+        open={revokeDialogAllocationId !== null}
+        onOpenChange={(open) => {
+          if (!open) setRevokeDialogAllocationId(null);
+        }}
+      >
+        <AlertDialogContent className="bg-[#0a0a0a]/95 backdrop-blur-xl border-white/[0.08] text-white">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-rose-400">Revoke Allocation & Refund Credit</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="text-neutral-400 space-y-3">
+                <span className="block">
+                  Are you sure you want to revoke this allocation?
+                </span>
+                {revokeTarget && (
+                  <span className="block text-sm">
+                    <strong className="text-white">Company:</strong> {revokeTarget.company?.name || 'Unknown'}<br />
+                    <strong className="text-white">Product:</strong> {revokeTarget.order_products?.asin || 'N/A'}<br />
+                    <strong className="text-white">Quantity:</strong> {revokeTarget.quantity}<br />
+                    <strong className="text-white">Product Value:</strong>{' '}
+                    <span className="text-neutral-200">${revokeTarget.invested_amount?.toFixed(2) || '0.00'}</span>
+                  </span>
+                )}
+                <span className="block text-sm">
+                  The system will <strong className="text-white">recalculate</strong> the company&apos;s true financial charge based on their remaining allocations vs their Max Investment, and refund any excess credit. The exact refund amount will be shown after confirmation.
+                </span>
+                <span className="block text-rose-400 font-semibold text-sm">
+                  ⚠️ Manual Action Required: You must manually add this product to the next open order.
+                </span>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="bg-white/[0.05] text-neutral-300 border-white/[0.1] hover:bg-white/[0.1] hover:text-white">
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-rose-600 text-white hover:bg-rose-700 border-0"
+              onClick={handleRevokeAndRefund}
+            >
+              Yes, Revoke & Refund
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Add New Allocation Dialog */}
       <Dialog open={isAddAllocationDialogOpen} onOpenChange={setIsAddAllocationDialogOpen}>
