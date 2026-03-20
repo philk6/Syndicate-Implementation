@@ -20,6 +20,12 @@ import { NavUser } from '@/components/nav-user';
 import { useRouter, usePathname } from 'next/navigation';
 import { ShoppingCart, History, Settings, Users, LayoutDashboard, CreditCard, MessageCircle } from 'lucide-react';
 import SidebarLink from '@/components/SidebarLink';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 
 const data = {
   versions: ['1.0.1', '1.1.0-alpha', '2.0.0-beta1'],
@@ -47,10 +53,14 @@ const data = {
   ],
 };
 
+// Paths that require buyers group access
+const BUYERS_GROUP_RESTRICTED_PATHS = ['/orders', '/credit-overview'];
+
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const { isAuthenticated, user, logout, session } = useAuth();
   const [userData, setUserData] = useState({ name: 'Loading...', email: '', avatar: '/syndicate_logo.jpeg' });
   const [userDataLoaded, setUserDataLoaded] = useState(false);
+  const [buyersGroupDialogOpen, setBuyersGroupDialogOpen] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
 
@@ -197,9 +207,13 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     router.push('/login');
   };
 
+  // Check if user has buyers group permission
+  const hasBuyersGroupAccess = user?.buyersgroup === true || user?.role === 'admin';
+
   if (!isAuthenticated) return null;
 
   return (
+    <>
     <Sidebar {...props}>
       <SidebarHeader className="px-4 py-5 border-b border-white/[0.05]">
         <SidebarMenu>
@@ -243,16 +257,44 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               <SidebarGroupLabel>{item.title}</SidebarGroupLabel>
               <SidebarGroupContent>
                 <SidebarMenu>
-                  {item.items.map((subItem) => (
-                    <SidebarMenuItem key={subItem.title}>
-                      <SidebarMenuButton asChild isActive={pathname.startsWith(subItem.url)}>
-                        <SidebarLink href={subItem.url}>
-                          {subItem.icon && <subItem.icon className="mr-2 h-4 w-4" />}
-                          <span>{subItem.title}</span>
-                        </SidebarLink>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  ))}
+                  {item.items.map((subItem) => {
+                    const isRestricted = BUYERS_GROUP_RESTRICTED_PATHS.includes(subItem.url);
+                    const isBlocked = isRestricted && !hasBuyersGroupAccess;
+
+                    if (isBlocked) {
+                      return (
+                        <SidebarMenuItem key={subItem.title}>
+                          <SidebarMenuButton
+                            asChild
+                            isActive={pathname.startsWith(subItem.url)}
+                          >
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                setBuyersGroupDialogOpen(true);
+                              }}
+                              className="flex items-center w-full text-left"
+                            >
+                              {subItem.icon && <subItem.icon className="mr-2 h-4 w-4" />}
+                              <span>{subItem.title}</span>
+                            </button>
+                          </SidebarMenuButton>
+                        </SidebarMenuItem>
+                      );
+                    }
+
+                    return (
+                      <SidebarMenuItem key={subItem.title}>
+                        <SidebarMenuButton asChild isActive={pathname.startsWith(subItem.url)}>
+                          <SidebarLink href={subItem.url}>
+                            {subItem.icon && <subItem.icon className="mr-2 h-4 w-4" />}
+                            <span>{subItem.title}</span>
+                          </SidebarLink>
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+                    );
+                  })}
                 </SidebarMenu>
               </SidebarGroupContent>
             </SidebarGroup>
@@ -264,5 +306,26 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         <NavUser user={userData} onLogout={handleLogout} />
       </SidebarFooter>
     </Sidebar>
+
+    {/* Buyers Group Access Denied Dialog */}
+    <Dialog open={buyersGroupDialogOpen} onOpenChange={setBuyersGroupDialogOpen}>
+      <DialogContent className="bg-[#0a0a0a]/95 border border-white/[0.08] backdrop-blur-xl text-white max-w-md">
+        <DialogHeader>
+          <DialogTitle className="text-white text-lg font-semibold">Access Restricted</DialogTitle>
+        </DialogHeader>
+        <p className="text-neutral-400 text-sm leading-relaxed">
+          You are not permitted in this area because you are not in the buyersgroup, please contact support to gain access.
+        </p>
+        <div className="flex justify-end mt-4">
+          <button
+            onClick={() => setBuyersGroupDialogOpen(false)}
+            className="px-4 py-2 rounded-xl bg-amber-500/10 text-amber-400 font-medium border border-amber-500/20 hover:bg-amber-500/20 hover:border-amber-500/30 transition-all duration-300 text-sm"
+          >
+            Close
+          </button>
+        </div>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }

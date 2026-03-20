@@ -39,6 +39,7 @@ interface User {
   has_1on1_membership: boolean;
   membership_end_date: string | null;
   company: { name: string } | null;
+  buyersgroup: boolean;
 }
 
 interface ChatRoom1on1 {
@@ -86,6 +87,7 @@ export default function ManageUsersPage() {
         platform_role,
         has_1on1_membership,
         membership_end_date,
+        buyersgroup,
         company (name)
       `)
       .order('firstname', { ascending: true });
@@ -96,7 +98,9 @@ export default function ManageUsersPage() {
     } else {
       const transformedUsers = (data || []).map((u) => ({
         ...u,
-        company: Array.isArray(u.company) && u.company.length > 0 ? u.company[0] : null,
+        company: Array.isArray(u.company)
+          ? u.company.length > 0 ? u.company[0] : null
+          : u.company ?? null,
       })) as User[];
       setUsers(transformedUsers);
     }
@@ -278,6 +282,38 @@ export default function ManageUsersPage() {
   const cancelPendingMembership = () => {
     setPendingMembershipUserId(null);
     setPendingDuration('');
+  };
+
+  // ── Toggle buyers group access ───────────────────────────────────────────
+
+  const handleBuyersGroupToggle = async (userId: string, currentStatus: boolean) => {
+    // Optimistic update
+    setUsers((prev) =>
+      prev.map((u) =>
+        u.user_id === userId ? { ...u, buyersgroup: !currentStatus } : u,
+      ),
+    );
+    setUpdatingUserId(userId);
+    setMessage('');
+
+    const { error } = await supabase
+      .from('users')
+      .update({ buyersgroup: !currentStatus })
+      .eq('user_id', userId);
+
+    if (error) {
+      console.error('Error updating buyersgroup:', error.message);
+      setMessage(`Failed to update buyers group access: ${error.message}`);
+      // Revert optimistic update
+      setUsers((prev) =>
+        prev.map((u) =>
+          u.user_id === userId ? { ...u, buyersgroup: currentStatus } : u,
+        ),
+      );
+    } else {
+      setMessage('Buyers group access updated.');
+    }
+    setUpdatingUserId(null);
   };
 
   // ── Format membership expiry for display ─────────────────────────────────
@@ -465,6 +501,7 @@ export default function ManageUsersPage() {
                     <TableHead className="text-neutral-400">Platform Role</TableHead>
                     <TableHead className="text-neutral-400">1-on-1 Membership</TableHead>
                     <TableHead className="text-neutral-400">Membership Expiry</TableHead>
+                    <TableHead className="text-neutral-400">Buyers Group Access</TableHead>
                     <TableHead className="text-neutral-400">Company</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -593,6 +630,22 @@ export default function ManageUsersPage() {
                             </div>
                           );
                         })()}
+                      </TableCell>
+
+                      {/* Buyers Group Access Toggle */}
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <Switch
+                            id={`buyersgroup-${u.user_id}`}
+                            checked={u.buyersgroup}
+                            onCheckedChange={() => handleBuyersGroupToggle(u.user_id, u.buyersgroup)}
+                            disabled={updatingUserId === u.user_id}
+                            className="data-[state=checked]:bg-amber-500"
+                          />
+                          {updatingUserId === u.user_id && (
+                            <Loader2 className="w-3.5 h-3.5 text-amber-400 animate-spin" />
+                          )}
+                        </div>
                       </TableCell>
 
                       {/* Company */}

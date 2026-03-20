@@ -187,10 +187,20 @@ export default function OrderDetailPage() {
     if (authLoading) return;
     if (!isAuthenticated) {
       router.push('/login');
-    } else if (user?.user_id && session) {
+      return;
+    }
+
+    // Buyers group access check — admins always have access
+    const hasBuyersGroupAccess = user?.buyersgroup === true || user?.role === 'admin';
+    if (!hasBuyersGroupAccess) {
+      router.push('/dashboard');
+      return;
+    }
+
+    if (user?.user_id && session) {
       fetchData();
     }
-  }, [isAuthenticated, authLoading, router, user?.user_id, session, fetchData]);
+  }, [isAuthenticated, authLoading, router, user?.user_id, user?.buyersgroup, user?.role, session, fetchData]);
 
   const updateUngatedStatus = useCallback(async (sequence: number, checked: boolean) => {
     if (!companyId || hasSubmitted || isOrderClosed) return;
