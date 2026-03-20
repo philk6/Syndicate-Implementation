@@ -263,7 +263,7 @@ export default function UserDashboardPage() {
           : null;
 
         setMetrics({ totalOrders, totalInvestment, averageRoi });
-        setRecentOrders(orders.slice(0, 5));
+        setRecentOrders(orders.sort((a, b) => b.order_id - a.order_id).slice(0, 5));
       }
 
       // Fetch chart data (profit and invested_amount)
