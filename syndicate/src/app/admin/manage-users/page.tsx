@@ -96,7 +96,9 @@ export default function ManageUsersPage() {
     } else {
       const transformedUsers = (data || []).map((u) => ({
         ...u,
-        company: Array.isArray(u.company) && u.company.length > 0 ? u.company[0] : null,
+        company: Array.isArray(u.company)
+          ? u.company.length > 0 ? u.company[0] : null
+          : u.company ?? null,
       })) as User[];
       setUsers(transformedUsers);
     }
