@@ -86,7 +86,7 @@ export default function HistoryPage() {
           .in('order_id', orderIds)
           .neq('order_status_id', 3)
           .not('order_statuses.description', 'eq', 'Draft')
-          .order('deadline', { ascending: true }) as { data: Order[] | null, error: PostgrestError | null };
+          .order('order_id', { ascending: false }) as { data: Order[] | null, error: PostgrestError | null };
 
         if (error) {
           console.error('Error fetching orders:', error.message, error.details, error.hint);

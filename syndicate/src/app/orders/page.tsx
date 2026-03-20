@@ -60,7 +60,7 @@ export default function OrdersPage() {
       `)
           .neq('order_status_id', 3) // Filter out order_status_id = 3 (Draft)
           .not('order_statuses.description', 'eq', 'Draft') // Filter out 'Draft' status explicitly
-          .order('deadline', { ascending: true });
+          .order('order_id', { ascending: false });
 
         if (signal) {
           query = query.abortSignal(signal);
