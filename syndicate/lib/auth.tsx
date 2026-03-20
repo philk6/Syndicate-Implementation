@@ -50,6 +50,7 @@ interface AuthUser {
   lastname?: string;
   company_id?: number | null;
   tos_accepted: boolean;
+  buyersgroup: boolean;
 }
 
 interface AuthContextType {
@@ -143,7 +144,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         console.log('Fetching user details from database for user_id:', userId);
         let query = supabase
           .from('users')
-          .select('user_id, email, role, firstname, lastname, company_id, tos_accepted')
+          .select('user_id, email, role, firstname, lastname, company_id, tos_accepted, buyersgroup')
           .eq('user_id', userId);
         
         if (signal) {
@@ -187,7 +188,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           user_id: currentSession.user.id,
           email: currentSession.user.email || '',
           role: 'user', // This will be updated if database fetch succeeds later
-          tos_accepted: true
+          tos_accepted: true,
+          buyersgroup: false
         };
         setUser(minimalUser);
         localStorage.setItem('token', currentSession.access_token);
@@ -223,7 +225,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         user_id: currentSession.user.id,
         email: currentSession.user.email || '',
         role: 'user',
-        tos_accepted: true
+        tos_accepted: true,
+        buyersgroup: false
       };
       setUser(minimalUser);
       localStorage.setItem('token', currentSession.access_token);
@@ -303,7 +306,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 user_id: currentSession.user.id,
                 email: currentSession.user.email || '',
                 role: 'user', // Default role, will be updated if database fetch succeeds
-                tos_accepted: true // Default to true, will be updated if database fetch succeeds
+                tos_accepted: true, // Default to true, will be updated if database fetch succeeds
+                buyersgroup: false
               };
               console.log('checkAuth: Setting minimal user from session (not admin, not fetching):', minimalUser);
               setUser(minimalUser);
@@ -403,7 +407,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 user_id: newSession.user.id,
                 email: newSession.user.email || '',
                 role: 'user',
-                tos_accepted: true
+                tos_accepted: true,
+                buyersgroup: false
               };
               console.log('SIGNED_IN: Setting minimal user object (no email, not fetching, not admin):', minimalUser);
               setUser(minimalUser);

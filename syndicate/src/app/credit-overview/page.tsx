@@ -90,7 +90,14 @@ export default function UserCreditDashboardPage() {
       router.push('/login');
       return;
     }
-  }, [isAuthenticated, authLoading, router]);
+
+    // Buyers group access check — admins always have access
+    const hasBuyersGroupAccess = user?.buyersgroup === true || user?.role === 'admin';
+    if (!hasBuyersGroupAccess) {
+      router.push('/dashboard');
+      return;
+    }
+  }, [isAuthenticated, authLoading, router, user?.buyersgroup, user?.role]);
 
   useEffect(() => {
     if (session && user?.company_id) fetchData();
