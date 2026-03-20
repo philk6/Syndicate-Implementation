@@ -38,6 +38,7 @@ import {
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
 import { calculateOrderAllocation, revokeAndRefundAllocationAction } from './actions';
+import { PageLoadingSpinner } from '@/components/ui/loading-spinner';
 import { utils, write } from 'xlsx';
 import { debounce } from 'lodash';
 
@@ -1477,7 +1478,7 @@ export default function AdminOrderManagementPage() {
 
 
   if (authLoading || loading) {
-    return <div className="min-h-screen bg-[#14130F] p-6 flex items-center justify-center"><p className="text-gray-400">Loading...</p></div>;
+    return <PageLoadingSpinner />;
   }
 
   if (!isAuthenticated || user?.role !== 'admin') return null;

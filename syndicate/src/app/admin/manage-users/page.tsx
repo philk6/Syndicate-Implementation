@@ -26,6 +26,7 @@ import {
 } from '@/components/ui/select';
 import { Check, Plus, Loader2, Users, Settings2, CalendarClock } from 'lucide-react';
 import ManageChatMentorsModal from '@/components/ManageChatMentorsModal';
+import { LoadingSpinner, PageLoadingSpinner } from '@/components/ui/loading-spinner';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -424,11 +425,7 @@ export default function ManageUsersPage() {
   // ── Loading / guard ──────────────────────────────────────────────────────
 
   if (authLoading || loading) {
-    return (
-      <div className="min-h-screen p-6 flex items-center justify-center">
-        <p className="text-neutral-400">Loading...</p>
-      </div>
-    );
+    return <PageLoadingSpinner />;
   }
 
   if (!isAuthenticated || user?.role !== 'admin') return null;
@@ -674,7 +671,7 @@ export default function ManageUsersPage() {
           <div className="p-6 pt-0">
             {loadingRooms ? (
               <div className="flex items-center justify-center py-8">
-                <div className="w-5 h-5 border-2 border-amber-500/30 border-t-amber-500 rounded-full animate-spin" />
+                <LoadingSpinner size="sm" />
               </div>
             ) : oneOnOneRooms.length === 0 ? (
               <p className="text-neutral-500 text-center py-6">

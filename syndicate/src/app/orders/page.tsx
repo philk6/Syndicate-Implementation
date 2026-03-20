@@ -17,6 +17,7 @@ import {
 import { GlassCard } from '@/components/ui/glass-card';
 import { StatusPill } from '@/components/ui/status-pill';
 import { Progress } from '@/components/ui/progress';
+import { PageLoadingSpinner } from '@/components/ui/loading-spinner';
 
 interface Order {
   order_id: number;
@@ -153,11 +154,7 @@ export default function OrdersPage() {
     [orders, handleOrderClick, calculateProgress]);
 
   if (loading || loadingOrders) { // Combined loading states
-    return (
-      <div className="min-h-screen p-6 flex items-center justify-center">
-        <p className="text-neutral-400">Loading...</p>
-      </div>
-    );
+    return <PageLoadingSpinner />;
   }
 
   if (!isAuthenticated) return null; // Should be handled by router.push('/login')

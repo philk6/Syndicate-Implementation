@@ -12,6 +12,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Input } from '@/components/ui/input';
 import { AlertOctagon, Check, CircleDollarSign } from 'lucide-react';
 import { debounce } from 'lodash';
+import { PageLoadingSpinner } from '@/components/ui/loading-spinner';
 
 // Define the Order type
 interface Order {
@@ -359,7 +360,7 @@ export default function OrderDetailPage() {
   }, [companyId, order, hasSubmitted, isOrderClosed, products, ungatedStatus, ungatedMinAmounts, maxInvestment, investmentError, creditBalance, fetchData]);
 
   if (loading) {
-    return <div className="min-h-screen p-6 flex items-center justify-center"><p className="text-neutral-400">Loading...</p></div>;
+    return <PageLoadingSpinner />;
   }
 
   if (!isAuthenticated) return null;

@@ -43,6 +43,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { debounce } from 'lodash';
+import { PageLoadingSpinner } from '@/components/ui/loading-spinner';
 
 interface Order {
   order_id: number;
@@ -292,11 +293,7 @@ export default function UserDashboardPage() {
   }, 300);
 
   if (loading) {
-    return (
-      <div className="min-h-screen p-6 flex items-center justify-center">
-        <p className="text-neutral-400">Loading...</p>
-      </div>
-    );
+    return <PageLoadingSpinner />;
   }
 
   if (!isAuthenticated) return null;

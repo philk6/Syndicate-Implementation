@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, KeyboardEvent } from 'react';
 import { ChatMessage, ChatRoom } from '@/hooks/useChat';
 import { cn } from '@/lib/utils';
-import { Send, MessageCircle, Hash, Users, Loader2, ShieldAlert } from 'lucide-react';
+import { Send, MessageCircle, Hash, Users, Loader2, ShieldAlert, Trash2 } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 
@@ -14,6 +14,7 @@ interface ChatWindowProps {
   loadingMessages: boolean;
   sending: boolean;
   onSend: (content: string) => void;
+  onDelete: (messageId: string) => void;
   userPlatformRole: string;
   userMembershipEndDate: string | null;
   userRole: string;
@@ -26,13 +27,22 @@ export default function ChatWindow({
   loadingMessages,
   sending,
   onSend,
+  onDelete,
   userPlatformRole,
   userMembershipEndDate,
   userRole,
 }: ChatWindowProps) {
   const [input, setInput] = useState('');
+  const [deletingMsgId, setDeletingMsgId] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  const isAdmin = userRole === 'admin';
+
+  const handleDelete = (messageId: string) => {
+    onDelete(messageId);
+    setDeletingMsgId(null);
+  };
 
   // Auto-scroll to bottom on new messages
   useEffect(() => {
@@ -199,11 +209,12 @@ export default function ChatWindow({
               {/* Messages */}
               {group.msgs.map((msg) => {
                 const isOwn = msg.sender_id === currentUserId;
+                const isConfirmingDelete = deletingMsgId === msg.id;
                 return (
                   <div
                     key={msg.id}
                     className={cn(
-                      'flex gap-2.5 mb-3',
+                      'group/msg flex gap-2.5 mb-3',
                       isOwn ? 'flex-row-reverse' : 'flex-row',
                     )}
                   >
@@ -229,15 +240,57 @@ export default function ChatWindow({
                           {getSenderName(msg)}
                         </p>
                       )}
-                      <div
-                        className={cn(
-                          'px-3.5 py-2 rounded-2xl text-sm leading-relaxed break-words',
-                          isOwn
-                            ? 'bg-gradient-to-br from-amber-600/40 to-amber-700/30 text-amber-50 border border-amber-500/15 rounded-br-md'
-                            : 'bg-white/[0.04] text-neutral-200 border border-white/[0.06] rounded-bl-md',
+                      <div className="relative">
+                        <div
+                          className={cn(
+                            'px-3.5 py-2 rounded-2xl text-sm leading-relaxed break-words',
+                            isOwn
+                              ? 'bg-gradient-to-br from-amber-600/40 to-amber-700/30 text-amber-50 border border-amber-500/15 rounded-br-md'
+                              : 'bg-white/[0.04] text-neutral-200 border border-white/[0.06] rounded-bl-md',
+                          )}
+                        >
+                          {msg.content}
+                        </div>
+
+                        {/* Admin delete button — appears on hover */}
+                        {isAdmin && !isConfirmingDelete && (
+                          <button
+                            onClick={() => setDeletingMsgId(msg.id)}
+                            className={cn(
+                              'absolute top-1/2 -translate-y-1/2 opacity-0 group-hover/msg:opacity-100 transition-opacity duration-150',
+                              'w-7 h-7 rounded-lg flex items-center justify-center',
+                              'bg-white/[0.06] hover:bg-red-500/20 border border-white/[0.08] hover:border-red-500/30',
+                              'text-neutral-500 hover:text-red-400 cursor-pointer',
+                              isOwn ? '-left-9' : '-right-9',
+                            )}
+                            title="Delete message"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
                         )}
-                      >
-                        {msg.content}
+
+                        {/* Delete confirmation inline */}
+                        {isConfirmingDelete && (
+                          <div
+                            className={cn(
+                              'absolute top-1/2 -translate-y-1/2 flex items-center gap-1.5 z-10',
+                              isOwn ? 'right-[calc(100%+8px)]' : 'left-[calc(100%+8px)]',
+                            )}
+                          >
+                            <button
+                              onClick={() => setDeletingMsgId(null)}
+                              className="px-2.5 py-1 text-[11px] font-medium rounded-lg bg-white/[0.06] text-neutral-400 hover:bg-white/[0.1] hover:text-neutral-200 border border-white/[0.08] transition-all cursor-pointer whitespace-nowrap"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              onClick={() => handleDelete(msg.id)}
+                              className="px-2.5 py-1 text-[11px] font-medium rounded-lg bg-red-500/20 text-red-400 hover:bg-red-500/30 hover:text-red-300 border border-red-500/20 transition-all cursor-pointer whitespace-nowrap"
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        )}
                       </div>
                       <p
                         className={cn(

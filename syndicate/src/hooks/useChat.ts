@@ -207,6 +207,29 @@ export function useChat() {
     [user?.user_id, activeRoomId],
   );
 
+  // ── Delete a message (admin only) ───────────────────────────────────────
+
+  const deleteMessage = useCallback(
+    async (messageId: string) => {
+      try {
+        const { error } = await supabase
+          .from('chat_messages')
+          .delete()
+          .eq('id', messageId);
+
+        if (error) {
+          console.error('Error deleting message:', error.message);
+        } else {
+          // Optimistically remove from local state
+          setMessages((prev) => prev.filter((m) => m.id !== messageId));
+        }
+      } catch (err) {
+        console.error('Exception deleting message:', err);
+      }
+    },
+    [],
+  );
+
   // ── Select a room ───────────────────────────────────────────────────────
 
   const selectRoom = useCallback((roomId: string) => {
@@ -229,7 +252,7 @@ export function useChat() {
       channelRef.current = null;
     }
 
-    // Subscribe to new messages in the active room via Realtime
+    // Subscribe to message changes in the active room via Realtime
     const channel = supabase
       .channel(`chat_room_${activeRoomId}`)
       .on(
@@ -260,6 +283,21 @@ export function useChat() {
             if (prev.some((m) => m.id === enrichedMsg.id)) return prev;
             return [...prev, enrichedMsg];
           });
+        },
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'DELETE',
+          schema: 'public',
+          table: 'chat_messages',
+          filter: `room_id=eq.${activeRoomId}`,
+        },
+        (payload) => {
+          const deletedId = (payload.old as { id?: string }).id;
+          if (deletedId) {
+            setMessages((prev) => prev.filter((m) => m.id !== deletedId));
+          }
         },
       )
       .subscribe();
@@ -325,6 +363,7 @@ export function useChat() {
     // Actions
     selectRoom,
     sendMessage,
+    deleteMessage,
     fetchRooms,
   };
 }

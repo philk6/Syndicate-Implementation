@@ -12,6 +12,7 @@ import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Check, Plus } from 'lucide-react';
 import { debounce } from 'lodash';
+import { PageLoadingSpinner } from '@/components/ui/loading-spinner';
 
 interface UserInfo {
   firstname: string;
@@ -280,11 +281,7 @@ export default function AccountPage() {
   }, []);
 
   if (loading) {
-    return (
-      <div className="min-h-screen p-6 flex items-center justify-center">
-        <p className="text-neutral-400">Loading...</p>
-      </div>
-    );
+    return <PageLoadingSpinner />;
   }
 
   if (!isAuthenticated) return null;

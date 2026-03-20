@@ -27,6 +27,7 @@ import {
   Calendar,
   Eye
 } from 'lucide-react';
+import { PageLoadingSpinner } from '@/components/ui/loading-spinner';
 
 interface Order {
   order_id: number;
@@ -242,14 +243,7 @@ export default function HistoryOrderDetailPage() {
   };
 
   if (authLoading || loading) {
-    return (
-      <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center p-6">
-        <div className="flex flex-col items-center">
-          <div className="w-10 h-10 border-2 border-amber-500/20 border-t-amber-500 rounded-full animate-spin mb-4" />
-          <p className="text-neutral-500 animate-pulse font-medium">Fetching secure order details...</p>
-        </div>
-      </div>
-    );
+    return <PageLoadingSpinner />;
   }
 
   if (!isAuthenticated) return null;
