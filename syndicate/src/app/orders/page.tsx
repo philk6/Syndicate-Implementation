@@ -35,7 +35,7 @@ export default function OrdersPage() {
   // userCompanyId is no longer strictly needed in state for the query,
   // as RLS uses auth.uid() directly, but keeping it might be useful for other client-side logic.
   // const [userCompanyId, setUserCompanyId] = useState<number | null>(null);
-  const { isAuthenticated, loading } = useAuth();
+  const { isAuthenticated, loading, user } = useAuth();
   const { withNetworkResilience } = useNetworkResilience();
   const router = useRouter();
 
@@ -92,10 +92,17 @@ export default function OrdersPage() {
       return;
     }
 
+    // Buyers group access check — admins always have access
+    const hasBuyersGroupAccess = user?.buyersgroup === true || user?.role === 'admin';
+    if (!hasBuyersGroupAccess) {
+      router.push('/dashboard');
+      return;
+    }
+
     // No need to fetch userCompanyId explicitly for the query here anymore,
     // as the RLS policy directly uses auth.uid() to determine company_id.
     fetchOrders();
-  }, [isAuthenticated, loading, router, fetchOrders]); // fetchOrders is a dependency
+  }, [isAuthenticated, loading, router, fetchOrders, user?.buyersgroup, user?.role]); // fetchOrders is a dependency
 
   // Memoized function to handle order navigation
   const handleOrderClick = useCallback((orderId: number) => {
