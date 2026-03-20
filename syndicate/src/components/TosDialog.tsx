@@ -16,57 +16,65 @@ interface TosDialogProps {
 }
 
 const TERMS_OF_SERVICE = `
-Buyers Group Terms of Service Agreement
+Buyers Group Terms of Service
 
 By joining the Buyers Group (“Group”) operated by CauseNEffectLLC (“we,” “our,” “us”), you (“Member”) acknowledge and agree to the following legally binding terms:
 
 1. Inventory Storage, Response Time & Fees
-Members are responsible for coordinating product shipment or pickup within 30 calendar days of delivery.
-After 30 days without communication or action, a storage fee of 75 dollars per pallet per week or 20 dollars per box per week (whichever is greater) will be charged.
-On Day 60, if no response or payment is received, the inventory is considered abandoned, and we reserve the right to liquidate, resell, or dispose of the inventory with no refund issued.
-No product will be released or shipped until all outstanding storage and handling fees are paid in full.
+- Members are responsible for coordinating product shipment or pickup within 30 calendar days of inventory being received by CauseNEffectLLC.
+- After 30 days without communication or action, a storage fee of $75 per pallet per week or $20 per box per week (whichever is greater) will be applied.
+- On Day 60, if no response or payment is received, the inventory is considered abandoned, and we reserve the right to liquidate, resell, or dispose of the inventory with no refund issued.
+- No inventory will be released or shipped until all outstanding storage and handling fees are paid in full.
 
 2. No Liability for Amazon or Third-Party Platform Issues
-CauseNEffectLLC is not liable for changes, issues, or restrictions that occur on Amazon, Walmart, or any other third-party selling platform.
-This includes but is not limited to:
-- Listing removals
-- Gating or brand/category restrictions
-- Price drops or sudden unprofitability
-- ASIN suspensions
-- Account health problems
-- Marketplace policy updates
-By participating, you acknowledge that selling on platforms like Amazon carries inherent risk, and CauseNEffectLLC does not guarantee profitability or sell-through speed.
-All decisions regarding sourcing and participation in product buys are made voluntarily by the Member.
+CauseNEffectLLC is not liable for any changes, limitations, or restrictions that occur on Amazon, Walmart, or any other third-party selling platform, including but not limited to:
+- Listing removals  
+- Brand/category gating  
+- Price changes or unprofitability  
+- ASIN suspensions  
+- Account health issues  
+- Platform policy updates  
+
+By joining the Group, you acknowledge that selling on these platforms involves inherent risk, and all sourcing decisions are made voluntarily by the Member.
 
 3. Inventory Rights & Release
-Title and ownership of inventory remain with the Member at all times.
-However, if storage fees are not paid or communication is not maintained, we reserve the right to handle unclaimed goods at our discretion.
-If inventory must be returned or forwarded, the Member is responsible for all shipping costs and logistics coordination.
+- Title and ownership of all inventory remain with the Member at all times.
+- However, if the Member fails to maintain communication or pay outstanding fees, CauseNEffectLLC reserves the right to handle, liquidate, or dispose of the inventory at its sole discretion.
+- If inventory needs to be returned or forwarded, the Member is responsible for all shipping costs and related coordination.
 
-4. No Refunds or Chargebacks
-Once funds are allocated for a product purchase, no refunds or chargebacks will be issued, regardless of changes in profitability, market conditions, or platform rules.
-Your participation in each buy signals acceptance of that risk.
+4. No Refunds, Withdrawals, or Chargebacks
+Once funds are submitted to CauseNEffectLLC for participation in a product buy, those funds are considered fully committed and allocated toward purchasing inventory.  
+No refunds, partial refunds, or withdrawals of funds will be permitted under any circumstance.
+
+This includes—but is not limited to—situations involving:  
+- Profitability or market condition changes  
+- Account or listing restrictions  
+- Shipment or processing delays  
+- Third-party platform bans or suspensions  
+
+Inventory is often purchased immediately upon receipt of funds. CauseNEffectLLC does not hold funds in escrow or reserve, and all payments are final. By participating in a buy, you affirm that you understand and accept these terms.
 
 5. Communication Expectations
-Members must provide prompt responses to all communication related to inventory, shipment, and group updates.
-Lack of response for extended periods will result in product being stored at the Member’s expense, and ultimately disposed of after 60 days.
+- Members must respond promptly to all communications related to inventory, shipping, or group updates.
+- Lack of communication may result in inventory being stored at the Member’s expense.
+- Inventory left unclaimed after 60 days of no response will be considered abandoned and subject to liquidation or disposal.
 
-6. Agreement Acceptance
+6. Chargebacks and Dispute Policy
+- By submitting payment, the Member agrees not to initiate chargebacks or payment disputes with any bank, credit card provider, or payment processor.
+- All sales are final once inventory is purchased on the Member’s behalf.
+- Any disputes must be resolved directly with CauseNEffectLLC through communication or, if necessary, legal arbitration.
+- Initiating a chargeback after receiving products or services will be treated as a breach of this agreement and may be considered fraudulent activity. CauseNEffectLLC reserves the right to pursue legal remedies and recover fees, losses, or damages caused by a wrongful chargeback.
+
+7. Agreement Acceptance
 By joining the Buyers Group, you confirm that you:
-- Have read and understood this agreement
-- Accept full responsibility for the risks associated with third-party platforms
-- Agree to all fees, timelines, and conditions listed above
+- Have read and fully understand this agreement  
+- Accept the risks associated with selling on third-party platforms  
+- Agree to all storage terms, payment commitments, and non-refundable conditions listed herein  
 
-This agreement is legally binding and enforceable under Missouri state law.
+This agreement is legally binding and enforceable under the laws of the State of Missouri.
 
-7. Chargebacks and Dispute Policy
-By joining the Buyers Group and submitting payment, the Member agrees not to initiate any chargebacks or payment disputes with their bank, credit card provider, or payment processor.
-All sales are final once inventory is purchased on the Member’s behalf. Any disputes must be handled directly with CauseNEffectLLC and will be resolved through internal communication or legal arbitration if necessary.
-Initiating a chargeback after receiving products or services will be treated as a breach of this agreement and may be considered fraudulent activity. CauseNEffectLLC reserves the right to pursue legal remedies and recover any fees, losses, or damages incurred as a result of a wrongful chargeback.
-
-
-Phil Keipp
-Owner
+Phil Keipp  
+Owner  
 CauseNEffectLLC
 `;
 
@@ -82,12 +90,12 @@ export default function TosDialog({ isOpen, onClose }: TosDialogProps) {
         throw new Error('User not authenticated');
       }
 
-    const { error } = await supabase
-      .from('users')
-      .update({ tos_accepted: true })
+      const { error } = await supabase
+        .from('users')
+        .update({ tos_accepted: true })
         .eq('user_id', user.id);
-    
-    if (error) {
+
+      if (error) {
         throw error;
       }
 
@@ -125,14 +133,14 @@ export default function TosDialog({ isOpen, onClose }: TosDialogProps) {
           <Button
             variant="outline"
             onClick={handleCancel}
-            className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80]"
+            className="bg-amber-500/5 text-amber-400 font-medium border border-amber-500/15 hover:bg-amber-500/10 hover:border-amber-500/25 transition-all duration-300"
             disabled={isSubmitting}
           >
             Cancel
           </Button>
           <Button
             onClick={handleAgree}
-            className="bg-[#c8aa64] hover:bg-[#9d864e] text-[#242424]"
+            className="bg-amber-500/10 text-amber-400 font-medium border border-amber-500/20 shadow-[0_0_15px_rgba(245,158,11,0.05)] hover:bg-amber-500/20 hover:shadow-[0_0_20px_rgba(245,158,11,0.1)] hover:border-amber-500/30 transition-all duration-300"
             disabled={isSubmitting}
           >
             {isSubmitting ? 'Submitting...' : 'I Agree'}

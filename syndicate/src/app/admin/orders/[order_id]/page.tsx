@@ -6,7 +6,9 @@ import { useAuth } from '@lib/auth';
 import { supabase } from '@lib/supabase/client';
 import { PostgrestError } from '@supabase/supabase-js';
 import Link from 'next/link';
-import { CalendarIcon, Download, Trash2, Plus, Percent, Save, Edit, XCircle, CheckCircle, ListPlus, Search, TrendingUp, PackageSearch, DollarSign } from 'lucide-react'; // Added DollarSign
+import { CalendarIcon, Download, Trash2, Plus, Percent, Save, Edit, XCircle, CheckCircle, ListPlus, Search, TrendingUp, PackageSearch, DollarSign, Info } from 'lucide-react';
+import { GlassCard } from '@/components/ui/glass-card';
+import { StatusPill } from '@/components/ui/status-pill';
 import {
   Table,
   TableBody,
@@ -153,37 +155,38 @@ function DatePicker({
         <Button
           variant="outline"
           className={cn(
-            'w-full justify-start text-left font-normal bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80]',
-            !date && 'text-muted-foreground'
+            'w-full justify-start text-left font-normal bg-white/[0.02] text-neutral-200 border-white/[0.05] hover:bg-white/[0.05]',
+            !date && 'text-neutral-500'
           )}
         >
           <CalendarIcon className="mr-2 h-4 w-4" />
           {date ? date.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : <span>Pick a date</span>}
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-auto p-0" align="start">
+      <PopoverContent className="w-auto p-0 bg-[#0a0a0a]/90 backdrop-blur-xl border-white/[0.08]" align="start">
         <Calendar
           mode="single"
           selected={date}
           onSelect={handleSelect}
           initialFocus
+          className="bg-transparent text-neutral-200"
         />
-        {/* Basic time picker - can be enhanced with a proper time picker component if needed */}
-        <div className="p-2 border-t border-border">
-            <Input 
-                type="time"
-                className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80]"
-                value={date ? `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}` : ''}
-                onChange={(e) => {
-                    if (date) {
-                        const [hours, minutes] = e.target.value.split(':');
-                        const newDate = new Date(date);
-                        newDate.setHours(parseInt(hours));
-                        newDate.setMinutes(parseInt(minutes));
-                        handleSelect(newDate);
-                    }
-                }}
-            />
+        {/* Basic time picker */}
+        <div className="p-3 border-t border-white/[0.05]">
+          <Input
+            type="time"
+            className="bg-white/[0.02] text-neutral-200 border-white/[0.05]"
+            value={date ? `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}` : ''}
+            onChange={(e) => {
+              if (date) {
+                const [hours, minutes] = e.target.value.split(':');
+                const newDate = new Date(date);
+                newDate.setHours(parseInt(hours));
+                newDate.setMinutes(parseInt(minutes));
+                handleSelect(newDate);
+              }
+            }}
+          />
         </div>
       </PopoverContent>
     </Popover>
@@ -450,12 +453,12 @@ export default function AdminOrderManagementPage() {
   const handleStatusChange = async (newStatusId: string) => {
     const newStatusIdInt = parseInt(newStatusId);
     const oldStatusId = currentStatusId;
-  
+
     if (!oldStatusId) {
       setFeedbackMessage({ type: 'error', text: 'Current status not found.' });
       return;
     }
-  
+
     try {
       // First, handle any credit-related transitions
       const { error: transitionError } = await supabase
@@ -464,60 +467,60 @@ export default function AdminOrderManagementPage() {
           p_new_status_id: newStatusIdInt,
           p_old_status_id: oldStatusId
         });
-  
+
       if (transitionError) {
         console.error('Error handling status transition:', transitionError);
-        setFeedbackMessage({ 
-          type: 'error', 
-          text: `Failed to process credit transactions: ${transitionError.message}` 
+        setFeedbackMessage({
+          type: 'error',
+          text: `Failed to process credit transactions: ${transitionError.message}`
         });
         return;
       }
-  
+
       // Then update the order status
       const { error: updateError } = await supabase
         .from('orders')
         .update({ order_status_id: newStatusIdInt })
         .eq('order_id', orderId);
-  
+
       if (updateError) {
         console.error('Error updating status:', updateError);
         setFeedbackMessage({ type: 'error', text: 'Failed to update status.' });
-        
+
         // If status update fails, we might need to reverse the credit transactions
         // This would require another function or manual intervention
       } else {
-        setOrder(prev => prev ? { 
-          ...prev, 
-          order_statuses: statuses.find(s => s.order_status_id === newStatusIdInt)! 
+        setOrder(prev => prev ? {
+          ...prev,
+          order_statuses: statuses.find(s => s.order_status_id === newStatusIdInt)!
         } : null);
-        
+
         // Show appropriate message based on the transition
         const newStatus = statuses.find(s => s.order_status_id === newStatusIdInt);
         const oldStatus = statuses.find(s => s.order_status_id === oldStatusId);
-        
+
         if (newStatus?.description.toLowerCase() === 'closed') {
-          setFeedbackMessage({ 
-            type: 'success', 
-            text: 'Order closed successfully. Credit transactions have been processed.' 
+          setFeedbackMessage({
+            type: 'success',
+            text: 'Order closed successfully. Credit transactions have been processed.'
           });
         } else if (oldStatus?.description.toLowerCase() === 'closed') {
-          setFeedbackMessage({ 
-            type: 'success', 
-            text: 'Order reopened successfully. Credit holds have been reinstated.' 
+          setFeedbackMessage({
+            type: 'success',
+            text: 'Order reopened successfully. Credit holds have been reinstated.'
           });
         } else {
           setFeedbackMessage({ type: 'success', text: 'Status updated successfully.' });
         }
-  
+
         // Refresh company applications to show updated held/allocated amounts
         await fetchCompanyApplications(orderId);
       }
     } catch (err) {
       console.error('Unexpected error during status change:', err);
-      setFeedbackMessage({ 
-        type: 'error', 
-        text: 'An unexpected error occurred while changing the order status.' 
+      setFeedbackMessage({
+        type: 'error',
+        text: 'An unexpected error occurred while changing the order status.'
       });
     }
   };
@@ -629,7 +632,7 @@ export default function AdminOrderManagementPage() {
         // If the error is due to foreign key constraint, it might mean no records existed, which is fine.
         // If it's another error, then it's problematic.
         if (opcError.code !== '23503' && opcError.code !== 'PGRST204') { // PGRST204: No Content (means nothing to delete)
-            throw new Error(`Failed to delete order_products_company: ${opcError.message}`);
+          throw new Error(`Failed to delete order_products_company: ${opcError.message}`);
         }
       }
 
@@ -898,31 +901,31 @@ export default function AdminOrderManagementPage() {
 
     // Check if an entry exists in order_products_company for this order, sequence, and company
     const { data: existingOpc, error: fetchOpcError } = await supabase
-        .from('order_products_company')
-        .select('quantity, ungated, ungated_min_amount') // Select existing fields
-        .eq('order_id', orderId)
-        .eq('sequence', sequence)
-        .eq('company_id', company_id)
-        .maybeSingle();
+      .from('order_products_company')
+      .select('quantity, ungated, ungated_min_amount') // Select existing fields
+      .eq('order_id', orderId)
+      .eq('sequence', sequence)
+      .eq('company_id', company_id)
+      .maybeSingle();
 
     if (fetchOpcError && fetchOpcError.code !== 'PGRST116') { // PGRST116: No rows found, which is fine for an upsert
-        console.error('Error fetching existing order_products_company:', fetchOpcError);
-        setFeedbackMessage({ type: 'error', text: 'Failed to check existing discount data.' });
-        return;
+      console.error('Error fetching existing order_products_company:', fetchOpcError);
+      setFeedbackMessage({ type: 'error', text: 'Failed to check existing discount data.' });
+      return;
     }
-    
+
     const upsertData: OrderProductCompany = {
-        order_id: orderId,
-        sequence,
-        company_id,
-        discounted_price,
-        // Preserve existing quantity and ungated status if they exist, otherwise use defaults
-        quantity: existingOpc?.quantity ?? 0, 
-        ungated: existingOpc?.ungated ?? false,
+      order_id: orderId,
+      sequence,
+      company_id,
+      discounted_price,
+      // Preserve existing quantity and ungated status if they exist, otherwise use defaults
+      quantity: existingOpc?.quantity ?? 0,
+      ungated: existingOpc?.ungated ?? false,
     };
-    
+
     if (existingOpc?.ungated_min_amount !== undefined) { // Only include if it was already set
-        upsertData.ungated_min_amount = existingOpc.ungated_min_amount;
+      upsertData.ungated_min_amount = existingOpc.ungated_min_amount;
     }
 
 
@@ -1342,7 +1345,7 @@ export default function AdminOrderManagementPage() {
       });
       return;
     }
-    
+
     const existingAllocation = allocationResults.find(
       ar => ar.sequence === sequence && ar.company_id === company_id
     );
@@ -1367,7 +1370,7 @@ export default function AdminOrderManagementPage() {
       .single();
 
     if (error) {
-      console.error('Error adding new allocation. Raw error object:', error); 
+      console.error('Error adding new allocation. Raw error object:', error);
       let detailedMessage = 'Failed to add new allocation.';
       if (typeof error === 'object' && error !== null) {
         const pgError = error as PostgrestError;
@@ -1384,7 +1387,7 @@ export default function AdminOrderManagementPage() {
           detailedMessage += ` Code: ${pgError.code}`;
         }
       }
-      
+
       if (detailedMessage === 'Failed to add new allocation.' && typeof error === 'object' && error !== null && Object.keys(error).length > 0) {
         try {
           detailedMessage += ' Raw error: ' + JSON.stringify(error);
@@ -1422,7 +1425,7 @@ export default function AdminOrderManagementPage() {
       currentTotalProfit += productProfit;
       currentTotalOrderValue += product.price * product.quantity;
     });
-    
+
     const currentProfitPercentage = currentTotalOrderValue > 0 ? (currentTotalProfit / currentTotalOrderValue) * 100 : 0;
 
     return {
@@ -1455,19 +1458,9 @@ export default function AdminOrderManagementPage() {
   const selectedProductForDialog = newAllocationSequence ? products.find(p => p.sequence === parseInt(newAllocationSequence)) : null;
   const maxAllocatableForDialog = selectedProductForDialog
     ? selectedProductForDialog.quantity - allocationResults
-        .filter(ar => ar.sequence === selectedProductForDialog.sequence)
-        .reduce((sum, ar) => sum + ar.quantity, 0)
+      .filter(ar => ar.sequence === selectedProductForDialog.sequence)
+      .reduce((sum, ar) => sum + ar.quantity, 0)
     : undefined;
-
-  // START: Handlers for Dialog onOpenChange to reset state
-  const handleAddAllocationDialogVisibilityChange = (open: boolean) => {
-    setIsAddAllocationDialogOpen(open);
-    if (!open) {
-      setNewAllocationSequence('');
-      setNewAllocationCompanyId('');
-      setNewAllocationQuantity('');
-    }
-  };
 
   const handlePreAssignDialogControl = (isOpen: boolean) => {
     setIsPreAssignDialogOpen(isOpen);
@@ -1514,42 +1507,42 @@ export default function AdminOrderManagementPage() {
   // END: Handlers for Dialog onOpenChange to reset state
 
   return (
-    <div className="min-h-screen bg-background p-6 w-full">
+    <div className="min-h-screen p-6 w-full">
       <div className="w-full">
-        <div className="flex items-center mb-6">
-          <Link href="/admin/orders" className="text-[#c8aa64] hover:text-[#9d864e] mr-4">← Back to Orders</Link>
-          <Link href={`/admin/orders/${orderId}/receipts`} className="text-[#c8aa64] hover:text-[#9d864e] mr-4">Manage Receipts</Link>
+        <div className="flex items-center mb-6 space-x-4">
+          <Link href="/admin/orders" className="text-neutral-400 hover:text-white transition-colors text-sm">← Back to Orders</Link>
+          <Link href={`/admin/orders/${orderId}/receipts`} className="text-neutral-400 hover:text-white transition-colors text-sm">Manage Receipts</Link>
         </div>
-        <div className="flex justify-between items-center mb-6">
-          <h1 className="text-3xl font-bold text-[#bfbfbf]">Manage Order #{order.order_id}</h1>
+        <div className="flex justify-between items-center mb-8">
+          <h1 className="text-3xl font-bold text-white tracking-tight">Manage Order <span className="text-amber-500">#{order.order_id}</span></h1>
           <Button
             onClick={handleCalculateAllocation}
             disabled={isPending || !isOrderEditable}
-            className="bg-[#c8aa64] hover:bg-[#9d864e] text-[#242424] disabled:opacity-50"
+            className="bg-amber-500/10 text-amber-400 font-medium border border-amber-500/20 shadow-[0_0_15px_rgba(245,158,11,0.05)] hover:bg-amber-500/20 hover:shadow-[0_0_20px_rgba(245,158,11,0.1)] hover:border-amber-500/30 transition-all duration-300 disabled:opacity-50"
           >
             {isPending ? 'Calculating...' : 'Calculate Order'}
           </Button>
         </div>
 
         {feedbackMessage && (
-          <div className={`mb-4 p-3 rounded flex items-center ${feedbackMessage.type === 'success' ? 'bg-green-900 text-green-200' : 'bg-red-900 text-red-200'}`}>
-            {feedbackMessage.type === 'success' ? <CheckCircle className="h-5 w-5 mr-2" /> : <XCircle className="h-5 w-5 mr-2" />}
-            {feedbackMessage.text}
+          <div className={`mb-6 p-4 rounded-xl border backdrop-blur-md flex items-center ${feedbackMessage.type === 'success' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' : 'bg-rose-500/10 border-rose-500/20 text-rose-400'}`}>
+            {feedbackMessage.type === 'success' ? <CheckCircle className="h-5 w-5 mr-3" /> : <XCircle className="h-5 w-5 mr-3" />}
+            <span className="text-sm font-medium">{feedbackMessage.text}</span>
           </div>
         )}
 
-        <div className="rounded-lg p-6 bg-gradient-to-br from-[#212121] via-[#0f0f0f] to-[#2b2b2b] shadow-lg w-full mb-8">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6"> {/* Adjusted grid for more items */}
+        <GlassCard className="p-6 w-full mb-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
             <div>
-              <Label htmlFor="orderStatus" className="text-gray-300 font-medium block mb-2">Status</Label>
+              <Label htmlFor="orderStatus" className="text-neutral-400 font-medium block mb-2">Status</Label>
               <Select
                 value={currentStatusId ? currentStatusId.toString() : ''}
                 onValueChange={handleStatusChange}
               >
-                <SelectTrigger id="orderStatus" className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80]">
+                <SelectTrigger id="orderStatus" className="bg-white/[0.02] text-neutral-200 border-white/[0.05]">
                   <SelectValue placeholder="Select status" />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="bg-[#0a0a0a] border-white/[0.08] text-neutral-200">
                   {statuses.map(status => (
                     <SelectItem key={status.order_status_id} value={status.order_status_id.toString()}>{status.description}</SelectItem>
                   ))}
@@ -1557,58 +1550,60 @@ export default function AdminOrderManagementPage() {
               </Select>
             </div>
             <div>
-              <Label htmlFor="leadTime" className="text-gray-300 font-medium block mb-2">Lead Time (days)</Label>
+              <Label htmlFor="leadTime" className="text-neutral-400 font-medium block mb-2">Lead Time (days)</Label>
               <Input
                 id="leadTime"
                 type="number"
                 value={order.leadtime}
                 onChange={(e) => handleOrderUpdate('leadtime', e.target.value)}
-                className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80]"
+                className="bg-white/[0.02] text-neutral-200 border-white/[0.05]"
               />
             </div>
             <div>
-              <Label htmlFor="deadline" className="text-gray-300 font-medium block mb-2">Deadline</Label>
+              <Label htmlFor="deadline" className="text-neutral-400 font-medium block mb-2">Deadline</Label>
               <DatePicker
                 value={order.deadline}
                 onChange={(value) => handleOrderUpdate('deadline', value)}
               />
             </div>
             <div>
-              <Label htmlFor="labelUploadDeadline" className="text-gray-300 font-medium block mb-2">Label Upload Deadline</Label>
+              <Label htmlFor="labelUploadDeadline" className="text-neutral-400 font-medium block mb-2">Label Upload Deadline</Label>
               <DatePicker
                 value={order.label_upload_deadline}
                 onChange={(value) => handleOrderUpdate('label_upload_deadline', value)}
               />
             </div>
-            <div className="flex items-center space-x-2 pt-6"> {/* Added pt-6 for alignment */}
+            <div className="flex items-center space-x-3 pt-6">
               <Switch
                 id="hideAllSwitch"
                 checked={hideAll}
                 onCheckedChange={handleHideAllToggle}
                 disabled={!isOrderEditable}
+                className="data-[state=checked]:bg-amber-500"
               />
-              <Label htmlFor="hideAllSwitch" className="text-gray-300 font-medium">Hide All Price & Qty</Label>
+              <Label htmlFor="hideAllSwitch" className="text-neutral-400 font-medium">Hide All Price & Qty</Label>
             </div>
-            <div className="flex items-center space-x-2 pt-6"> {/* Added pt-6 for alignment */}
+            <div className="flex items-center space-x-3 pt-6">
               <Switch
                 id="hideAllocationsSwitch"
                 checked={order.hide_allocations}
                 onCheckedChange={handleHideAllocationsToggle}
                 disabled={!isOrderEditable}
+                className="data-[state=checked]:bg-amber-500"
               />
-              <Label htmlFor="hideAllocationsSwitch" className="text-gray-300 font-medium">Hide Allocations</Label>
+              <Label htmlFor="hideAllocationsSwitch" className="text-neutral-400 font-medium">Hide Allocations</Label>
             </div>
             <div>
-              <Label htmlFor="orderAccessibility" className="text-gray-300 font-medium block mb-2">Accessibility</Label>
+              <Label htmlFor="orderAccessibility" className="text-neutral-400 font-medium block mb-2">Accessibility</Label>
               <Select
                 value={order.is_public ? 'public' : 'private'}
                 onValueChange={handleAccessibilityChange}
                 disabled={!isOrderEditable}
               >
-                <SelectTrigger id="orderAccessibility" className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80]">
+                <SelectTrigger id="orderAccessibility" className="bg-white/[0.02] text-neutral-200 border-white/[0.05]">
                   <SelectValue placeholder="Select accessibility" />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="bg-[#0a0a0a] border-white/[0.08] text-neutral-200">
                   <SelectItem value="public">Public (All Companies)</SelectItem>
                   <SelectItem value="private">Private (Whitelist Only)</SelectItem>
                 </SelectContent>
@@ -1618,59 +1613,59 @@ export default function AdminOrderManagementPage() {
               <div className="flex items-end">
                 <Button
                   onClick={() => setIsWhitelistDialogOpen(true)}
-                  className="bg-[#c8aa64] hover:bg-[#9d864e] text-[#242424]"
+                  className="w-full bg-amber-500/10 text-amber-400 font-medium border border-amber-500/20 shadow-[0_0_15px_rgba(245,158,11,0.05)] hover:bg-amber-500/20 hover:shadow-[0_0_20px_rgba(245,158,11,0.1)] hover:border-amber-500/30 transition-all duration-300"
                   disabled={!isOrderEditable}
                 >
                   <ListPlus className="mr-2 h-4 w-4" /> Manage Whitelist
                 </Button>
               </div>
             )}
-             {/* New Fee Information Section */}
             <div>
-                <Label className="text-gray-300 font-medium block mb-2">Total Fees Earned ($)</Label>
-                <div className="p-3 bg-[#1f1f1f] text-gray-200 border border-[#6a6a6a80] rounded-md flex items-center">
-                    <DollarSign className="h-4 w-4 mr-2 text-green-400"/> 
-                    {totalProfit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </div>
+              <Label className="text-neutral-400 font-medium block mb-2">Total Fees Earned ($)</Label>
+              <div className="p-3 bg-white/[0.02] text-white border border-white/[0.05] rounded-lg flex items-center font-bold">
+                <DollarSign className="h-4 w-4 mr-2 text-emerald-400" />
+                {totalProfit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </div>
             </div>
             <div>
-                <Label className="text-gray-300 font-medium block mb-2">Total Fees Earned (%)</Label>
-                <div className="p-3 bg-[#1f1f1f] text-gray-200 border border-[#6a6a6a80] rounded-md flex items-center">
-                     <Percent className="h-4 w-4 mr-2 text-blue-400"/>
-                    {profitPercentage.toFixed(2)}%
-                </div>
+              <Label className="text-neutral-400 font-medium block mb-2">Total Fees Earned (%)</Label>
+              <div className="p-3 bg-white/[0.02] text-white border border-white/[0.05] rounded-lg flex items-center font-bold">
+                <Percent className="h-4 w-4 mr-2 text-blue-400" />
+                {profitPercentage.toFixed(2)}%
+              </div>
             </div>
             <div>
-                <Label className="text-gray-300 font-medium block mb-2">Total Order Value ($)</Label>
-                <div className="p-3 bg-[#1f1f1f] text-gray-200 border border-[#6a6a6a80] rounded-md">
-                    {totalOrderValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </div>
+              <Label className="text-neutral-400 font-medium block mb-2">Total Order Value ($)</Label>
+              <div className="p-3 bg-white/[0.02] text-white border border-white/[0.05] rounded-lg font-bold">
+                {totalOrderValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </div>
             </div>
           </div>
-        </div>
+        </GlassCard>
 
         <Dialog open={isWhitelistDialogOpen} onOpenChange={handleWhitelistDialogVisibilityChange}>
-          <DialogContent className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80] max-w-2xl">
+          <DialogContent className="bg-[#0a0a0a]/90 backdrop-blur-xl border-white/[0.08] text-white max-w-2xl">
             <DialogHeader>
-              <DialogTitle>Manage Whitelist for Order #{order.order_id}</DialogTitle>
+              <DialogTitle className="text-xl font-bold">Manage Whitelist for Order <span className="text-amber-500">#{order.order_id}</span></DialogTitle>
             </DialogHeader>
-            <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-2">
+            <div className="space-y-6 max-h-[70vh] overflow-y-auto pr-2">
               <div>
-                <h3 className="text-lg font-semibold mb-2">Currently Whitelisted Companies</h3>
+                <h3 className="text-sm font-semibold text-neutral-400 uppercase tracking-wider mb-4">Currently Whitelisted</h3>
                 {whitelistedCompanies.length === 0 ? (
-                  <p className="text-gray-400">No companies whitelisted for this order.</p>
+                  <p className="text-neutral-500 text-sm italic">No companies whitelisted for this order.</p>
                 ) : (
-                  <div className="grid grid-cols-1 gap-2 max-h-48 overflow-y-auto pr-2">
+                  <div className="grid grid-cols-1 gap-2">
                     {whitelistedCompanies.map(company => (
-                      <div key={company.company_id} className="flex items-center justify-between p-2 bg-[#2b2b2b] rounded-md">
-                        <span className="text-gray-200">{company.name}</span>
+                      <div key={company.company_id} className="flex items-center justify-between p-3 bg-white/[0.03] border border-white/[0.05] rounded-xl hover:bg-white/[0.05] transition-colors">
+                        <span className="text-neutral-200 font-medium">{company.name}</span>
                         <Button
-                          variant="destructive"
+                          variant="ghost"
                           size="sm"
                           onClick={() => handleRemoveCompanyFromWhitelist(company.company_id)}
                           disabled={!isOrderEditable}
+                          className="text-rose-400 hover:text-rose-300 hover:bg-rose-500/10"
                         >
-                          <Trash2 className="h-4 w-4" /> Remove
+                          <Trash2 className="h-4 w-4 mr-2" /> Remove
                         </Button>
                       </div>
                     ))}
@@ -1678,34 +1673,34 @@ export default function AdminOrderManagementPage() {
                 )}
               </div>
 
-              <div className="pt-4 border-t border-[#6a6a6a80]">
-                <h3 className="text-lg font-semibold mb-2">Add Companies to Whitelist</h3>
+              <div className="pt-6 border-t border-white/[0.05]">
+                <h3 className="text-sm font-semibold text-neutral-400 uppercase tracking-wider mb-4">Add Companies</h3>
                 <div className="relative mb-4">
                   <Input
                     type="text"
                     placeholder="Search companies..."
                     value={whitelistSearchTerm}
                     onChange={(e) => setWhitelistSearchTerm(e.target.value)}
-                    className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80] pl-8"
+                    className="bg-white/[0.02] text-neutral-200 border-white/[0.05] pl-10 h-11"
                     disabled={!isOrderEditable}
                   />
-                  <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-neutral-500" />
                 </div>
                 {filteredAvailableCompanies.length === 0 ? (
-                  <p className="text-gray-400">No companies available to add or matching your search.</p>
+                  <p className="text-neutral-500 text-sm italic">No companies available to add.</p>
                 ) : (
-                  <div className="grid grid-cols-1 gap-2 max-h-48 overflow-y-auto">
+                  <div className="grid grid-cols-1 gap-2 max-h-64 overflow-y-auto pr-2 custom-scrollbar">
                     {filteredAvailableCompanies.map(company => (
-                      <div key={company.company_id} className="flex items-center justify-between p-2 bg-[#2b2b2b] rounded-md">
-                        <span className="text-gray-200">{company.name}</span>
+                      <div key={company.company_id} className="flex items-center justify-between p-3 bg-white/[0.03] border border-white/[0.05] rounded-xl group hover:border-amber-500/30 transition-all">
+                        <span className="text-neutral-200">{company.name}</span>
                         <Button
                           variant="outline"
                           size="sm"
                           onClick={() => handleAddCompanyToWhitelist(company.company_id)}
-                          className="bg-[#c8aa64] hover:bg-[#9d864e] text-[#242424]"
+                          className="bg-white/[0.05] hover:bg-amber-500 hover:text-white border-white/[0.1] transition-all"
                           disabled={!isOrderEditable}
                         >
-                          <Plus className="h-4 w-4" /> Add
+                          <Plus className="h-4 w-4" />
                         </Button>
                       </div>
                     ))}
@@ -1713,11 +1708,11 @@ export default function AdminOrderManagementPage() {
                 )}
               </div>
             </div>
-            <DialogFooter>
+            <DialogFooter className="pt-4 border-t border-white/[0.05]">
               <Button
-                variant="outline"
+                variant="ghost"
                 onClick={() => setIsWhitelistDialogOpen(false)}
-                className="bg-gray-700 hover:bg-gray-600 text-gray-200"
+                className="text-neutral-400 hover:text-white"
               >
                 Close
               </Button>
@@ -1725,46 +1720,55 @@ export default function AdminOrderManagementPage() {
           </DialogContent>
         </Dialog>
 
-
-        <div className="rounded-lg p-6 bg-gradient-to-br from-[#212121] via-[#0f0f0f] to-[#2b2b2b] shadow-lg w-full mb-8">
-          <h2 className="text-xl font-semibold text-gray-300 mb-4">Company Applications</h2>
+        <GlassCard className="p-6 w-full mb-8">
+          <h2 className="text-lg font-semibold text-white mb-6 flex items-center">
+            <TrendingUp className="mr-2 h-5 w-5 text-amber-500" />
+            Company Applications
+          </h2>
           {companyApplications.length === 0 ? (
-            <p className="text-gray-400">No companies have applied for this order yet.</p>
+            <div className="text-center py-12 bg-white/[0.02] rounded-2xl border border-dashed border-white/[0.05]">
+              <p className="text-neutral-500 italic">No companies have applied for this order yet.</p>
+            </div>
           ) : (
             <div className="w-full overflow-x-auto">
               <Table>
                 <TableHeader>
-                  <TableRow className="hover:bg-transparent">
-                    <TableHead className="text-gray-300 h-12 px-4 text-left align-middle font-medium">Company</TableHead>
-                    <TableHead className="text-gray-300 h-12 px-4 text-left align-middle font-medium">Max Investment ($)</TableHead>
-                    <TableHead className="text-gray-300 h-12 px-4 text-left align-middle font-medium">Ungated Products</TableHead>
-                    <TableHead className="text-gray-300 h-12 px-4 text-left align-middle font-medium">Actions</TableHead>
+                  <TableRow className="hover:bg-transparent border-white/[0.05]">
+                    <TableHead className="text-neutral-400 font-medium h-12">Company</TableHead>
+                    <TableHead className="text-neutral-400 font-medium h-12">Max Investment</TableHead>
+                    <TableHead className="text-neutral-400 font-medium h-12">Ungated Products</TableHead>
+                    <TableHead className="text-neutral-400 font-medium h-12 text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {companyApplications.map((app) => (
-                    <TableRow key={app.company_id} className="hover:bg-[#35353580] transition-colors border-[#6a6a6a80]">
-                      <TableCell className="p-4 align-middle text-gray-300">{app.company_name}</TableCell>
-                      <TableCell className="p-4 align-middle text-gray-300">${app.max_investment.toLocaleString()}</TableCell>
-                      <TableCell className="p-4 align-middle text-gray-300">{app.ungated_count}</TableCell>
-                      <TableCell className="p-4 align-middle text-gray-300 flex space-x-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleEditApplicationClick(app)}
-                          className="bg-[#c8aa64] hover:bg-[#9d864e] text-[#242424]"
-                          disabled={!isOrderEditable}
-                        >
-                          <Edit className="h-4 w-4 mr-1" /> Edit
-                        </Button>
-                        <Button
-                          variant="destructive"
-                          size="sm"
-                          onClick={() => handleDeleteApplicationClick(app)}
-                          disabled={!isOrderEditable}
-                        >
-                          <Trash2 className="h-4 w-4 mr-1" /> Delete
-                        </Button>
+                    <TableRow key={app.company_id} className="hover:bg-white/[0.02] transition-colors border-white/[0.02]">
+                      <TableCell className="py-4 font-medium text-white">{app.company_name}</TableCell>
+                      <TableCell className="py-4 font-bold text-emerald-400">${app.max_investment.toLocaleString()}</TableCell>
+                      <TableCell className="py-4">
+                        <StatusPill type={app.ungated_count > 0 ? "active" : "pending"} text={`${app.ungated_count} products`} />
+                      </TableCell>
+                      <TableCell className="py-4 text-right">
+                        <div className="flex justify-end space-x-2">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleEditApplicationClick(app)}
+                            className="bg-amber-500/10 text-amber-400 font-medium border border-amber-500/20 hover:bg-amber-500/20 hover:border-amber-500/30 transition-all duration-300"
+                            disabled={!isOrderEditable}
+                          >
+                            <Edit className="h-4 w-4 mr-1.5" /> Edit
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleDeleteApplicationClick(app)}
+                            className="text-rose-400 hover:text-rose-300 hover:bg-rose-500/10"
+                            disabled={!isOrderEditable}
+                          >
+                            <Trash2 className="h-4 w-4 mr-1.5" /> Delete
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -1772,7 +1776,7 @@ export default function AdminOrderManagementPage() {
               </Table>
             </div>
           )}
-        </div>
+        </GlassCard>
 
         <Dialog open={isEditApplicationDialogOpen} onOpenChange={handleEditApplicationDialogVisibilityChange}>
           <DialogContent className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80] max-w-2xl">
@@ -1832,13 +1836,13 @@ export default function AdminOrderManagementPage() {
               <Button
                 variant="outline"
                 onClick={() => setIsEditApplicationDialogOpen(false)}
-                className="bg-gray-700 hover:bg-gray-600 text-gray-200"
+                className="bg-amber-500/5 text-amber-400 font-medium border border-amber-500/15 hover:bg-amber-500/10 hover:border-amber-500/25 transition-all duration-300"
               >
                 Cancel
               </Button>
               <Button
                 onClick={handleSaveApplicationChanges}
-                className="bg-[#c8aa64] hover:bg-[#9d864e] text-[#242424]"
+                className="bg-amber-500/10 text-amber-400 font-medium border border-amber-500/20 shadow-[0_0_15px_rgba(245,158,11,0.05)] hover:bg-amber-500/20 hover:shadow-[0_0_20px_rgba(245,158,11,0.1)] hover:border-amber-500/30 transition-all duration-300"
               >
                 Save Changes
               </Button>
@@ -1859,7 +1863,7 @@ export default function AdminOrderManagementPage() {
               <Button
                 variant="outline"
                 onClick={() => setIsDeleteApplicationDialogOpen(false)}
-                className="bg-gray-700 hover:bg-gray-600 text-gray-200"
+                className="bg-amber-500/5 text-amber-400 font-medium border border-amber-500/15 hover:bg-amber-500/10 hover:border-amber-500/25 transition-all duration-300"
               >
                 Cancel
               </Button>
@@ -1874,21 +1878,26 @@ export default function AdminOrderManagementPage() {
         </Dialog>
 
 
-        <div className="rounded-lg p-6 bg-gradient-to-br from-[#212121] via-[#0f0f0f] to-[#2b2b2b] shadow-lg w-full mb-8">
-          <h2 className="text-xl font-semibold text-gray-300 mb-4">Configured Discounts</h2>
+        <GlassCard className="p-6 w-full mb-8">
+          <h2 className="text-lg font-semibold text-white mb-6 flex items-center">
+            <Percent className="mr-2 h-5 w-5 text-amber-500" />
+            Configured Discounts
+          </h2>
           {discounts.length === 0 ? (
-            <p className="text-gray-400">No discounts configured for this order.</p>
+            <div className="text-center py-12 bg-white/[0.02] rounded-2xl border border-dashed border-white/[0.05]">
+              <p className="text-neutral-500 italic">No discounts configured for this order.</p>
+            </div>
           ) : (
             <div className="w-full overflow-x-auto">
               <Table>
                 <TableHeader>
-                  <TableRow className="hover:bg-transparent">
-                    <TableHead className="text-gray-300 h-12 px-4 text-left align-middle font-medium">Company</TableHead>
-                    <TableHead className="text-gray-300 h-12 px-4 text-left align-middle font-medium">ASIN</TableHead>
-                    <TableHead className="text-gray-300 h-12 px-4 text-left align-middle font-medium">Original Price</TableHead>
-                    <TableHead className="text-gray-300 h-12 px-4 text-left align-middle font-medium">Discounted Price</TableHead>
-                    <TableHead className="text-gray-300 h-12 px-4 text-left align-middle font-medium">Discount %</TableHead>
-                    <TableHead className="text-gray-300 h-12 px-4 text-left align-middle font-medium">Actions</TableHead>
+                  <TableRow className="hover:bg-transparent border-white/[0.05]">
+                    <TableHead className="text-neutral-400 font-medium h-12">Company</TableHead>
+                    <TableHead className="text-neutral-400 font-medium h-12">ASIN</TableHead>
+                    <TableHead className="text-neutral-400 font-medium h-12">Original Price</TableHead>
+                    <TableHead className="text-neutral-400 font-medium h-12">Discounted Price</TableHead>
+                    <TableHead className="text-neutral-400 font-medium h-12">Discount %</TableHead>
+                    <TableHead className="text-neutral-400 font-medium h-12 text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -1897,27 +1906,250 @@ export default function AdminOrderManagementPage() {
                       ? ((discount.original_price - discount.discounted_price) / discount.original_price * 100).toFixed(1)
                       : '0';
                     return (
-                      <TableRow key={`${discount.sequence}-${discount.company_id}`} className="hover:bg-[#35353580] transition-colors border-[#6a6a6a80]">
-                        <TableCell className="p-4 align-middle text-gray-300">{discount.company_name}</TableCell>
-                        <TableCell className="p-4 align-middle text-gray-300">{discount.asin}</TableCell>
-                        <TableCell className="p-4 align-middle text-gray-300">${discount.original_price.toFixed(2)}</TableCell>
-                        <TableCell className="p-4 align-middle text-gray-300">
+                      <TableRow key={`${discount.sequence}-${discount.company_id}`} className="hover:bg-white/[0.02] transition-colors border-white/[0.02]">
+                        <TableCell className="py-4 font-medium text-white">{discount.company_name}</TableCell>
+                        <TableCell className="py-4 text-neutral-400 font-mono text-xs">{discount.asin}</TableCell>
+                        <TableCell className="py-4 text-neutral-400">${discount.original_price.toFixed(2)}</TableCell>
+                        <TableCell className="py-4 font-bold text-emerald-400">
                           {discount.discounted_price ? `$${discount.discounted_price.toFixed(2)}` : 'N/A'}
                         </TableCell>
-                        <TableCell className="p-4 align-middle text-gray-300">{discountPercentageValue}%</TableCell>
-                        <TableCell className="p-4 align-middle text-gray-300">
-                          <Button
-                            className="bg-[#c8aa64] hover:bg-[#9d864e] text-[#242424] mr-2"
-                            onClick={() => openDiscountDialog(discount.sequence, discount.company_id, discount.discounted_price)}
+                        <TableCell className="py-4">
+                          <span className="px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 text-xs font-bold border border-amber-500/20">
+                            -{discountPercentageValue}%
+                          </span>
+                        </TableCell>
+                        <TableCell className="py-4 text-right">
+                          <div className="flex justify-end space-x-2">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => openDiscountDialog(discount.sequence, discount.company_id, discount.discounted_price)}
+                              className="bg-amber-500/10 text-amber-400 font-medium border border-amber-500/20 hover:bg-amber-500/20 hover:border-amber-500/30 transition-all duration-300"
+                              disabled={!isOrderEditable}
+                            >
+                              <Edit className="h-4 w-4 mr-1.5" /> Edit
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleDiscountDelete(discount.sequence, discount.company_id)}
+                              className="text-rose-400 hover:text-rose-300 hover:bg-rose-500/10"
+                              disabled={!isOrderEditable}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </GlassCard>
+
+        <GlassCard className="p-6 w-full mb-8 overflow-x-auto">
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="text-lg font-semibold text-white flex items-center">
+              <PackageSearch className="mr-2 h-5 w-5 text-amber-500" />
+              Order Products
+            </h2>
+            <div className="flex gap-3">
+              <Button
+                onClick={() => openDiscountDialog()}
+                className="bg-amber-500/10 text-amber-400 font-medium border border-amber-500/20 shadow-[0_0_15px_rgba(245,158,11,0.05)] hover:bg-amber-500/20 hover:shadow-[0_0_20px_rgba(245,158,11,0.1)] hover:border-amber-500/30 transition-all duration-300"
+                disabled={!isOrderEditable}
+              >
+                <Percent className="mr-2 h-4 w-4" /> Discounts
+              </Button>
+              <Button
+                onClick={handleProductAdd}
+                className="bg-amber-500/10 text-amber-400 font-medium border border-amber-500/20 shadow-[0_0_15px_rgba(245,158,11,0.05)] hover:bg-amber-500/20 hover:shadow-[0_0_20px_rgba(245,158,11,0.1)] hover:border-amber-500/30 transition-all duration-300"
+                disabled={!isOrderEditable}
+              >
+                <Plus className="mr-2 h-4 w-4" /> Add Product
+              </Button>
+            </div>
+          </div>
+          {products.length === 0 ? (
+            <div className="text-center py-12 bg-white/[0.02] rounded-2xl border border-dashed border-white/[0.05]">
+              <p className="text-neutral-500 italic">No products found.</p>
+            </div>
+          ) : (
+            <div className="w-full">
+              <Table>
+                <TableHeader>
+                  <TableRow className="hover:bg-transparent border-white/[0.05]">
+                    <TableHead className="text-neutral-400 font-medium w-[80px]">Hide</TableHead>
+                    <TableHead className="text-neutral-400 font-medium w-[150px]">ASIN</TableHead>
+                    <TableHead className="text-neutral-400 font-medium w-[120px]">Cost</TableHead>
+                    <TableHead className="text-neutral-400 font-medium w-[120px]">Price</TableHead>
+                    <TableHead className="text-neutral-400 font-medium w-[100px]">Qty</TableHead>
+                    <TableHead className="text-neutral-400 font-medium w-[100px]">ROI %</TableHead>
+                    <TableHead className="text-neutral-400 font-medium min-w-[200px]">Description</TableHead>
+                    <TableHead className="text-neutral-400 font-medium min-w-[200px]">Pre-Assigned</TableHead>
+                    <TableHead className="text-neutral-400 font-medium w-[60px] text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {products.map((product) => {
+                    const productPreAssignments = preAssignments.filter(pa => pa.sequence === product.sequence);
+                    const totalAssigned = productPreAssignments
+                      .filter(pa => pa.quantity !== null)
+                      .reduce((sum, pa) => sum + (pa.quantity || 0), 0);
+
+                    return (
+                      <TableRow key={product.sequence} className="hover:bg-white/[0.02] transition-colors border-white/[0.02]">
+                        <TableCell className="py-4">
+                          <Switch
+                            checked={product.hide_price_and_quantity}
+                            onCheckedChange={(checked) => handleProductUpdate(product.sequence, 'hide_price_and_quantity', checked)}
                             disabled={!isOrderEditable}
-                          >
-                            Edit
-                          </Button>
+                            className="data-[state=checked]:bg-amber-500"
+                          />
+                        </TableCell>
+                        <TableCell className="py-4">
+                          <Input
+                            value={product.asin}
+                            onChange={(e) => handleProductUpdate(product.sequence, 'asin', e.target.value)}
+                            className="bg-white/[0.02] text-neutral-200 border-white/[0.05] h-9"
+                            disabled={!isOrderEditable}
+                          />
+                        </TableCell>
+                        <TableCell className="py-4">
+                          <Input
+                            type="number"
+                            value={product.cost_price}
+                            onChange={(e) => handleProductUpdate(product.sequence, 'cost_price', e.target.value)}
+                            className="bg-white/[0.02] text-neutral-200 border-white/[0.05] h-9"
+                            disabled={!isOrderEditable}
+                          />
+                        </TableCell>
+                        <TableCell className="py-4">
+                          <Input
+                            type="number"
+                            value={product.price}
+                            onChange={(e) => handleProductUpdate(product.sequence, 'price', e.target.value)}
+                            className="bg-white/[0.02] text-neutral-200 border-white/[0.05] h-9"
+                            disabled={!isOrderEditable}
+                          />
+                        </TableCell>
+                        <TableCell className="py-4">
+                          <Input
+                            type="number"
+                            value={product.quantity}
+                            onChange={(e) => handleProductUpdate(product.sequence, 'quantity', e.target.value)}
+                            className="bg-white/[0.02] text-neutral-200 border-white/[0.05] h-9"
+                            disabled={!isOrderEditable}
+                          />
+                        </TableCell>
+                        <TableCell className="py-4">
+                          <Input
+                            type="number"
+                            value={product.roi ?? ''}
+                            onChange={(e) => handleProductUpdate(product.sequence, 'roi', e.target.value)}
+                            className="bg-white/[0.02] text-neutral-200 border-white/[0.05] h-9"
+                            disabled={!isOrderEditable}
+                            placeholder="N/A"
+                          />
+                        </TableCell>
+                        <TableCell className="py-4">
+                          <Input
+                            value={product.description || ''}
+                            onChange={(e) => handleProductUpdate(product.sequence, 'description', e.target.value)}
+                            className="bg-white/[0.02] text-neutral-200 border-white/[0.05] h-9"
+                            disabled={!isOrderEditable}
+                          />
+                        </TableCell>
+                        <TableCell className="py-4">
+                          <div className="flex flex-col gap-2">
+                            {productPreAssignments.length > 0 ? (
+                              <div className="flex flex-wrap gap-1.5">
+                                {productPreAssignments.map(pa => (
+                                  <div key={pa.assignment_id} className="flex items-center bg-amber-500/10 text-amber-500 border border-amber-500/20 rounded-lg pl-2 pr-1 h-7 text-xs font-semibold">
+                                    <span>{pa.company_name}: {pa.quantity || 'Full'}</span>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => handlePreAssignRemove(pa.assignment_id)}
+                                      disabled={!isOrderEditable}
+                                      className="h-5 w-5 p-0 ml-1 hover:bg-amber-500/20"
+                                    >
+                                      <Trash2 className="h-3 w-3" />
+                                    </Button>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <span className="text-neutral-500 text-xs italic">No pre-assignments</span>
+                            )}
+                            <Dialog open={isPreAssignDialogOpen && selectedSequence === product.sequence} onOpenChange={handlePreAssignDialogControl}>
+                              <DialogTrigger asChild>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="mt-1 h-8 text-xs bg-amber-500/10 text-amber-400 font-medium border border-amber-500/20 hover:bg-amber-500/20 hover:border-amber-500/30 transition-all duration-300"
+                                  disabled={!isOrderEditable}
+                                  onClick={() => {
+                                    setSelectedSequence(product.sequence);
+                                    setIsPreAssignDialogOpen(true);
+                                  }}
+                                >
+                                  <Plus className="mr-1 h-3 w-3" /> Pre-Assign
+                                </Button>
+                              </DialogTrigger>
+                              <DialogContent className="bg-[#0a0a0a]/90 backdrop-blur-xl border-white/[0.08] text-white">
+                                <DialogHeader>
+                                  <DialogTitle>Pre-Assign Product (ASIN: {product.asin})</DialogTitle>
+                                </DialogHeader>
+                                <div className="space-y-4 py-4">
+                                  <div>
+                                    <Label htmlFor="preAssignCompany" className="block mb-2 text-neutral-400">Company</Label>
+                                    <Select value={dialogCompanyId} onValueChange={setDialogCompanyId}>
+                                      <SelectTrigger id="preAssignCompany" className="bg-white/[0.02] border-white/[0.05]">
+                                        <SelectValue placeholder="Select a company" />
+                                      </SelectTrigger>
+                                      <SelectContent className="bg-[#0a0a0a] border-white/[0.08] text-white">
+                                        {companies.map(company => (
+                                          <SelectItem key={company.company_id} value={company.company_id.toString()}>
+                                            {company.name}
+                                          </SelectItem>
+                                        ))}
+                                      </SelectContent>
+                                    </Select>
+                                  </div>
+                                  <div>
+                                    <Label htmlFor="preAssignQuantity" className="block mb-2 text-neutral-400">Quantity (optional, max: {product.quantity - totalAssigned})</Label>
+                                    <Input
+                                      id="preAssignQuantity"
+                                      type="number"
+                                      value={dialogQuantity}
+                                      onChange={(e) => setDialogQuantity(e.target.value)}
+                                      className="bg-white/[0.02] border-white/[0.05]"
+                                      placeholder="Leave blank for full remaining"
+                                      min="1"
+                                      max={product.quantity - totalAssigned}
+                                    />
+                                  </div>
+                                  <Button
+                                    onClick={handlePreAssign}
+                                    className="w-full bg-amber-500/10 text-amber-400 font-medium border border-amber-500/20 shadow-[0_0_15px_rgba(245,158,11,0.05)] hover:bg-amber-500/20 hover:shadow-[0_0_20px_rgba(245,158,11,0.1)] hover:border-amber-500/30 transition-all duration-300"
+                                  >
+                                    Confirm Pre-Assignment
+                                  </Button>
+                                </div>
+                              </DialogContent>
+                            </Dialog>
+                          </div>
+                        </TableCell>
+                        <TableCell className="py-4 text-right">
                           <Button
-                            variant="destructive"
+                            variant="ghost"
                             size="sm"
-                            onClick={() => handleDiscountDelete(discount.sequence, discount.company_id)}
+                            onClick={() => handleProductRemove(product.sequence)}
                             disabled={!isOrderEditable}
+                            className="text-rose-400 hover:text-rose-300 hover:bg-rose-500/10"
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>
@@ -1929,574 +2161,379 @@ export default function AdminOrderManagementPage() {
               </Table>
             </div>
           )}
-        </div>
+        </GlassCard>
 
-        <div className="rounded-lg p-6 bg-gradient-to-br from-[#212121] via-[#0f0f0f] to-[#2b2b2b] shadow-lg w-full overflow-x-auto">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-xl font-semibold text-gray-300">Order Products</h2>
-            <div className="flex gap-2">
-              <Button
-                onClick={() => openDiscountDialog()}
-                className="bg-[#c8aa64] hover:bg-[#9d864e] text-[#242424]"
-                disabled={!isOrderEditable}
-              >
-                <Percent className="mr-2 h-4 w-4" /> Configure Discounts
-              </Button>
-              <Button
-                onClick={handleProductAdd}
-                className="bg-[#c8aa64] hover:bg-[#9d864e] text-[#242424]"
-                disabled={!isOrderEditable}
-              >
-                <Plus className="mr-2 h-4 w-4" /> Add Product
-              </Button>
-            </div>
-          </div>
-          {products.length === 0 ? (
-            <p className="text-gray-400">No products found.</p>
-          ) : (
-            <div className="w-full overflow-x-auto">
-              <table className="w-full border-collapse bg-transparent" style={{ tableLayout: 'fixed' }}>
-                <thead>
-                  <tr className="border-[#2B2B2B] hover:bg-transparent">
-                    <th className="text-gray-300 w-[10%] h-12 px-4 text-left align-middle font-medium">Hide Price</th>
-                    <th className="text-gray-300 w-[10%] h-12 px-4 text-left align-middle font-medium">ASIN</th>
-                    <th className="text-gray-300 w-[10%] h-12 px-4 text-left align-middle font-medium">Cost Price</th>
-                    <th className="text-gray-300 w-[10%] h-12 px-4 text-left align-middle font-medium">Price</th>
-                    <th className="text-gray-300 w-[10%] h-12 px-4 text-left align-middle font-medium">Quantity</th>
-                    <th className="text-gray-300 w-[10%] h-12 px-4 text-left align-middle font-medium">ROI (%)</th>
-                    <th className="text-gray-300 w-[20%] h-12 px-4 text-left align-middle font-medium">Description</th>
-                    <th className="text-gray-300 w-[20%] h-12 px-4 text-left align-middle font-medium">Pre-Assigned To</th>
-                    <th className="text-gray-300 w-[10%] h-12 px-4 text-left align-middle font-medium">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {products.map((product) => {
-                    const productPreAssignments = preAssignments.filter(pa => pa.sequence === product.sequence);
-                    const totalAssigned = productPreAssignments
-                      .filter(pa => pa.quantity !== null)
-                      .reduce((sum, pa) => sum + (pa.quantity || 0), 0);
-
-                    return (
-                      <TableRow key={product.sequence} className="hover:bg-[#35353580] transition-colors border-[#6a6a6a80]">
-                        <TableCell className="p-4 align-middle" style={{ overflowWrap: 'break-word' }}>
-                          <Switch
-                            checked={product.hide_price_and_quantity}
-                            onCheckedChange={(checked) => handleProductUpdate(product.sequence, 'hide_price_and_quantity', checked)}
-                            disabled={!isOrderEditable}
-                          />
-                        </TableCell>
-                        <TableCell className="p-4 align-middle" style={{ overflowWrap: 'break-word' }}>
-                          <Input
-                            value={product.asin}
-                            onChange={(e) => handleProductUpdate(product.sequence, 'asin', e.target.value)}
-                            className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80]"
-                            disabled={!isOrderEditable}
-                          />
-                        </TableCell>
-                        <TableCell className="p-4 align-middle" style={{ overflowWrap: 'break-word' }}>
-                          <Input
-                            type="number"
-                            value={product.cost_price}
-                            onChange={(e) => handleProductUpdate(product.sequence, 'cost_price', e.target.value)}
-                            className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80]"
-                            disabled={!isOrderEditable}
-                          />
-                        </TableCell>
-                        <TableCell className="p-4 align-middle" style={{ overflowWrap: 'break-word' }}>
-                          <Input
-                            type="number"
-                            value={product.price}
-                            onChange={(e) => handleProductUpdate(product.sequence, 'price', e.target.value)}
-                            className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80]"
-                            disabled={!isOrderEditable}
-                          />
-                        </TableCell>
-                        <TableCell className="p-4 align-middle" style={{ overflowWrap: 'break-word' }}>
-                          <Input
-                            type="number"
-                            value={product.quantity}
-                            onChange={(e) => handleProductUpdate(product.sequence, 'quantity', e.target.value)}
-                            className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80]"
-                            disabled={!isOrderEditable}
-                          />
-                        </TableCell>
-                        <TableCell className="p-4 align-middle" style={{ overflowWrap: 'break-word' }}>
-                          <Input
-                            type="number"
-                            value={product.roi ?? ''}
-                            onChange={(e) => handleProductUpdate(product.sequence, 'roi', e.target.value)}
-                            className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80]"
-                            disabled={!isOrderEditable}
-                            placeholder="N/A"
-                          />
-                        </TableCell>
-                        <TableCell className="p-4 align-middle" style={{ overflowWrap: 'break-word' }}>
-                          <Input
-                            value={product.description || ''}
-                            onChange={(e) => handleProductUpdate(product.sequence, 'description', e.target.value)}
-                            className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80]"
-                            disabled={!isOrderEditable}
-                          />
-                        </TableCell>
-                        <TableCell className="p-4 align-middle" style={{ overflowWrap: 'break-word' }}>
-                          <div className="flex flex-col gap-2">
-                            {productPreAssignments.length > 0 ? (
-                              productPreAssignments.map(pa => (
-                                <div key={pa.assignment_id} className="flex items-center gap-2">
-                                  <span>{pa.company_name} ({pa.quantity || 'Full'})</span>
-                                  <Button
-                                    variant="destructive"
-                                    size="sm"
-                                    onClick={() => handlePreAssignRemove(pa.assignment_id)}
-                                    disabled={!isOrderEditable}
-                                  >
-                                    <Trash2 className="h-4 w-4" />
-                                  </Button>
-                                </div>
-                              ))
-                            ) : (
-                              <span className="text-gray-400">None</span>
-                            )}
-                            <Dialog open={isPreAssignDialogOpen && selectedSequence === product.sequence} onOpenChange={handlePreAssignDialogControl}>
-                              <DialogTrigger asChild>
-                                <Button
-                                  className="bg-[#c8aa64] hover:bg-[#9d864e] text-[#242424] mt-2"
-                                  disabled={!isOrderEditable}
-                                  onClick={() => {
-                                    setSelectedSequence(product.sequence);
-                                    setIsPreAssignDialogOpen(true);
-                                  }}
-                                >
-                                  Add Pre-Assignment
-                                </Button>
-                              </DialogTrigger>
-                              <DialogContent className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80]">
-                                <DialogHeader>
-                                  <DialogTitle>Pre-Assign Product (ASIN: {product.asin})</DialogTitle>
-                                </DialogHeader>
-                                <div className="space-y-4">
-                                  <div>
-                                    <Label htmlFor="preAssignCompany" className="block mb-2">Company</Label>
-                                    <Select value={dialogCompanyId} onValueChange={setDialogCompanyId}>
-                                      <SelectTrigger id="preAssignCompany" className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80]">
-                                        <SelectValue placeholder="Select a company" />
-                                      </SelectTrigger>
-                                      <SelectContent>
-                                        {companies.map(company => (
-                                          <SelectItem key={company.company_id} value={company.company_id.toString()}>
-                                            {company.name}
-                                          </SelectItem>
-                                        ))}
-                                      </SelectContent>
-                                    </Select>
-                                  </div>
-                                  <div>
-                                    <Label htmlFor="preAssignQuantity" className="block mb-2">Quantity (optional, max: {product.quantity - totalAssigned})</Label>
-                                    <Input
-                                      id="preAssignQuantity"
-                                      type="number"
-                                      value={dialogQuantity}
-                                      onChange={(e) => setDialogQuantity(e.target.value)}
-                                      className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80]"
-                                      placeholder="Leave blank for full remaining"
-                                      min="1"
-                                      max={product.quantity - totalAssigned}
-                                    />
-                                  </div>
-                                  <Button
-                                    onClick={handlePreAssign}
-                                    className="bg-[#c8aa64] hover:bg-[#9d864e] text-[#242424]"
-                                  >
-                                    Confirm
-                                  </Button>
-                                </div>
-                              </DialogContent>
-                            </Dialog>
-                          </div>
-                        </TableCell>
-                        <TableCell className="p-4 align-middle" style={{ overflowWrap: 'break-word' }}>
-                          <Button
-                            variant="destructive"
-                            size="sm"
-                            onClick={() => handleProductRemove(product.sequence)}
-                            disabled={!isOrderEditable}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-
-          <Dialog open={isDiscountDialogOpen} onOpenChange={handleDiscountDialogVisibilityChange}>
-            <DialogContent className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80]">
-              <DialogHeader>
-                <DialogTitle>Configure Discount</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-4">
-                <div>
-                  <Label htmlFor="discountCompany" className="block mb-2">Company</Label>
-                  <Select value={discountCompanyId} onValueChange={setDiscountCompanyId}>
-                    <SelectTrigger id="discountCompany" className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80]">
-                      <SelectValue placeholder="Select a company" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {companyApplications.map(company => (
-                        <SelectItem key={company.company_id} value={company.company_id.toString()}>
-                          {company.company_name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label htmlFor="discountProduct" className="block mb-2">Product (ASIN)</Label>
-                  <Select value={discountSequence} onValueChange={setDiscountSequence}>
-                    <SelectTrigger id="discountProduct" className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80]">
-                      <SelectValue placeholder="Select a product" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {products.map(product => (
-                        <SelectItem key={product.sequence} value={product.sequence.toString()}>
-                          {product.asin}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label htmlFor="originalPrice" className="block mb-2">Original Price</Label>
-                  <Input
-                    id="originalPrice"
-                    type="number"
-                    value={products.find(p => p.sequence === parseInt(discountSequence))?.price.toFixed(2) || ''}
-                    className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80]"
-                    disabled
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="discountedPrice" className="block mb-2">Discounted Price</Label>
-                  <Input
-                    id="discountedPrice"
-                    type="number"
-                    value={discountPrice}
-                    onChange={(e) => {
-                      setDiscountPrice(e.target.value);
-                      setDiscountPercentage('');
-                    }}
-                    className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80]"
-                    placeholder="Enter discounted price"
-                    step="0.01"
-                    min="0"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="discountPercentage" className="block mb-2">Discount Percentage</Label>
-                  <Select value={discountPercentage} onValueChange={handleDiscountPercentageChange}>
-                    <SelectTrigger id="discountPercentage" className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80]">
-                      <SelectValue placeholder="Select discount percentage" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {['5', '10', '20', '25', '30', '40', '50'].map(percentage => (
-                        <SelectItem key={percentage} value={percentage}>
-                          {percentage}%
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="flex gap-2">
-                  <Button
-                    onClick={handleDiscountSave}
-                    className="bg-[#c8aa64] hover:bg-[#9d864e] text-[#242424]"
-                  >
-                    Save
-                  </Button>
-                  <Button
-                    onClick={() => setIsDiscountDialogOpen(false)}
-                    className="bg-gray-600 hover:bg-gray-500 text-gray-200"
-                  >
-                    Cancel
-                  </Button>
-                </div>
-              </div>
-            </DialogContent>
-          </Dialog>
-        </div>
-
-        {allocationResults.length > 0 && (
-          <div className="rounded-lg p-6 bg-gradient-to-br from-[#212121] via-[#0f0f0f] to-[#2b2b2b] shadow-lg w-full mt-8 overflow-x-auto">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-semibold text-gray-300">Allocation Results</h2>
-              <div className="flex space-x-2">
-                <Button
-                  onClick={() => {
-                    setNewAllocationSequence('');
-                    setNewAllocationCompanyId('');
-                    setNewAllocationQuantity('');
-                    setIsAddAllocationDialogOpen(true);
-                  }}
-                  className="bg-[#c8aa64] hover:bg-[#9d864e] text-[#242424]"
-                  disabled={!isOrderEditable || availableProductsForNewAllocation.length === 0}
-                >
-                  <Plus className="mr-2 h-4 w-4" /> Add Allocation
-                </Button>
-                <Button
-                  onClick={() => setIsCompanyAllocationSummaryDialogOpen(true)}
-                  className="bg-[#c8aa64] hover:bg-[#9d864e] text-[#242424]"
-                >
-                  <TrendingUp className="mr-2 h-4 w-4" /> Company Summary
-                </Button>
-                <Button
-                  onClick={() => setIsUnallocatedProductsDialogOpen(true)}
-                  className="bg-[#c8aa64] hover:bg-[#9d864e] text-[#242424]"
-                >
-                  <PackageSearch className="mr-2 h-4 w-4" /> Unallocated Products
-                </Button>
-                <Button
-                  onClick={handleDownloadAllocationResults}
-                  className="bg-[#c8aa64] hover:bg-[#9d864e] text-[#242424]"
-                >
-                  <Download className="mr-2 h-4 w-4" />
-                  Download Results
-                </Button>
-              </div>
-            </div>
-            <Table>
-              <TableHeader>
-                <TableRow className="hover:bg-transparent">
-                  <TableHead className="text-gray-300 h-12 px-4 text-left align-middle font-medium">ASIN</TableHead>
-                  <TableHead className="text-gray-300 h-12 px-4 text-left align-middle font-medium">Company</TableHead>
-                  <TableHead className="text-gray-300 h-12 px-4 text-left align-middle font-medium">Quantity</TableHead>
-                  <TableHead className="text-gray-300 h-12 px-4 text-left align-middle font-medium">Price</TableHead>
-                  <TableHead className="text-gray-300 h-12 px-4 text-left align-middle font-medium">Cost Price</TableHead>
-                  <TableHead className="text-gray-300 h-12 px-4 text-left align-middle font-medium">Description</TableHead>
-                  <TableHead className="text-gray-300 h-12 px-4 text-left align-middle font-medium">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {allocationResults.map((result) => {
-                  const edited = editedAllocations.find(a => a.id === result.id);
-                  return (
-                    <TableRow key={result.id} className="hover:bg-[#35353580] transition-colors border-[#6a6a6a80]">
-                      <TableCell className="p-4 align-middle text-gray-300">{result.order_products?.asin || 'N/A'}</TableCell>
-                      <TableCell className="p-4 align-middle text-gray-300">{result.company?.name || 'Unknown'}</TableCell>
-                      <TableCell className="p-4 align-middle text-gray-300">
-                        <Input
-                          type="number"
-                          value={edited?.quantity ?? result.quantity}
-                          onChange={(e) => handleAllocationChange(result.id, 'quantity', parseInt(e.target.value))}
-                          className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80]"
-                          min="0"
-                          disabled={!isOrderEditable}
-                        />
-                      </TableCell>
-                      <TableCell className="p-4 align-middle text-gray-300">{result.order_products?.price ? `$${result.order_products.price.toFixed(2)}` : 'N/A'}</TableCell>
-                      <TableCell className="p-4 align-middle text-gray-300">{result.order_products?.cost_price ? `$${result.order_products.cost_price.toFixed(2)}` : 'N/A'}</TableCell>
-                      <TableCell className="p-4 align-middle text-gray-300">{result.order_products?.description || 'N/A'}</TableCell>
-                      <TableCell className="p-4 align-middle text-gray-300">
-                        <Button
-                          onClick={() => handleAllocationSave(result.id)}
-                          className="bg-[#c8aa64] hover:bg-[#9d864e] text-[#242424] mr-2"
-                          disabled={
-                            !isOrderEditable ||
-                            (edited?.quantity === result.quantity)
-                          }
-                        >
-                          <Save className="h-4 w-4 mr-1" />
-                          Save
-                        </Button>
-                        <Button
-                          variant="destructive"
-                          size="sm"
-                          onClick={() => handleAllocationDelete(result.id)}
-                          disabled={!isOrderEditable}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          </div>
-        )}
-
-        {/* Add New Allocation Dialog */}
-        <Dialog open={isAddAllocationDialogOpen} onOpenChange={handleAddAllocationDialogVisibilityChange}>
-          <DialogContent className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80] max-w-lg">
+        <Dialog open={isDiscountDialogOpen} onOpenChange={handleDiscountDialogVisibilityChange}>
+          <DialogContent className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80]">
             <DialogHeader>
-              <DialogTitle>Add New Allocation</DialogTitle>
+              <DialogTitle>Configure Discount</DialogTitle>
             </DialogHeader>
             <div className="space-y-4 py-4">
               <div>
-                <Label htmlFor="newAllocationAsin" className="block mb-2 text-sm font-medium text-gray-300">ASIN (Product)</Label>
-                <Select value={newAllocationSequence} onValueChange={setNewAllocationSequence}>
-                  <SelectTrigger id="newAllocationAsin" className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80]">
-                    <SelectValue placeholder="Select a product" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {availableProductsForNewAllocation.length === 0 ? (
-                      <SelectItem value="disabled" disabled>No products available for new allocation</SelectItem>
-                    ) : (
-                      availableProductsForNewAllocation.map(product => (
-                        <SelectItem key={product.sequence} value={product.sequence.toString()}>
-                          {product.asin} (Available: {product.quantity - (allocationResults.filter(ar => ar.sequence === product.sequence).reduce((sum, ar) => sum + ar.quantity, 0))})
-                        </SelectItem>
-                      ))
-                    )}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label htmlFor="newAllocationCompany" className="block mb-2 text-sm font-medium text-gray-300">Company</Label>
-                <Select value={newAllocationCompanyId} onValueChange={setNewAllocationCompanyId}>
-                  <SelectTrigger id="newAllocationCompany" className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80]">
+                <Label htmlFor="discountCompany" className="block mb-2 text-neutral-400 text-sm">Target Company</Label>
+                <Select value={discountCompanyId} onValueChange={setDiscountCompanyId}>
+                  <SelectTrigger id="discountCompany" className="bg-white/[0.02] border-white/[0.05] text-white">
                     <SelectValue placeholder="Select a company" />
                   </SelectTrigger>
-                  <SelectContent>
-                    {companyApplications.length === 0 ? (
-                        <SelectItem value="disabled" disabled>No companies have applied</SelectItem>
-                    ) : (
-                        companyApplications.map(app => (
-                        <SelectItem key={app.company_id} value={app.company_id.toString()}>
-                            {app.company_name}
-                        </SelectItem>
-                        ))
-                    )}
+                  <SelectContent className="bg-[#0a0a0a] border-white/[0.08] text-white">
+                    {companies.map(c => (
+                      <SelectItem key={c.company_id} value={c.company_id.toString()}>
+                        {c.name}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
               <div>
-                <Label htmlFor="newAllocationQuantity" className="block mb-2 text-sm font-medium text-gray-300">Quantity</Label>
-                <Input
-                  id="newAllocationQuantity"
-                  type="number"
-                  value={newAllocationQuantity}
-                  onChange={(e) => setNewAllocationQuantity(e.target.value)}
-                  className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80]"
-                  placeholder="Enter quantity"
-                  min="1"
-                  max={maxAllocatableForDialog}
-                />
-                {newAllocationSequence && products.find(p => p.sequence === parseInt(newAllocationSequence)) && (
-                  <p className="text-xs text-gray-400 mt-1">
-                    Max allocatable for selected ASIN: {maxAllocatableForDialog}
-                  </p>
-                )}
+                <Label htmlFor="discountAsin" className="block mb-2 text-neutral-400 text-sm">Target Product (ASIN)</Label>
+                <Select value={discountSequence} onValueChange={setDiscountSequence}>
+                  <SelectTrigger id="discountAsin" className="bg-white/[0.02] border-white/[0.05] text-white">
+                    <SelectValue placeholder="Select a product" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-[#0a0a0a] border-white/[0.08] text-white">
+                    {products.map(p => (
+                      <SelectItem key={p.sequence} value={p.sequence.toString()}>
+                        {p.asin} - {p.description || 'No description'}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
-            </div>
-            <DialogFooter>
-              <Button
-                variant="outline"
-                onClick={() => setIsAddAllocationDialogOpen(false)}
-                className="bg-gray-700 hover:bg-gray-600 text-gray-200"
-              >
-                Cancel
-              </Button>
-              <Button
-                onClick={handleAddNewAllocationSave}
-                className="bg-[#c8aa64] hover:bg-[#9d864e] text-[#242424]"
-                disabled={!newAllocationSequence || !newAllocationCompanyId || !newAllocationQuantity || parseInt(newAllocationQuantity) <=0 || (maxAllocatableForDialog !== undefined && parseInt(newAllocationQuantity) > maxAllocatableForDialog)}
-              >
-                Save Allocation
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
 
-        <Dialog open={isCompanyAllocationSummaryDialogOpen} onOpenChange={setIsCompanyAllocationSummaryDialogOpen}>
-          <DialogContent className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80] max-w-3xl">
-            <DialogHeader>
-              <DialogTitle>Company Allocation Summary for Order #{order?.order_id}</DialogTitle>
-            </DialogHeader>
-            <div className="max-h-[70vh] overflow-y-auto">
-              {companyAllocationSummary.length === 0 ? (
-                <p className="text-gray-400">No company applications or allocations found for this order.</p>
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow className="hover:bg-transparent">
-                      <TableHead className="text-gray-300">Company Name</TableHead>
-                      <TableHead className="text-gray-300 text-right">Max Investment</TableHead>
-                      <TableHead className="text-gray-300 text-right">Total Allocated Value</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {companyAllocationSummary.map((summary) => (
-                      <TableRow key={summary.company_id} className="hover:bg-[#35353580] transition-colors border-[#6a6a6a80]">
-                        <TableCell className="text-gray-200">{summary.company_name}</TableCell>
-                        <TableCell className="text-gray-200 text-right">${summary.max_investment.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
-                        <TableCell className="text-gray-200 text-right">${summary.totalAllocatedValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
-                      </TableRow>
+              <div>
+                <Label htmlFor="originalPrice" className="block mb-2 text-neutral-400 text-sm">Original Price</Label>
+                <Input
+                  id="originalPrice"
+                  type="number"
+                  value={products.find(p => p.sequence === parseInt(discountSequence))?.price.toFixed(2) || ''}
+                  className="bg-white/[0.05] text-neutral-400 border-white/[0.05]"
+                  disabled
+                />
+              </div>
+              <div>
+                <Label htmlFor="discountedPrice" className="block mb-2 text-neutral-400 text-sm">Discounted Price ($)</Label>
+                <Input
+                  id="discountedPrice"
+                  type="number"
+                  value={discountPrice}
+                  onChange={(e) => {
+                    setDiscountPrice(e.target.value);
+                    setDiscountPercentage('');
+                  }}
+                  className="bg-white/[0.02] border-white/[0.05] text-white"
+                  placeholder="Enter discounted price"
+                  step="0.01"
+                  min="0"
+                />
+              </div>
+              <div>
+                <Label htmlFor="discountPercentage" className="block mb-2 text-neutral-400 text-sm">Quick Discount %</Label>
+                <Select value={discountPercentage} onValueChange={handleDiscountPercentageChange}>
+                  <SelectTrigger id="discountPercentage" className="bg-white/[0.02] border-white/[0.05] text-white">
+                    <SelectValue placeholder="Select percentage" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-[#0a0a0a] border-white/[0.08] text-white">
+                    {['5', '10', '20', '25', '30', '40', '50'].map(percentage => (
+                      <SelectItem key={percentage} value={percentage}>
+                        {percentage}%
+                      </SelectItem>
                     ))}
-                  </TableBody>
-                </Table>
-              )}
+                  </SelectContent>
+                </Select>
+              </div>
+              <DialogFooter className="gap-2">
+                <Button
+                  variant="ghost"
+                  onClick={() => setIsDiscountDialogOpen(false)}
+                  className="text-neutral-400 hover:text-white"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleDiscountSave}
+                  className="bg-amber-500/10 text-amber-400 font-medium border border-amber-500/20 shadow-[0_0_15px_rgba(245,158,11,0.05)] hover:bg-amber-500/20 hover:shadow-[0_0_20px_rgba(245,158,11,0.1)] hover:border-amber-500/30 transition-all duration-300"
+                >
+                  Save Discount
+                </Button>
+              </DialogFooter>
             </div>
-            <DialogFooter>
-              <Button
-                variant="outline"
-                onClick={() => setIsCompanyAllocationSummaryDialogOpen(false)}
-                className="bg-gray-700 hover:bg-gray-600 text-gray-200"
-              >
-                Close
-              </Button>
-            </DialogFooter>
           </DialogContent>
         </Dialog>
-
-        <Dialog open={isUnallocatedProductsDialogOpen} onOpenChange={setIsUnallocatedProductsDialogOpen}>
-          <DialogContent className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80] max-w-3xl">
-            <DialogHeader>
-              <DialogTitle>Unallocated Products for Order #{order?.order_id}</DialogTitle>
-            </DialogHeader>
-            <div className="max-h-[70vh] overflow-y-auto">
-              {unallocatedProductsSummary.length === 0 ? (
-                <p className="text-gray-400">All products have been fully allocated or no products in this order.</p>
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow className="hover:bg-transparent">
-                      <TableHead className="text-gray-300">ASIN</TableHead>
-                      <TableHead className="text-gray-300">Description</TableHead>
-                      <TableHead className="text-gray-300 text-right">Total Quantity</TableHead>
-                      <TableHead className="text-gray-300 text-right">Allocated Quantity</TableHead>
-                      <TableHead className="text-gray-300 text-right">Unallocated Quantity</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {unallocatedProductsSummary.map((product) => (
-                      <TableRow key={product.sequence} className="hover:bg-[#35353580] transition-colors border-[#6a6a6a80]">
-                        <TableCell className="text-gray-200">{product.asin}</TableCell>
-                        <TableCell className="text-gray-200">{product.description || 'N/A'}</TableCell>
-                        <TableCell className="text-gray-200 text-right">{product.quantity}</TableCell>
-                        <TableCell className="text-gray-200 text-right">{product.totalAllocatedForProduct}</TableCell>
-                        <TableCell className="text-red-400 text-right font-semibold">{product.unallocatedQuantity}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              )}
-            </div>
-            <DialogFooter>
-              <Button
-                variant="outline"
-                onClick={() => setIsUnallocatedProductsDialogOpen(false)}
-                className="bg-gray-700 hover:bg-gray-600 text-gray-200"
-              >
-                Close
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-
       </div>
+
+      {allocationResults.length > 0 && (
+        <GlassCard className="p-6 w-full mt-8 overflow-x-auto">
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="text-lg font-semibold text-white flex items-center">
+              <TrendingUp className="mr-2 h-5 w-5 text-amber-500" />
+              Allocation Results
+            </h2>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                onClick={() => {
+                  setNewAllocationSequence('');
+                  setNewAllocationCompanyId('');
+                  setNewAllocationQuantity('');
+                  setIsAddAllocationDialogOpen(true);
+                }}
+                className="bg-amber-500/10 text-amber-400 font-medium border border-amber-500/20 shadow-[0_0_15px_rgba(245,158,11,0.05)] hover:bg-amber-500/20 hover:shadow-[0_0_20px_rgba(245,158,11,0.1)] hover:border-amber-500/30 transition-all duration-300"
+                disabled={!isOrderEditable || availableProductsForNewAllocation.length === 0}
+              >
+                <Plus className="mr-2 h-4 w-4" /> Add Allocation
+              </Button>
+              <Button
+                onClick={() => setIsCompanyAllocationSummaryDialogOpen(true)}
+                className="bg-amber-500/10 text-amber-400 font-medium border border-amber-500/20 shadow-[0_0_15px_rgba(245,158,11,0.05)] hover:bg-amber-500/20 hover:shadow-[0_0_20px_rgba(245,158,11,0.1)] hover:border-amber-500/30 transition-all duration-300"
+              >
+                <TrendingUp className="mr-2 h-4 w-4" /> Summary
+              </Button>
+              <Button
+                onClick={() => setIsUnallocatedProductsDialogOpen(true)}
+                className="bg-amber-500/10 text-amber-400 font-medium border border-amber-500/20 shadow-[0_0_15px_rgba(245,158,11,0.05)] hover:bg-amber-500/20 hover:shadow-[0_0_20px_rgba(245,158,11,0.1)] hover:border-amber-500/30 transition-all duration-300"
+              >
+                <PackageSearch className="mr-2 h-4 w-4" /> Unallocated
+              </Button>
+              <Button
+                onClick={handleDownloadAllocationResults}
+                className="bg-amber-500/10 text-amber-400 font-medium border border-amber-500/20 shadow-[0_0_15px_rgba(245,158,11,0.05)] hover:bg-amber-500/20 hover:shadow-[0_0_20px_rgba(245,158,11,0.1)] hover:border-amber-500/30 transition-all duration-300"
+              >
+                <Download className="mr-2 h-4 w-4" /> Download
+              </Button>
+            </div>
+          </div>
+          <Table>
+            <TableHeader>
+              <TableRow className="hover:bg-transparent border-white/[0.05]">
+                <TableHead className="text-neutral-400 font-medium h-12">ASIN</TableHead>
+                <TableHead className="text-neutral-400 font-medium h-12">Company</TableHead>
+                <TableHead className="text-neutral-400 font-medium h-12">Quantity</TableHead>
+                <TableHead className="text-neutral-400 font-medium h-12">Price</TableHead>
+                <TableHead className="text-neutral-400 font-medium h-12">Cost</TableHead>
+                <TableHead className="text-neutral-400 font-medium h-12">Description</TableHead>
+                <TableHead className="text-neutral-400 font-medium h-12 text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {allocationResults.map((result) => {
+                const edited = editedAllocations.find(a => a.id === result.id);
+                return (
+                  <TableRow key={result.id} className="hover:bg-white/[0.02] transition-colors border-white/[0.02]">
+                    <TableCell className="py-4 text-neutral-400 font-mono text-xs">{result.order_products?.asin || 'N/A'}</TableCell>
+                    <TableCell className="py-4 font-medium text-white">{result.company?.name || 'Unknown'}</TableCell>
+                    <TableCell className="py-4">
+                      <Input
+                        type="number"
+                        value={edited?.quantity ?? result.quantity}
+                        onChange={(e) => handleAllocationChange(result.id, 'quantity', parseInt(e.target.value))}
+                        className="bg-white/[0.02] text-neutral-200 border-white/[0.05] h-9 w-[100px]"
+                        min="0"
+                        disabled={!isOrderEditable}
+                      />
+                    </TableCell>
+                    <TableCell className="py-4 text-neutral-400">${result.order_products?.price?.toFixed(2) || '0.00'}</TableCell>
+                    <TableCell className="py-4 text-neutral-400">${result.order_products?.cost_price?.toFixed(2) || '0.00'}</TableCell>
+                    <TableCell className="py-4 text-neutral-400 text-sm">{result.order_products?.description || 'N/A'}</TableCell>
+                    <TableCell className="py-4 text-right">
+                      <div className="flex justify-end space-x-2">
+                        <Button
+                          onClick={() => handleAllocationSave(result.id)}
+                          className="bg-amber-500/10 text-amber-400 font-medium border border-amber-500/20 hover:bg-amber-500/20 hover:border-amber-500/30 transition-all duration-300 h-9"
+                          disabled={!isOrderEditable || (edited?.quantity === result.quantity)}
+                          size="sm"
+                        >
+                          <Save className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleAllocationDelete(result.id)}
+                          disabled={!isOrderEditable}
+                          className="text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 h-9"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </GlassCard>
+      )}
+
+      {/* Add New Allocation Dialog */}
+      <Dialog open={isAddAllocationDialogOpen} onOpenChange={setIsAddAllocationDialogOpen}>
+        <DialogContent className="bg-[#0a0a0a]/90 backdrop-blur-xl border-white/[0.08] text-white">
+          <DialogHeader>
+            <DialogTitle>Add New Allocation</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div>
+              <Label htmlFor="newAllocationAsin" className="block mb-2 text-neutral-400 text-sm">ASIN (Product)</Label>
+              <Select value={newAllocationSequence} onValueChange={setNewAllocationSequence}>
+                <SelectTrigger id="newAllocationAsin" className="bg-white/[0.02] border-white/[0.05] text-white">
+                  <SelectValue placeholder="Select a product" />
+                </SelectTrigger>
+                <SelectContent className="bg-[#0a0a0a] border-white/[0.08] text-white">
+                  {availableProductsForNewAllocation.length === 0 ? (
+                    <SelectItem value="disabled" disabled>No products available</SelectItem>
+                  ) : (
+                    availableProductsForNewAllocation.map(product => {
+                      const allocatedQty = allocationResults.filter(ar => ar.sequence === product.sequence).reduce((sum, ar) => sum + ar.quantity, 0);
+                      const remainingQty = product.quantity - allocatedQty;
+                      return (
+                        <SelectItem key={product.sequence} value={product.sequence.toString()}>
+                          {product.asin} (Available: {remainingQty})
+                        </SelectItem>
+                      );
+                    })
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label htmlFor="newAllocationCompany" className="block mb-2 text-neutral-400 text-sm">Company</Label>
+              <Select value={newAllocationCompanyId} onValueChange={setNewAllocationCompanyId}>
+                <SelectTrigger id="newAllocationCompany" className="bg-white/[0.02] border-white/[0.05] text-white">
+                  <SelectValue placeholder="Select a company" />
+                </SelectTrigger>
+                <SelectContent className="bg-[#0a0a0a] border-white/[0.08] text-white">
+                  {companyApplications.length === 0 ? (
+                    <SelectItem value="disabled" disabled>No applications</SelectItem>
+                  ) : (
+                    companyApplications.map(app => (
+                      <SelectItem key={app.company_id} value={app.company_id.toString()}>
+                        {app.company_name}
+                      </SelectItem>
+                    ))
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label htmlFor="newAllocationQuantity" className="block mb-2 text-neutral-400 text-sm">Quantity</Label>
+              <Input
+                id="newAllocationQuantity"
+                type="number"
+                value={newAllocationQuantity}
+                onChange={(e) => setNewAllocationQuantity(e.target.value)}
+                className="bg-white/[0.02] border-white/[0.05] text-white"
+                placeholder="Enter quantity"
+                min="1"
+                max={maxAllocatableForDialog}
+              />
+              {newAllocationSequence && (
+                <p className="text-xs text-neutral-500 mt-1.5 flex items-center italic">
+                  <Info className="h-3 w-3 mr-1" /> Max allocatable: {maxAllocatableForDialog}
+                </p>
+              )}
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button
+              variant="ghost"
+              onClick={() => setIsAddAllocationDialogOpen(false)}
+              className="text-neutral-400 hover:text-white"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleAddNewAllocationSave}
+              className="bg-amber-500/10 text-amber-400 font-medium border border-amber-500/20 shadow-[0_0_15px_rgba(245,158,11,0.05)] hover:bg-amber-500/20 hover:shadow-[0_0_20px_rgba(245,158,11,0.1)] hover:border-amber-500/30 transition-all duration-300"
+              disabled={!newAllocationSequence || !newAllocationCompanyId || !newAllocationQuantity || parseInt(newAllocationQuantity) <= 0 || (maxAllocatableForDialog !== undefined && parseInt(newAllocationQuantity) > maxAllocatableForDialog)}
+            >
+              Save Allocation
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isCompanyAllocationSummaryDialogOpen} onOpenChange={setIsCompanyAllocationSummaryDialogOpen}>
+        <DialogContent className="bg-[#0a0a0a]/90 backdrop-blur-xl border-white/[0.08] text-white max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Company Allocation Summary for Order <span className="text-amber-500">#{order?.order_id}</span></DialogTitle>
+          </DialogHeader>
+          <div className="max-h-[70vh] overflow-y-auto pr-2">
+            {companyAllocationSummary.length === 0 ? (
+              <p className="text-neutral-500 italic p-8 text-center">No allocations found.</p>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow className="hover:bg-transparent border-white/[0.05]">
+                    <TableHead className="text-neutral-400 font-medium">Company Name</TableHead>
+                    <TableHead className="text-neutral-400 font-medium text-right">Max Investment</TableHead>
+                    <TableHead className="text-neutral-400 font-medium text-right">Total Allocated</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {companyAllocationSummary.map((summary) => (
+                    <TableRow key={summary.company_id} className="hover:bg-white/[0.02] transition-colors border-white/[0.02]">
+                      <TableCell className="text-white font-medium py-4">{summary.company_name}</TableCell>
+                      <TableCell className="text-neutral-400 text-right py-4">${summary.max_investment.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
+                      <TableCell className="text-emerald-400 text-right font-bold py-4">${summary.totalAllocatedValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </div>
+          <DialogFooter className="pt-4 border-t border-white/[0.05]">
+            <Button
+              variant="ghost"
+              onClick={() => setIsCompanyAllocationSummaryDialogOpen(false)}
+              className="text-neutral-400 hover:text-white"
+            >
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isUnallocatedProductsDialogOpen} onOpenChange={setIsUnallocatedProductsDialogOpen}>
+        <DialogContent className="bg-[#0a0a0a]/90 backdrop-blur-xl border-white/[0.08] text-white max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Unallocated Products for Order <span className="text-amber-500">#{order?.order_id}</span></DialogTitle>
+          </DialogHeader>
+          <div className="max-h-[70vh] overflow-y-auto pr-2">
+            {unallocatedProductsSummary.length === 0 ? (
+              <p className="text-neutral-500 italic p-8 text-center">All products have been fully allocated.</p>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow className="hover:bg-transparent border-white/[0.05]">
+                    <TableHead className="text-neutral-400 font-medium">ASIN</TableHead>
+                    <TableHead className="text-neutral-400 font-medium">Description</TableHead>
+                    <TableHead className="text-neutral-400 font-medium text-right">Total Qty</TableHead>
+                    <TableHead className="text-neutral-400 font-medium text-right">Allocated</TableHead>
+                    <TableHead className="text-neutral-400 font-medium text-right">Remaining</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {unallocatedProductsSummary.map((product) => (
+                    <TableRow key={product.sequence} className="hover:bg-white/[0.02] transition-colors border-white/[0.02]">
+                      <TableCell className="text-white font-mono text-xs">{product.asin}</TableCell>
+                      <TableCell className="text-neutral-400 text-sm">{product.description || 'N/A'}</TableCell>
+                      <TableCell className="text-neutral-200 text-right">{product.quantity}</TableCell>
+                      <TableCell className="text-emerald-400 text-right">{product.totalAllocatedForProduct}</TableCell>
+                      <TableCell className="text-rose-400 text-right font-bold">{product.unallocatedQuantity}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </div>
+          <DialogFooter className="pt-4 border-t border-white/[0.05]">
+            <Button
+              variant="ghost"
+              onClick={() => setIsUnallocatedProductsDialogOpen(false)}
+              className="text-neutral-400 hover:text-white"
+            >
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -1,0 +1,145 @@
+
+> syndicate@0.1.0 build
+> echo "NODE_ENV: $NODE_ENV" && echo "SUPABASE_SERVICE_ROLE_KEY_SET: ${SUPABASE_SERVICE_ROLE_KEY:+true}" && next build
+
+NODE_ENV: 
+SUPABASE_SERVICE_ROLE_KEY_SET: 
+ ⚠ Warning: Next.js inferred your workspace root, but it may not be correct.
+ We detected multiple lockfiles and selected the directory of /Users/rodystupers/Documents/Programming/syndicate/package-lock.json as the root directory.
+ To silence this warning, set `outputFileTracingRoot` in your Next.js config, or consider removing one of the lockfiles if it's not needed.
+   See https://nextjs.org/docs/app/api-reference/config/next-config-js/output#caveats for more information.
+ Detected additional lockfiles: 
+   * /Users/rodystupers/Documents/Programming/syndicate/syndicate/package-lock.json
+
+   ▲ Next.js 15.5.12
+   - Environments: .env.local
+
+   Creating an optimized production build ...
+Browserslist: browsers data (caniuse-lite) is 13 months old. Please run:
+  npx update-browserslist-db@latest
+  Why you should do it regularly: https://github.com/browserslist/update-db#readme
+Failed to compile.
+
+./src/app/globals.css:18:5
+Syntax error: /Users/rodystupers/Documents/Programming/syndicate/syndicate/src/app/globals.css The `shadow-[0_8px_32px_0_rgba(0,` class does not exist. If `shadow-[0_8px_32px_0_rgba(0,` is a custom class, make sure it is defined within a `@layer` directive.
+
+  16 | 
+  17 |   .card {
+> 18 |     @apply w-full max-w-md rounded-2xl shadow-[0_8px_32px_0_rgba(0, 0, 0, 0.3)] p-6 space-y-6 bg-white/[0.03] backdrop-blur-xl border border-white/[0.08] relative overflow-hidden;
+     |     ^
+  19 |   }
+  20 |
+
+./src/app/globals.css
+Syntax error: /Users/rodystupers/Documents/Programming/syndicate/syndicate/src/app/globals.css The `shadow-[0_8px_32px_0_rgba(0,` class does not exist. If `shadow-[0_8px_32px_0_rgba(0,` is a custom class, make sure it is defined within a `@layer` directive. (18:5)
+
+  16 | 
+  17 |   .card {
+> 18 |     @apply w-full max-w-md rounded-2xl shadow-[0_8px_32px_0_rgba(0, 0, 0, 0.3)] p-6 space-y-6 bg-white/[0.03] backdrop-blur-xl border border-white/[0.08] relative overflow-hidden;
+     |     ^
+  19 |   }
+  20 | 
+
+    at tryRunOrWebpackError (/Users/rodystupers/Documents/Programming/syndicate/syndicate/node_modules/next/dist/compiled/webpack/bundle5.js:29:316119)
+    at __webpack_require_module__ (/Users/rodystupers/Documents/Programming/syndicate/syndicate/node_modules/next/dist/compiled/webpack/bundle5.js:29:131532)
+    at __nested_webpack_require_161494__ (/Users/rodystupers/Documents/Programming/syndicate/syndicate/node_modules/next/dist/compiled/webpack/bundle5.js:29:130967)
+    at /Users/rodystupers/Documents/Programming/syndicate/syndicate/node_modules/next/dist/compiled/webpack/bundle5.js:29:131824
+    at symbolIterator (/Users/rodystupers/Documents/Programming/syndicate/syndicate/node_modules/next/dist/compiled/neo-async/async.js:1:14444)
+    at done (/Users/rodystupers/Documents/Programming/syndicate/syndicate/node_modules/next/dist/compiled/neo-async/async.js:1:14824)
+    at Hook.eval [as callAsync] (eval at create (/Users/rodystupers/Documents/Programming/syndicate/syndicate/node_modules/next/dist/compiled/webpack/bundle5.js:14:9224), <anonymous>:15:1)
+    at Hook.CALL_ASYNC_DELEGATE [as _callAsync] (/Users/rodystupers/Documents/Programming/syndicate/syndicate/node_modules/next/dist/compiled/webpack/bundle5.js:14:6378)
+    at /Users/rodystupers/Documents/Programming/syndicate/syndicate/node_modules/next/dist/compiled/webpack/bundle5.js:29:130687
+    at symbolIterator (/Users/rodystupers/Documents/Programming/syndicate/syndicate/node_modules/next/dist/compiled/neo-async/async.js:1:14402)
+    at timesSync (/Users/rodystupers/Documents/Programming/syndicate/syndicate/node_modules/next/dist/compiled/neo-async/async.js:1:5027)
+    at Object.eachLimit (/Users/rodystupers/Documents/Programming/syndicate/syndicate/node_modules/next/dist/compiled/neo-async/async.js:1:14208)
+    at /Users/rodystupers/Documents/Programming/syndicate/syndicate/node_modules/next/dist/compiled/webpack/bundle5.js:29:130247
+    at symbolIterator (/Users/rodystupers/Documents/Programming/syndicate/syndicate/node_modules/next/dist/compiled/neo-async/async.js:1:14444)
+    at timesSync (/Users/rodystupers/Documents/Programming/syndicate/syndicate/node_modules/next/dist/compiled/neo-async/async.js:1:5027)
+    at Object.eachLimit (/Users/rodystupers/Documents/Programming/syndicate/syndicate/node_modules/next/dist/compiled/neo-async/async.js:1:14208)
+    at /Users/rodystupers/Documents/Programming/syndicate/syndicate/node_modules/next/dist/compiled/webpack/bundle5.js:29:129985
+    at symbolIterator (/Users/rodystupers/Documents/Programming/syndicate/syndicate/node_modules/next/dist/compiled/neo-async/async.js:1:14444)
+    at done (/Users/rodystupers/Documents/Programming/syndicate/syndicate/node_modules/next/dist/compiled/neo-async/async.js:1:14824)
+    at /Users/rodystupers/Documents/Programming/syndicate/syndicate/node_modules/next/dist/compiled/webpack/bundle5.js:29:129496
+    at /Users/rodystupers/Documents/Programming/syndicate/syndicate/node_modules/next/dist/compiled/webpack/bundle5.js:29:110331
+    at /Users/rodystupers/Documents/Programming/syndicate/syndicate/node_modules/next/dist/compiled/webpack/bundle5.js:29:315955
+    at Hook.eval [as callAsync] (eval at create (/Users/rodystupers/Documents/Programming/syndicate/syndicate/node_modules/next/dist/compiled/webpack/bundle5.js:14:9224), <anonymous>:6:1)
+    at Cache.store (/Users/rodystupers/Documents/Programming/syndicate/syndicate/node_modules/next/dist/compiled/webpack/bundle5.js:29:16215)
+    at ItemCacheFacade.store (/Users/rodystupers/Documents/Programming/syndicate/syndicate/node_modules/next/dist/compiled/webpack/bundle5.js:29:17460)
+    at /Users/rodystupers/Documents/Programming/syndicate/syndicate/node_modules/next/dist/compiled/webpack/bundle5.js:29:110318
+    at /Users/rodystupers/Documents/Programming/syndicate/syndicate/node_modules/next/dist/compiled/webpack/bundle5.js:29:16169
+    at Hook.eval [as callAsync] (eval at create (/Users/rodystupers/Documents/Programming/syndicate/syndicate/node_modules/next/dist/compiled/webpack/bundle5.js:14:9224), <anonymous>:6:1)
+    at Cache.get (/Users/rodystupers/Documents/Programming/syndicate/syndicate/node_modules/next/dist/compiled/webpack/bundle5.js:29:15944)
+    at ItemCacheFacade.get (/Users/rodystupers/Documents/Programming/syndicate/syndicate/node_modules/next/dist/compiled/webpack/bundle5.js:29:17292)
+    at Compilation._codeGenerationModule (/Users/rodystupers/Documents/Programming/syndicate/syndicate/node_modules/next/dist/compiled/webpack/bundle5.js:29:109949)
+    at codeGen (/Users/rodystupers/Documents/Programming/syndicate/syndicate/node_modules/next/dist/compiled/webpack/bundle5.js:29:129383)
+    at symbolIterator (/Users/rodystupers/Documents/Programming/syndicate/syndicate/node_modules/next/dist/compiled/neo-async/async.js:1:14402)
+    at timesSync (/Users/rodystupers/Documents/Programming/syndicate/syndicate/node_modules/next/dist/compiled/neo-async/async.js:1:5027)
+    at Object.eachLimit (/Users/rodystupers/Documents/Programming/syndicate/syndicate/node_modules/next/dist/compiled/neo-async/async.js:1:14208)
+    at /Users/rodystupers/Documents/Programming/syndicate/syndicate/node_modules/next/dist/compiled/webpack/bundle5.js:29:129630
+    at processQueue (/Users/rodystupers/Documents/Programming/syndicate/syndicate/node_modules/next/dist/compiled/webpack/bundle5.js:29:1448645)
+    at processTicksAndRejections (node:internal/process/task_queues:85:11)
+    at runNextTicks (node:internal/process/task_queues:69:3)
+    at process.processImmediate (node:internal/timers:476:9)
+-- inner error --
+Syntax error: /Users/rodystupers/Documents/Programming/syndicate/syndicate/src/app/globals.css The `shadow-[0_8px_32px_0_rgba(0,` class does not exist. If `shadow-[0_8px_32px_0_rgba(0,` is a custom class, make sure it is defined within a `@layer` directive. (18:5)
+
+  16 | 
+  17 |   .card {
+> 18 |     @apply w-full max-w-md rounded-2xl shadow-[0_8px_32px_0_rgba(0, 0, 0, 0.3)] p-6 space-y-6 bg-white/[0.03] backdrop-blur-xl border border-white/[0.08] relative overflow-hidden;
+     |     ^
+  19 |   }
+  20 | 
+
+    at Object.<anonymous> (/Users/rodystupers/Documents/Programming/syndicate/syndicate/node_modules/next/dist/build/webpack/loaders/css-loader/src/index.js??ruleSet[1].rules[14].oneOf[10].use[2]!/Users/rodystupers/Documents/Programming/syndicate/syndicate/node_modules/next/dist/build/webpack/loaders/postcss-loader/src/index.js??ruleSet[1].rules[14].oneOf[10].use[3]!/Users/rodystupers/Documents/Programming/syndicate/syndicate/src/app/globals.css:1:7)
+    at /Users/rodystupers/Documents/Programming/syndicate/syndicate/node_modules/next/dist/compiled/webpack/bundle5.js:29:962717
+    at Hook.eval [as call] (eval at create (/Users/rodystupers/Documents/Programming/syndicate/syndicate/node_modules/next/dist/compiled/webpack/bundle5.js:14:9002), <anonymous>:7:1)
+    at Hook.CALL_DELEGATE [as _call] (/Users/rodystupers/Documents/Programming/syndicate/syndicate/node_modules/next/dist/compiled/webpack/bundle5.js:14:6272)
+    at /Users/rodystupers/Documents/Programming/syndicate/syndicate/node_modules/next/dist/compiled/webpack/bundle5.js:29:131565
+    at tryRunOrWebpackError (/Users/rodystupers/Documents/Programming/syndicate/syndicate/node_modules/next/dist/compiled/webpack/bundle5.js:29:316073)
+    at __webpack_require_module__ (/Users/rodystupers/Documents/Programming/syndicate/syndicate/node_modules/next/dist/compiled/webpack/bundle5.js:29:131532)
+    at __nested_webpack_require_161494__ (/Users/rodystupers/Documents/Programming/syndicate/syndicate/node_modules/next/dist/compiled/webpack/bundle5.js:29:130967)
+    at /Users/rodystupers/Documents/Programming/syndicate/syndicate/node_modules/next/dist/compiled/webpack/bundle5.js:29:131824
+    at symbolIterator (/Users/rodystupers/Documents/Programming/syndicate/syndicate/node_modules/next/dist/compiled/neo-async/async.js:1:14444)
+    at done (/Users/rodystupers/Documents/Programming/syndicate/syndicate/node_modules/next/dist/compiled/neo-async/async.js:1:14824)
+    at Hook.eval [as callAsync] (eval at create (/Users/rodystupers/Documents/Programming/syndicate/syndicate/node_modules/next/dist/compiled/webpack/bundle5.js:14:9224), <anonymous>:15:1)
+    at Hook.CALL_ASYNC_DELEGATE [as _callAsync] (/Users/rodystupers/Documents/Programming/syndicate/syndicate/node_modules/next/dist/compiled/webpack/bundle5.js:14:6378)
+    at /Users/rodystupers/Documents/Programming/syndicate/syndicate/node_modules/next/dist/compiled/webpack/bundle5.js:29:130687
+    at symbolIterator (/Users/rodystupers/Documents/Programming/syndicate/syndicate/node_modules/next/dist/compiled/neo-async/async.js:1:14402)
+    at timesSync (/Users/rodystupers/Documents/Programming/syndicate/syndicate/node_modules/next/dist/compiled/neo-async/async.js:1:5027)
+    at Object.eachLimit (/Users/rodystupers/Documents/Programming/syndicate/syndicate/node_modules/next/dist/compiled/neo-async/async.js:1:14208)
+    at /Users/rodystupers/Documents/Programming/syndicate/syndicate/node_modules/next/dist/compiled/webpack/bundle5.js:29:130247
+    at symbolIterator (/Users/rodystupers/Documents/Programming/syndicate/syndicate/node_modules/next/dist/compiled/neo-async/async.js:1:14444)
+    at timesSync (/Users/rodystupers/Documents/Programming/syndicate/syndicate/node_modules/next/dist/compiled/neo-async/async.js:1:5027)
+    at Object.eachLimit (/Users/rodystupers/Documents/Programming/syndicate/syndicate/node_modules/next/dist/compiled/neo-async/async.js:1:14208)
+    at /Users/rodystupers/Documents/Programming/syndicate/syndicate/node_modules/next/dist/compiled/webpack/bundle5.js:29:129985
+    at symbolIterator (/Users/rodystupers/Documents/Programming/syndicate/syndicate/node_modules/next/dist/compiled/neo-async/async.js:1:14444)
+    at done (/Users/rodystupers/Documents/Programming/syndicate/syndicate/node_modules/next/dist/compiled/neo-async/async.js:1:14824)
+    at /Users/rodystupers/Documents/Programming/syndicate/syndicate/node_modules/next/dist/compiled/webpack/bundle5.js:29:129496
+    at /Users/rodystupers/Documents/Programming/syndicate/syndicate/node_modules/next/dist/compiled/webpack/bundle5.js:29:110331
+    at /Users/rodystupers/Documents/Programming/syndicate/syndicate/node_modules/next/dist/compiled/webpack/bundle5.js:29:315955
+    at Hook.eval [as callAsync] (eval at create (/Users/rodystupers/Documents/Programming/syndicate/syndicate/node_modules/next/dist/compiled/webpack/bundle5.js:14:9224), <anonymous>:6:1)
+    at Cache.store (/Users/rodystupers/Documents/Programming/syndicate/syndicate/node_modules/next/dist/compiled/webpack/bundle5.js:29:16215)
+    at ItemCacheFacade.store (/Users/rodystupers/Documents/Programming/syndicate/syndicate/node_modules/next/dist/compiled/webpack/bundle5.js:29:17460)
+    at /Users/rodystupers/Documents/Programming/syndicate/syndicate/node_modules/next/dist/compiled/webpack/bundle5.js:29:110318
+    at /Users/rodystupers/Documents/Programming/syndicate/syndicate/node_modules/next/dist/compiled/webpack/bundle5.js:29:16169
+    at Hook.eval [as callAsync] (eval at create (/Users/rodystupers/Documents/Programming/syndicate/syndicate/node_modules/next/dist/compiled/webpack/bundle5.js:14:9224), <anonymous>:6:1)
+    at Cache.get (/Users/rodystupers/Documents/Programming/syndicate/syndicate/node_modules/next/dist/compiled/webpack/bundle5.js:29:15944)
+    at ItemCacheFacade.get (/Users/rodystupers/Documents/Programming/syndicate/syndicate/node_modules/next/dist/compiled/webpack/bundle5.js:29:17292)
+    at Compilation._codeGenerationModule (/Users/rodystupers/Documents/Programming/syndicate/syndicate/node_modules/next/dist/compiled/webpack/bundle5.js:29:109949)
+    at codeGen (/Users/rodystupers/Documents/Programming/syndicate/syndicate/node_modules/next/dist/compiled/webpack/bundle5.js:29:129383)
+    at symbolIterator (/Users/rodystupers/Documents/Programming/syndicate/syndicate/node_modules/next/dist/compiled/neo-async/async.js:1:14402)
+    at timesSync (/Users/rodystupers/Documents/Programming/syndicate/syndicate/node_modules/next/dist/compiled/neo-async/async.js:1:5027)
+    at Object.eachLimit (/Users/rodystupers/Documents/Programming/syndicate/syndicate/node_modules/next/dist/compiled/neo-async/async.js:1:14208)
+    at /Users/rodystupers/Documents/Programming/syndicate/syndicate/node_modules/next/dist/compiled/webpack/bundle5.js:29:129630
+    at processQueue (/Users/rodystupers/Documents/Programming/syndicate/syndicate/node_modules/next/dist/compiled/webpack/bundle5.js:29:1448645)
+    at processTicksAndRejections (node:internal/process/task_queues:85:11)
+    at runNextTicks (node:internal/process/task_queues:69:3)
+    at process.processImmediate (node:internal/timers:476:9)
+
+Generated code for /Users/rodystupers/Documents/Programming/syndicate/syndicate/node_modules/next/dist/build/webpack/loaders/css-loader/src/index.js??ruleSet[1].rules[14].oneOf[10].use[2]!/Users/rodystupers/Documents/Programming/syndicate/syndicate/node_modules/next/dist/build/webpack/loaders/postcss-loader/src/index.js??ruleSet[1].rules[14].oneOf[10].use[3]!/Users/rodystupers/Documents/Programming/syndicate/syndicate/src/app/globals.css
+
+Import trace for requested module:
+./src/app/globals.css
+
+
+> Build failed because of webpack errors

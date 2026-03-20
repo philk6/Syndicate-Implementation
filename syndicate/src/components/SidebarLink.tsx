@@ -10,10 +10,9 @@ interface SidebarLinkProps {
   href: string;
   children: React.ReactNode;
   className?: string;
-  isActive?: boolean;
 }
 
-export default function SidebarLink({ href, children, className, isActive }: SidebarLinkProps) {
+export default function SidebarLink({ href, children, className }: SidebarLinkProps) {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false); // Local loading state for the link itself
   const { session, isAuthenticated, loading: authLoading } = useAuth(); // Get auth state from context
@@ -73,7 +72,7 @@ export default function SidebarLink({ href, children, className, isActive }: Sid
     <Link
       href={href} // href is still useful for right-click > open in new tab, and semantics
       onClick={handleClick}
-      className={`${className} ${isActive ? 'bg-[#35353580] text-[#c8aa64]' : ''} ${isLoading ? 'opacity-50 cursor-wait' : ''}`}
+      className={`${className} ${isLoading ? 'opacity-50 cursor-wait' : ''}`}
       aria-disabled={isLoading || authLoading} // Indicate disabled state if local or auth is loading
     >
       {children}

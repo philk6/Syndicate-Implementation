@@ -18,7 +18,7 @@ import {
 } from '@/components/ui/sidebar';
 import { NavUser } from '@/components/nav-user';
 import { useRouter, usePathname } from 'next/navigation';
-import { ShoppingCart, History, Settings, Users, Home, CreditCard } from 'lucide-react';
+import { ShoppingCart, History, Settings, Users, LayoutDashboard, CreditCard, MessageCircle } from 'lucide-react';
 import SidebarLink from '@/components/SidebarLink';
 
 const data = {
@@ -28,10 +28,11 @@ const data = {
       title: 'Operations',
       url: '#',
       items: [
-        { title: 'Dashboard', url: '/dashboard', icon: Home },
+        { title: 'Dashboard', url: '/dashboard', icon: LayoutDashboard },
         { title: 'Open Orders', url: '/orders', icon: ShoppingCart },
         { title: 'History', url: '/history', icon: History },
         { title: 'Credit Overview', url: '/credit-overview', icon: CreditCard },
+        { title: 'Chat', url: '/chat', icon: MessageCircle },
       ],
     },
     {
@@ -200,14 +201,31 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 
   return (
     <Sidebar {...props}>
-      <SidebarHeader>
+      <SidebarHeader className="px-4 py-5 border-b border-white/[0.05]">
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton size="lg" asChild>
               <SidebarLink href="/dashboard">
-                <div className="flex flex-col gap-0.5 leading-none">
-                  <span className="text-[#c8aa64] font-bold">The Syndicate - Buyers Portal</span>
-                  <span className="text-[#bfbfbf]">v1.0.0 Beta</span>
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-amber-300 to-amber-600 flex items-center justify-center shadow-lg shadow-amber-500/20 shrink-0">
+                    <svg
+                      className="w-5 h-5 text-black"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <polygon points="12 2 2 7 12 12 22 7 12 2" />
+                      <polyline points="2 17 12 22 22 17" />
+                      <polyline points="2 12 12 17 22 12" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h1 className="font-semibold text-white tracking-wide text-base">The Syndicate</h1>
+                    <p className="text-[10px] text-neutral-500 font-medium tracking-wider uppercase">v1.0.0 Beta</p>
+                  </div>
                 </div>
               </SidebarLink>
             </SidebarMenuButton>
@@ -228,7 +246,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                   {item.items.map((subItem) => (
                     <SidebarMenuItem key={subItem.title}>
                       <SidebarMenuButton asChild isActive={pathname.startsWith(subItem.url)}>
-                        <SidebarLink href={subItem.url} isActive={pathname.startsWith(subItem.url)}>
+                        <SidebarLink href={subItem.url}>
                           {subItem.icon && <subItem.icon className="mr-2 h-4 w-4" />}
                           <span>{subItem.title}</span>
                         </SidebarLink>
@@ -242,7 +260,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         })}
       </SidebarContent>
       <SidebarRail />
-      <SidebarFooter>
+      <SidebarFooter className="border-t border-white/[0.05] px-3 py-3">
         <NavUser user={userData} onLogout={handleLogout} />
       </SidebarFooter>
     </Sidebar>

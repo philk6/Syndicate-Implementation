@@ -5,7 +5,8 @@ import { useRouter, useParams } from 'next/navigation';
 import { useAuth } from '@lib/auth';
 import { supabase } from '@lib/supabase/client';
 import Link from 'next/link';
-import { Badge } from '@/components/ui/badge';
+import { GlassCard } from '@/components/ui/glass-card';
+import { StatusPill } from '@/components/ui/status-pill';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Input } from '@/components/ui/input';
@@ -78,16 +79,16 @@ export default function OrderDetailPage() {
         return;
       }
       setCompanyId(userData.company_id);
-      
+
       // Fetch credit balance with proper error handling
       try {
         const balanceResponse = await fetch('/api/credits/balance', {
-          headers: { 
+          headers: {
             'Authorization': `Bearer ${session.access_token}`,
             'Content-Type': 'application/json'
           }
         });
-        
+
         if (balanceResponse.ok) {
           const balanceData = await balanceResponse.json();
           setCreditBalance(balanceData);
@@ -126,13 +127,13 @@ export default function OrderDetailPage() {
       // Normalize the order_statuses property
       const orderData = rawOrderData
         ? {
-            ...rawOrderData,
-            order_statuses: Array.isArray(rawOrderData.order_statuses)
-              ? rawOrderData.order_statuses[0]
-              : rawOrderData.order_statuses,
-          } as Order
+          ...rawOrderData,
+          order_statuses: Array.isArray(rawOrderData.order_statuses)
+            ? rawOrderData.order_statuses[0]
+            : rawOrderData.order_statuses,
+        } as Order
         : null;
-      
+
       setOrder(orderData);
       if (orderData?.order_statuses.description.toLowerCase() === 'closed') {
         setIsOrderClosed(true);
@@ -162,14 +163,14 @@ export default function OrderDetailPage() {
           setHasSubmitted(true);
         }
       }
-      
+
       // Fetch ungated status
       const { data: ungatedData } = await supabase
         .from('order_products_company')
         .select('sequence, ungated, ungated_min_amount')
         .eq('order_id', orderId)
         .eq('company_id', userData.company_id);
-      
+
       if (ungatedData) {
         setUngatedStatus(ungatedData.reduce((acc, item) => ({ ...acc, [item.sequence]: item.ungated }), {}));
         setUngatedMinAmounts(ungatedData.reduce((acc, item) => ({ ...acc, [item.sequence]: item.ungated_min_amount }), {}));
@@ -193,10 +194,10 @@ export default function OrderDetailPage() {
 
   const updateUngatedStatus = useCallback(async (sequence: number, checked: boolean) => {
     if (!companyId || hasSubmitted || isOrderClosed) return;
-    
+
     const product = products.find(p => p.sequence === sequence);
     if (!product) return;
-    
+
     const { error } = await supabase
       .from('order_products_company')
       .upsert({
@@ -207,7 +208,7 @@ export default function OrderDetailPage() {
         quantity: product.quantity || 0,
         ungated_min_amount: checked ? ungatedMinAmounts[sequence] : null,
       }, { onConflict: 'order_id, sequence, company_id' });
-    
+
     if (error) {
       console.error('Error updating ungated status:', error);
     }
@@ -220,13 +221,13 @@ export default function OrderDetailPage() {
     if (!checked) setUngatedMinAmounts(prev => ({ ...prev, [sequence]: null }));
     debouncedUngatedUpdate(sequence, checked);
   }, [debouncedUngatedUpdate]);
-  
+
   const updateMinAmount = useCallback(async (sequence: number, minAmount: number | null) => {
     if (!companyId || hasSubmitted || isOrderClosed || !ungatedStatus[sequence]) return;
-    
+
     const product = products.find(p => p.sequence === sequence);
     if (!product) return;
-    
+
     const { error } = await supabase
       .from('order_products_company')
       .upsert({
@@ -237,7 +238,7 @@ export default function OrderDetailPage() {
         quantity: product.quantity || 0,
         ungated_min_amount: minAmount,
       }, { onConflict: 'order_id, sequence, company_id' });
-    
+
     if (error) {
       console.error('Error updating min amount:', error);
     }
@@ -268,12 +269,12 @@ export default function OrderDetailPage() {
       alert("Please correct any errors or complete the form before submitting.");
       return;
     }
-    
+
     if (!creditBalance || creditBalance.available_balance === 0) {
       alert("You have no available credit. Please contact support.");
       return;
     }
-    
+
     setIsSubmitting(true);
 
     try {
@@ -327,7 +328,7 @@ export default function OrderDetailPage() {
         ungated: ungatedStatus[product.sequence] || false,
         ungated_min_amount: ungatedStatus[product.sequence] ? ungatedMinAmounts[product.sequence] : null,
       }));
-      
+
       const { error: productsError } = await supabase
         .from('order_products_company')
         .upsert(investmentData, { onConflict: 'order_id, sequence, company_id' });
@@ -348,158 +349,158 @@ export default function OrderDetailPage() {
   }, [companyId, order, hasSubmitted, isOrderClosed, products, ungatedStatus, ungatedMinAmounts, maxInvestment, investmentError, creditBalance, fetchData]);
 
   if (loading) {
-    return <div className="min-h-screen bg-[#14130F] p-6 flex items-center justify-center"><p className="text-gray-400">Loading...</p></div>;
+    return <div className="min-h-screen p-6 flex items-center justify-center"><p className="text-neutral-400">Loading...</p></div>;
   }
 
   if (!isAuthenticated) return null;
   if (!order) return (
-    <div className="min-h-screen bg-gray-900 p-6">
+    <div className="min-h-screen p-6 w-full">
       <div className="mx-auto">
         <div className="flex items-center mb-6">
-          <Link href="/orders" className="text-blue-500 hover:text-blue-400 mr-4">
+          <Link href="/orders" className="text-amber-500 hover:text-amber-400 mr-4 transition-colors">
             ← Back to Orders
           </Link>
           <h1 className="text-3xl font-bold text-white">Order Not Found</h1>
         </div>
-        <p className="text-gray-400">The requested order does not exist or you don&apos;t have permission to view it.</p>
+        <p className="text-neutral-400">The requested order does not exist or you don&apos;t have permission to view it.</p>
       </div>
     </div>
   );
 
   return (
-    <div className="min-h-screen bg-background p-6 w-full">
+    <div className="min-h-screen p-6 w-full">
       <div className="w-full">
         {/* Header and Alerts */}
         <div className="flex items-center mb-6">
-          <Link href="/orders" className="text-[#c8aa64] hover:text-[#9d864e] mr-4">← Back to Orders</Link>
+          <Link href="/orders" className="text-amber-500 hover:text-amber-400 transition-colors mr-4">← Back to Orders</Link>
         </div>
         <div className="flex items-center mb-6">
-          <h1 className="text-3xl font-bold text-[#bfbfbf]">Order #{order.order_id}</h1>
+          <h1 className="text-3xl font-bold text-white">Order #{order.order_id}</h1>
         </div>
-        
+
         {isOrderClosed && (
-          <Alert className='mb-6 bg-[#7f1d1d] text-[#bfbfbf] w-fit'>
+          <Alert className='mb-6 bg-rose-500/10 border-rose-500/20 text-rose-400 backdrop-blur-md w-fit'>
             <AlertOctagon className="h-4 w-4" />
-            <AlertTitle>Closed</AlertTitle>
+            <AlertTitle className="text-rose-300">Closed</AlertTitle>
             <AlertDescription>This order is closed. No further investments can be submitted.</AlertDescription>
           </Alert>
         )}
-        
+
         {hasSubmitted && !isOrderClosed && (
-          <Alert className='mb-6 bg-[#235c12] text-[#bfbfbf] w-fit'>
+          <Alert className='mb-6 bg-emerald-500/10 border-emerald-500/20 text-emerald-400 backdrop-blur-md w-fit'>
             <Check className="h-4 w-4" />
-            <AlertTitle>Submitted</AlertTitle>
-            <AlertDescription>Your application has been submitted. You have ${initialHeldAmount.toLocaleString()} held for this order.</AlertDescription>
+            <AlertTitle className="text-emerald-300">Submitted</AlertTitle>
+            <AlertDescription>Your application has been submitted. You have <span className="text-white font-semibold">${initialHeldAmount.toLocaleString()}</span> held for this order.</AlertDescription>
           </Alert>
         )}
-        
+
         {/* Order Details Card */}
         <div className="grid grid-cols-1 gap-6 mb-8 w-full">
-          <div className="rounded-lg p-6 bg-gradient-to-br from-[#212121] via-[#0f0f0f] to-[#2b2b2b] shadow-lg w-full">
-            <div className="flex flex-wrap gap-6 text-gray-300">
+          <GlassCard className="p-6">
+            <div className="flex flex-wrap gap-8">
               <div className="flex flex-col">
-                <span className="font-medium">Status</span>
-                <Badge variant="outline" className='bg-[#c8aa64] text-[#242424]'>{order.order_statuses?.description || 'N/A'}</Badge>
+                <span className="text-xs font-semibold uppercase tracking-wider text-neutral-500 mb-2">Status</span>
+                <StatusPill text={order.order_statuses?.description || 'N/A'} type={order.order_statuses?.description || 'N/A'} />
               </div>
               <div className="flex flex-col">
-                <span className="font-medium">Lead Time</span>
-                <span>{order.leadtime} days</span>
+                <span className="text-xs font-semibold uppercase tracking-wider text-neutral-500 mb-1">Lead Time</span>
+                <span className="text-white font-medium">{order.leadtime} days</span>
               </div>
               <div className="flex flex-col">
-                <span className="font-medium">Deadline</span>
-                <span>{new Date(order.deadline).toLocaleString()}</span>
+                <span className="text-xs font-semibold uppercase tracking-wider text-neutral-500 mb-1">Deadline</span>
+                <span className="text-white font-medium">{new Date(order.deadline).toLocaleString()}</span>
               </div>
               <div className="flex flex-col">
-                <span className="font-medium">Label Upload Deadline</span>
-                <span>{new Date(order.label_upload_deadline).toLocaleString()}</span>
+                <span className="text-xs font-semibold uppercase tracking-wider text-neutral-500 mb-1">Label Upload Deadline</span>
+                <span className="text-white font-medium">{new Date(order.label_upload_deadline).toLocaleString()}</span>
               </div>
             </div>
-          </div>
+          </GlassCard>
         </div>
 
         {/* Products Table */}
-        <div className="rounded-lg p-6 bg-gradient-to-br from-[#212121] via-[#0f0f0f] to-[#2b2b2b] shadow-lg w-full overflow-x-auto">
+        <GlassCard className="p-6 overflow-x-auto">
           {products.length === 0 ? (
-            <p className="text-gray-400">No products found for this order.</p>
+            <p className="text-neutral-500">No products found for this order.</p>
           ) : (
             <table className="w-full border-collapse" style={{ tableLayout: 'fixed' }}>
               <thead>
-                <tr className="border-[#2B2B2B] hover:bg-transparent">
-                  <th className="text-gray-300 w-[15%] h-12 px-4 text-left align-middle font-medium">ASIN</th>
-                  <th className="text-gray-300 w-[15%] h-12 px-4 text-left align-middle font-medium">Ungated?</th>
-                  <th className="text-gray-300 w-[15%] h-12 px-4 text-left align-middle font-medium">Min Ungated Amount</th>
-                  <th className="text-gray-300 w-[15%] h-12 px-4 text-left align-middle font-medium">Price</th>
-                  <th className="text-gray-300 w-[15%] h-12 px-4 text-left align-middle font-medium">Quantity</th>
-                  <th className="text-gray-300 w-[15%] h-12 px-4 text-left align-middle font-medium">ROI (%)</th>
+                <tr className="border-b border-white/[0.05] hover:bg-transparent">
+                  <th className="text-neutral-400 w-[15%] h-12 px-4 text-left align-middle font-medium">ASIN</th>
+                  <th className="text-neutral-400 w-[15%] h-12 px-4 text-left align-middle font-medium">Ungated?</th>
+                  <th className="text-neutral-400 w-[20%] h-12 px-4 text-left align-middle font-medium">Min Ungated Amount</th>
+                  <th className="text-neutral-400 w-[15%] h-12 px-4 text-left align-middle font-medium">Price</th>
+                  <th className="text-neutral-400 w-[10%] h-12 px-4 text-left align-middle font-medium">Quantity</th>
+                  <th className="text-neutral-400 w-[15%] h-12 px-4 text-left align-middle font-medium">ROI (%)</th>
                   {products.some(p => p.description) && (
-                    <th className="text-gray-300 w-[15%] h-12 px-4 text-left align-middle font-medium">Description</th>
+                    <th className="text-neutral-400 w-[20%] h-12 px-4 text-left align-middle font-medium">Description</th>
                   )}
                 </tr>
               </thead>
               <tbody>
                 {products.map((product) => (
-                  <tr key={product.sequence} className="hover:bg-[#35353580] transition-colors border-[#6a6a6a80]">
-                    <td className="text-gray-200 p-4 align-middle">{product.asin}</td>
-                    <td className="text-gray-200 p-4 align-middle">
+                  <tr key={product.sequence} className="hover:bg-white/[0.02] transition-colors border-b border-white/[0.02]">
+                    <td className="text-neutral-200 p-4 align-middle">{product.asin}</td>
+                    <td className="text-neutral-200 p-4 align-middle">
                       <input
                         type="checkbox"
                         checked={ungatedStatus[product.sequence] || false}
                         onChange={(e) => handleUngatedChange(product.sequence, e.target.checked)}
-                        className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded"
+                        className="w-4 h-4 rounded border-white/[0.1] bg-white/[0.03] text-amber-500 focus:ring-amber-500/50"
                         disabled={hasSubmitted || isOrderClosed}
                       />
                     </td>
-                    <td className="text-gray-200 p-4 align-middle">
+                    <td className="text-neutral-200 p-4 align-middle">
                       <Input
                         type="number"
                         value={ungatedMinAmounts[product.sequence] || ''}
                         onChange={(e) => handleMinAmountChange(product.sequence, e.target.value)}
-                        className="bg-[#1f1f1f] border border-[#6a6a6a80] rounded px-3 py-2 w-full text-[#FFFFFF] placeholder:text-[#A7A7A7]"
+                        className="bg-white/[0.02] border-white/[0.05] rounded px-3 py-2 w-full text-white placeholder:text-neutral-600 focus:border-amber-500/50"
                         placeholder="Min Amount"
                         min="0"
                         disabled={!ungatedStatus[product.sequence] || hasSubmitted || isOrderClosed}
                       />
                     </td>
-                    <td className="text-gray-200 p-4 align-middle">
-                      {product.hide_price_and_quantity ? '-' : `$${product.price}`}
+                    <td className="text-neutral-200 p-4 align-middle">
+                      {product.hide_price_and_quantity ? '-' : <span className="text-white font-medium">${product.price}</span>}
                     </td>
-                    <td className="text-gray-200 p-4 align-middle">
-                      {product.hide_price_and_quantity ? '-' : product.quantity}
+                    <td className="text-neutral-200 p-4 align-middle">
+                      {product.hide_price_and_quantity ? '-' : <span className="text-white">{product.quantity}</span>}
                     </td>
-                    <td className="text-gray-200 p-4 align-middle">
-                      {typeof product.roi === 'number' && !product.hide_price_and_quantity ? `${product.roi.toFixed(2)}%` : '-'}
+                    <td className="text-neutral-200 p-4 align-middle">
+                      {typeof product.roi === 'number' && !product.hide_price_and_quantity ? <span className="text-emerald-400">{product.roi.toFixed(2)}%</span> : '-'}
                     </td>
                     {products.some(p => p.description) && (
-                      <td className="text-gray-200 p-4 align-middle">{product.description}</td>
+                      <td className="text-neutral-400 p-4 align-middle text-sm">{product.description}</td>
                     )}
                   </tr>
                 ))}
               </tbody>
             </table>
           )}
-        </div>
-        
+        </GlassCard>
+
         {/* Investment Section */}
         <div className="mt-14 flex flex-col items-end">
           <div className="w-full max-w-xs space-y-4">
-            <div className="flex justify-between items-center p-3 rounded-md bg-[#2a2a2a] border border-[#6a6a6a80]">
+            <GlassCard className="flex justify-between items-center p-4">
               <div className='flex items-center gap-2'>
-                <CircleDollarSign className='h-5 w-5 text-[#c8aa64]'/>
-                <span className="text-gray-300 font-medium">Available Credit:</span>
+                <CircleDollarSign className='h-5 w-5 text-amber-500' />
+                <span className="text-neutral-400 font-medium">Available Credit:</span>
               </div>
-              <span className="text-lg font-semibold text-green-400">
+              <span className="text-lg font-bold text-white">
                 ${creditBalance ? creditBalance.available_balance.toLocaleString() : '0'}
               </span>
-            </div>
-            
+            </GlassCard>
+
             {initialHeldAmount > 0 && (
-              <p className="text-sm text-gray-400 text-right">
-                You have ${initialHeldAmount.toLocaleString()} already held for this order.
+              <p className="text-sm text-neutral-500 text-right">
+                You have <span className="text-emerald-400 font-semibold">${initialHeldAmount.toLocaleString()}</span> already held for this order.
               </p>
             )}
-            
+
             <div>
-              <label htmlFor="maxInvestment" className="text-gray-300 font-medium block mb-2">
+              <label htmlFor="maxInvestment" className="text-neutral-400 font-medium block mb-2">
                 Maximum Investment ($)
               </label>
               <Input
@@ -507,20 +508,18 @@ export default function OrderDetailPage() {
                 id="maxInvestment"
                 value={maxInvestment || ''}
                 onChange={(e) => handleMaxInvestmentChange(e.target.value)}
-                className={`bg-[#1f1f1f] border rounded px-3 py-2 w-full text-[#FFFFFF] placeholder:text-[#A7A7A7] ${
-                  investmentError ? 'border-red-500' : 'border-[#6a6a6a80]'
-                }`}
+                className={`bg-white/[0.02] border rounded px-3 py-2 w-full text-white placeholder:text-neutral-600 ${investmentError ? 'border-rose-500 focus:border-rose-500' : 'border-white/[0.05] focus:border-amber-500/50'}`}
                 placeholder="Enter amount"
                 step="100"
                 min="0"
                 disabled={hasSubmitted || isOrderClosed || isSubmitting}
               />
-              {investmentError && <p className="text-red-500 text-sm mt-1">{investmentError}</p>}
+              {investmentError && <p className="text-rose-500 text-sm mt-1">{investmentError}</p>}
             </div>
-            
+
             <Button
               onClick={handleSubmitInvestment}
-              className="w-full bg-[#c8aa64] hover:bg-[#9d864e] text-[#242424]"
+              className="w-full bg-amber-500/10 text-amber-400 font-medium border border-amber-500/20 shadow-[0_0_15px_rgba(245,158,11,0.05)] hover:bg-amber-500/20 hover:shadow-[0_0_20px_rgba(245,158,11,0.1)] hover:border-amber-500/30 rounded-xl transition-all duration-300 h-11"
               disabled={hasSubmitted || isOrderClosed || !!investmentError || isSubmitting || maxInvestment === null || maxInvestment === 0}
             >
               <Check className="mr-2 h-4 w-4" />

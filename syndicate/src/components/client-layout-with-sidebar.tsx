@@ -46,9 +46,9 @@ export function ClientLayoutWithConditionalSidebar({ children }: { children: Rea
     <SidebarProvider key={pathname}>
       <AppSidebar />
       <SidebarInset>
-        <header className="flex h-16 shrink-0 items-center gap-2 border-b px-4">
-          <SidebarTrigger className="-ml-1" />
-          <Separator orientation="vertical" className="mr-2 h-4" />
+        <header className="flex h-14 shrink-0 items-center gap-2 border-b border-white/[0.05] px-4">
+          <SidebarTrigger className="-ml-1 text-neutral-500 hover:text-amber-400 hover:bg-amber-500/10" />
+          <Separator orientation="vertical" className="mr-2 h-4 bg-white/[0.08]" />
         </header>
         <main className="flex-1 ml-0">{children}</main>
       </SidebarInset>

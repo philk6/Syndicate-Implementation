@@ -2,15 +2,11 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { useAuth } from '@lib/auth';
 import { supabase } from '@lib/supabase/client';
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-} from '@/components/ui/card';
+import { GlassCard } from '@/components/ui/glass-card';
+import { StatusPill } from '@/components/ui/status-pill';
 import {
   Table,
   TableBody,
@@ -76,11 +72,11 @@ interface AggregateAllocationResult {
 const chartConfig = {
   profit: {
     label: 'Profit',
-    color: '#c8aa64',
+    color: '#f59e0b',
   },
   invested_amount: {
     label: 'Invested Amount',
-    color: '#6a6a6a',
+    color: '#71717a',
   },
 } satisfies ChartConfig;
 
@@ -91,6 +87,8 @@ export default function UserDashboardPage() {
   const [timeFrame, setTimeFrame] = useState<'7d' | '30d' | '3m' | '1y'>('30d');
   const [loading, setLoading] = useState(true);
   const [isCompanyPopupOpen, setIsCompanyPopupOpen] = useState(false);
+  const [firstName, setFirstName] = useState<string>('');
+  const [openOrderCount, setOpenOrderCount] = useState<number>(0);
   const { isAuthenticated, loading: authLoading, user } = useAuth();
   const router = useRouter();
 
@@ -162,7 +160,7 @@ export default function UserDashboardPage() {
       // Fetch user's company_id
       const { data: userData, error: userError } = await supabase
         .from('users')
-        .select('company_id')
+        .select('company_id, firstname')
         .eq('user_id', user.user_id)
         .single();
 
@@ -179,7 +177,25 @@ export default function UserDashboardPage() {
         return;
       }
 
+      // Set the user's first name for the greeting
+      if (userData.firstname) {
+        const name = userData.firstname;
+        setFirstName(name.charAt(0).toUpperCase() + name.slice(1).toLowerCase());
+      }
+
       const companyId = userData.company_id;
+
+      // Fetch count of open orders (order_status_id = 1)
+      const { count: openCount, error: openError } = await supabase
+        .from('orders')
+        .select('*', { count: 'exact', head: true })
+        .eq('order_status_id', 1);
+
+      if (openError) {
+        console.error('Error fetching open order count:', openError.message);
+      } else {
+        setOpenOrderCount(openCount || 0);
+      }
 
       // Check if company_id is null and show popup
       if (!companyId) {
@@ -277,8 +293,8 @@ export default function UserDashboardPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#14130F] p-6 flex items-center justify-center">
-        <p className="text-gray-400">Loading...</p>
+      <div className="min-h-screen p-6 flex items-center justify-center">
+        <p className="text-neutral-400">Loading...</p>
       </div>
     );
   }
@@ -286,78 +302,86 @@ export default function UserDashboardPage() {
   if (!isAuthenticated) return null;
 
   return (
-    <div className="min-h-screen bg-background p-6">
+    <div className="min-h-screen p-6 w-full">
       <div className="max-w-7xl mx-auto">
-        <h1 className="text-3xl font-bold text-[#d1d5db] mb-6">Dashboard</h1>
+        <h1 className="text-3xl font-bold text-white mb-1">
+          Welcome Back, {firstName || 'User'}!
+        </h1>
+        <p className="text-lg text-neutral-400 mb-6">
+          Today there are{' '}
+          <Link href="/orders" className="text-amber-400 font-semibold hover:text-amber-400 hover:underline underline-offset-4 decoration-amber-500/40 transition-colors cursor-pointer">
+            {openOrderCount} open order{openOrderCount !== 1 ? 's' : ''}!
+          </Link>
+        </p>
 
         {/* Metric Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <Card className="bg-gradient-to-br from-[#212121] via-[#0f0f0f] to-[#2b2b2b] border-[#6a6a6a80]">
-            <CardHeader>
-              <CardTitle className="text-gray-300">Your Orders</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-bold text-[#c8aa64]">{metrics.totalOrders}</p>
-            </CardContent>
-          </Card>
-          <Card className="bg-gradient-to-br from-[#212121] via-[#0f0f0f] to-[#2b2b2b] border-[#6a6a6a80]">
-            <CardHeader>
-              <CardTitle className="text-gray-300">Total Investment</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-bold text-[#c8aa64]">${metrics.totalInvestment.toLocaleString()}</p>
-            </CardContent>
-          </Card>
-          <Card className="bg-gradient-to-br from-[#212121] via-[#0f0f0f] to-[#2b2b2b] border-[#6a6a6a80]">
-            <CardHeader>
-              <CardTitle className="text-gray-300">Average ROI</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-bold text-[#c8aa64]">
+          <GlassCard className="p-6">
+            <div className="mb-2">
+              <h3 className="font-semibold text-neutral-400">Your Orders</h3>
+            </div>
+            <div>
+              <p className="text-2xl font-bold text-white">{metrics.totalOrders}</p>
+            </div>
+          </GlassCard>
+          <GlassCard className="p-6">
+            <div className="mb-2">
+              <h3 className="font-semibold text-neutral-400">Total Investment</h3>
+            </div>
+            <div>
+              <p className="text-2xl font-bold text-white">${metrics.totalInvestment.toLocaleString()}</p>
+            </div>
+          </GlassCard>
+          <GlassCard className="p-6">
+            <div className="mb-2">
+              <h3 className="font-semibold text-neutral-400">Average ROI</h3>
+            </div>
+            <div>
+              <p className="text-2xl font-bold text-white">
                 {metrics.averageRoi != null ? metrics.averageRoi.toFixed(2) : 'N/A'}
               </p>
-            </CardContent>
-          </Card>
+            </div>
+          </GlassCard>
         </div>
 
         {/* Area Chart: Profit and Investment Over Time */}
-        <Card className="bg-gradient-to-br from-[#212121] via-[#0f0f0f] to-[#2b2b2b] border-[#6a6a6a80] mb-8">
-          <CardHeader className="flex items-center gap-2 space-y-0 border-b py-5 sm:flex-row">
+        <GlassCard className="mb-8">
+          <div className="flex items-center gap-2 space-y-0 border-b py-5 px-6 sm:flex-row border-white/[0.05]">
             <div className="grid flex-1 gap-1 text-center sm:text-left">
-              <CardTitle>Profit and Investment Over Time</CardTitle>
-              <CardDescription>
+              <h3 className="font-semibold text-white">Profit and Investment Over Time</h3>
+              <p className="text-sm text-neutral-500">
                 Showing total profit and invested amount for the selected time range
-              </CardDescription>
+              </p>
             </div>
-            <Select 
-              value={timeFrame} 
+            <Select
+              value={timeFrame}
               onValueChange={handleTimeFrameChange}
             >
-              <SelectTrigger className="w-[160px] rounded-lg sm:ml-auto border-[#6a6a6a80]" aria-label="Select time range">
+              <SelectTrigger className="w-[160px] rounded-lg sm:ml-auto border-white/[0.05] bg-white/[0.02]" aria-label="Select time range">
                 <SelectValue placeholder="Last 30 days" />
               </SelectTrigger>
-              <SelectContent className="rounded-xl">
-                <SelectItem value="7d" className="rounded-lg">Last 7 days</SelectItem>
-                <SelectItem value="30d" className="rounded-lg">Last 30 days</SelectItem>
-                <SelectItem value="3m" className="rounded-lg">Last 3 months</SelectItem>
-                <SelectItem value="1y" className="rounded-lg">Last 1 year</SelectItem>
+              <SelectContent className="rounded-xl border-white/[0.05] bg-[#0a0a0a]/90 backdrop-blur-xl">
+                <SelectItem value="7d" className="rounded-lg hover:bg-white/[0.02]">Last 7 days</SelectItem>
+                <SelectItem value="30d" className="rounded-lg hover:bg-white/[0.02]">Last 30 days</SelectItem>
+                <SelectItem value="3m" className="rounded-lg hover:bg-white/[0.02]">Last 3 months</SelectItem>
+                <SelectItem value="1y" className="rounded-lg hover:bg-white/[0.02]">Last 1 year</SelectItem>
               </SelectContent>
             </Select>
-          </CardHeader>
-          <CardContent className="px-2 pt-4 sm:px-6 sm:pt-6">
+          </div>
+          <div className="px-2 pt-4 pb-6 sm:px-6 sm:pt-6">
             <ChartContainer config={chartConfig} className="aspect-auto h-[250px] w-full">
               <AreaChart data={chartData}>
                 <defs>
                   <linearGradient id="fillProfit" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#c8aa64" stopOpacity={0.8} />
-                    <stop offset="95%" stopColor="#c8aa64" stopOpacity={0.1} />
+                    <stop offset="0%" stopColor="#f59e0b" stopOpacity={0.8} />
+                    <stop offset="100%" stopColor="#b45309" stopOpacity={0.2} />
                   </linearGradient>
                   <linearGradient id="fillInvested" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#6a6a6a" stopOpacity={0.8} />
-                    <stop offset="95%" stopColor="#6a6a6a" stopOpacity={0.1} />
+                    <stop offset="0%" stopColor="#52525b" stopOpacity={0.6} />
+                    <stop offset="100%" stopColor="#27272a" stopOpacity={0.1} />
                   </linearGradient>
                 </defs>
-                <CartesianGrid vertical={false} stroke="#6a6a6a80" />
+                <CartesianGrid vertical={false} stroke="rgba(255,255,255,0.05)" />
                 <XAxis
                   dataKey="date"
                   tickLine={false}
@@ -391,14 +415,14 @@ export default function UserDashboardPage() {
                   dataKey="profit"
                   type="natural"
                   fill="url(#fillProfit)"
-                  stroke="#c8aa64"
+                  stroke="#f59e0b"
                   stackId="a"
                 />
                 <Area
                   dataKey="invested_amount"
                   type="natural"
                   fill="url(#fillInvested)"
-                  stroke="#6a6a6a"
+                  stroke="#71717a"
                   stackId="a"
                 />
                 <ChartLegend content={<ChartLegendContent />} />
@@ -407,63 +431,65 @@ export default function UserDashboardPage() {
             {chartData.length === 0 && (
               <p className="text-gray-400 text-center mt-4">No data available for the selected time range.</p>
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </GlassCard>
 
         {/* Recent Orders Table */}
-        <Card className="bg-gradient-to-br from-[#212121] via-[#0f0f0f] to-[#2b2b2b] border-[#6a6a6a80]">
-          <CardHeader>
-            <CardTitle className="text-gray-300">Your Recent Orders</CardTitle>
-          </CardHeader>
-          <CardContent>
+        <GlassCard>
+          <div className="p-6 pb-2">
+            <h3 className="font-semibold text-white">Your Recent Orders</h3>
+          </div>
+          <div className="p-6 pt-0 overflow-x-auto">
             <Table>
               <TableHeader>
-                <TableRow className="border-[#2b2b2b] hover:bg-transparent">
-                  <TableHead className="text-gray-300">Order ID</TableHead>
-                  <TableHead className="text-gray-300">Status</TableHead>
-                  <TableHead className="text-gray-300">Deadline</TableHead>
-                  <TableHead className="text-gray-300">Total Amount</TableHead>
+                <TableRow className="border-b border-white/[0.05] hover:bg-transparent">
+                  <TableHead className="text-neutral-400">Order ID</TableHead>
+                  <TableHead className="text-neutral-400">Status</TableHead>
+                  <TableHead className="text-neutral-400">Deadline</TableHead>
+                  <TableHead className="text-neutral-400">Total Amount</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {recentOrders.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={4} className="text-gray-400 text-center">
+                  <TableRow className="border-b border-white/[0.02]">
+                    <TableCell colSpan={4} className="text-neutral-500 text-center">
                       No recent orders found.
                     </TableCell>
                   </TableRow>
                 ) : (
                   recentOrders.map((order) => (
-                    <TableRow key={order.order_id} className="hover:bg-[#35353580] transition-colors border-[#2b2b2b]">
-                      <TableCell className="text-gray-200">{order.order_id}</TableCell>
-                      <TableCell className="text-gray-200">{order.order_statuses.description}</TableCell>
-                      <TableCell className="text-gray-200">{new Date(order.deadline).toLocaleString()}</TableCell>
-                      <TableCell className="text-gray-200">${(order.total_amount || 0).toLocaleString()}</TableCell>
+                    <TableRow key={order.order_id} className="hover:bg-white/[0.02] transition-colors border-b border-white/[0.02]">
+                      <TableCell className="text-neutral-200">{order.order_id}</TableCell>
+                      <TableCell className="text-neutral-200">
+                        <StatusPill text={order.order_statuses.description} type={order.order_statuses.description} />
+                      </TableCell>
+                      <TableCell className="text-neutral-200">{new Date(order.deadline).toLocaleString()}</TableCell>
+                      <TableCell className="text-neutral-200">${(order.total_amount || 0).toLocaleString()}</TableCell>
                     </TableRow>
                   ))
                 )}
               </TableBody>
             </Table>
-          </CardContent>
-        </Card>
+          </div>
+        </GlassCard>
 
         {/* Company Check Popup */}
         <AlertDialog open={isCompanyPopupOpen} onOpenChange={setIsCompanyPopupOpen}>
-          <AlertDialogContent className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80]">
+          <AlertDialogContent className="bg-[#0a0a0a]/90 backdrop-blur-xl text-neutral-200 border border-white/[0.05] shadow-[0_8px_32px_0_rgba(0,0,0,0.3)]">
             <AlertDialogHeader>
-              <AlertDialogTitle>Add Company Information</AlertDialogTitle>
-              <AlertDialogDescription>
+              <AlertDialogTitle className="text-white">Add Company Information</AlertDialogTitle>
+              <AlertDialogDescription className="text-neutral-400">
                 Your account is not linked to a company. Please add your company details to continue.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel className="bg-[#2b2b2b] text-gray-300 border-[#6a6a6a80] hover:bg-[#353535]">
+              <AlertDialogCancel className="bg-white/[0.02] text-neutral-300 border-transparent hover:bg-white/[0.05] hover:text-white">
                 Cancel
               </AlertDialogCancel>
               <AlertDialogAction asChild>
                 <Button
                   onClick={handleRedirectToAccount}
-                  className="bg-[#c8aa64] hover:bg-[#9d864e] text-[#242424]"
+                  className="bg-amber-500/10 text-amber-400 font-medium border border-amber-500/20 shadow-[0_0_15px_rgba(245,158,11,0.05)] hover:bg-amber-500/20 hover:shadow-[0_0_20px_rgba(245,158,11,0.1)] hover:border-amber-500/30 transition-all duration-300"
                 >
                   Go to Account
                 </Button>

@@ -11,20 +11,23 @@
 
 @layer components {
   .input {
-    @apply w-full p-1 bg-[#3c3c3c] text-[#bfbfbf] border border-[#6a6a6a] rounded focus:outline-none focus:ring-2 focus:ring-[#c8aa64] placeholder-gray-400;
+    @apply w-full p-2 bg-white/[0.03] text-neutral-200 border border-white/[0.08] shadow-inner rounded-md backdrop-blur-md focus:outline-none focus:ring-2 focus:ring-[#c8aa64]/50 placeholder-neutral-500 transition-all;
   }
+
   .card {
-    @apply w-full max-w-md rounded-lg shadow-lg p-6 space-y-6;
-    background-image: linear-gradient(30deg, #212121, #0f0f0f, #2b2b2b);
+    @apply w-full max-w-md rounded-2xl shadow-[0_8px_32px_0_#0000004d] p-6 space-y-6 bg-white/[0.03] backdrop-blur-xl border border-white/[0.08] relative overflow-hidden;
   }
+
   .input-label {
-    @apply text-sm text-[#ffffff] my-2;
+    @apply text-sm text-neutral-300 my-2;
   }
+
   .checkbox {
-    @apply mr-2 h-4 w-4 text-[#c8aa64] bg-[#3c3c3c] border-[#6a6a6a] rounded-sm focus:ring-[#c8aa64] border-2;
+    @apply mr-2 h-4 w-4 text-amber-500 bg-white/[0.03] border-white/[0.1] rounded-sm focus:ring-amber-500/50 border;
   }
+
   .button {
-    @apply w-full p-3 bg-[#c8aa64] text-[#242424] rounded hover:bg-[#9d864e] transition duration-200 font-semibold mb-4;
+    @apply w-full p-3 bg-gradient-to-t from-amber-700/50 to-amber-500/80 text-white rounded-lg hover:brightness-110 shadow-[0_4px_12px_#f59e0b33] transition duration-200 font-semibold mb-4;
   }
 }
 
@@ -66,6 +69,7 @@
     --sidebar-border: 220 13% 91%;
     --sidebar-ring: 217.2 91.2% 59.8%;
   }
+
   .dark {
     --background: 0 0% 5%;
     --foreground: 0 0% 75%;
@@ -100,13 +104,16 @@
     --sidebar-border: 240 3.7% 15.9%;
     --sidebar-ring: 217.2 91.2% 59.8%;
   }
+
   html {
-    @apply bg-[#14130F];
+    @apply bg-[#0a0a0a];
   }
+
   * {
-    @apply border-[#2b2b2b];
+    @apply border-white/[0.08];
   }
+
   body {
-    @apply bg-[#14130F] text-[#bfbfbf];
+    @apply bg-[#0a0a0a] text-neutral-200;
   }
 }

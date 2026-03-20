@@ -3,10 +3,14 @@
 import { useState, useEffect, Suspense } from 'react';
 import { supabase } from '@lib/supabase/client';
 import { useAuth } from '../../../lib/auth';
-import Image from 'next/image';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+
+// Component that uses useSearchParams
+import { GlassCard } from '@/components/ui/glass-card';
+import { Label } from '@/components/ui/label';
+import { Mail, ArrowLeft, KeyRound } from 'lucide-react';
 
 // Component that uses useSearchParams
 function ForgotPasswordContent() {
@@ -63,49 +67,67 @@ function ForgotPasswordContent() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-[#060606] p-4">
-      <Image src="/syndicate_logo.jpeg" alt="Logo" width={519} height={519} className="w-32 h-auto mb-4" />
-      <h1 className="text-2xl font-bold text-[#ffffff] text-center mb-6">Reset your password</h1>
-      <div className="card">
-        <div className="">
-          <p className="text-sm text-[#bfbfbf] mb-4 text-center">
-            Enter your email address and we&apos;ll send you a link to reset your password.
+    <div className="min-h-screen w-full flex flex-col items-center justify-center p-6 bg-transparent relative">
+      <div className="w-full max-w-[420px] z-10">
+        <div className="flex flex-col items-center mb-10">
+          <div className="w-16 h-16 bg-gradient-to-t from-amber-700/20 to-amber-500/10 rounded-2xl flex items-center justify-center mb-6 border border-amber-500/20 shadow-xl shadow-amber-900/10">
+            <KeyRound className="w-8 h-8 text-amber-500" />
+          </div>
+          <h1 className="text-3xl font-bold text-white tracking-tight text-center">Reset Password</h1>
+          <p className="text-neutral-500 mt-2 text-center text-sm font-medium leading-relaxed">
+            Enter your email and we&apos;ll send you a link to recover your account
           </p>
-          <h3 className="input-label">Email</h3>
-          <Input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="input mb-6 border-[#A7A7A7] text-[#FFFFFF] placeholder:text-[#A7A7A7]"
-            placeholder="Enter your email address"
-            disabled={isLoading}
-          />
-          <Button 
-            onClick={handleResetPassword} 
-            className="button"
-            disabled={isLoading}
-          >
-            {isLoading ? 'Sending...' : 'Send Reset Link'}
-          </Button>
-          <Button 
-            onClick={handleBackToLogin}
-            className="w-full p-3 bg-transparent text-[#c8aa64] border border-[#c8aa64] rounded hover:bg-[#c8aa64] hover:text-[#242424] transition duration-200 font-semibold"
-            disabled={isLoading}
-          >
-            Back to Login
-          </Button>
-          {message && (
-            <p
-              className={`text-center text-sm mt-4 ${
-                message.includes('sent') || message.includes('check your email') 
-                  ? 'text-green-400' 
-                  : 'text-red-400'
-              }`}
-            >
-              {message}
-            </p>
-          )}
         </div>
+
+        <GlassCard className="p-8">
+          <div className="space-y-6">
+            <div className="space-y-2">
+              <Label htmlFor="email" className="text-neutral-400 font-medium ml-1 flex items-center">
+                <Mail className="w-3 h-3 mr-1.5 text-neutral-600" /> Email Address
+              </Label>
+              <Input
+                id="email"
+                type="email"
+                placeholder="name@company.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="bg-white/[0.02] border-white/[0.05] text-white placeholder:text-neutral-600 focus:ring-amber-500/50 h-12 rounded-xl transition-all"
+                disabled={isLoading}
+              />
+            </div>
+
+            <Button
+              onClick={handleResetPassword}
+              className="w-full h-12 bg-amber-500/10 text-amber-400 font-medium border border-amber-500/20 shadow-[0_0_15px_rgba(245,158,11,0.05)] hover:bg-amber-500/20 hover:shadow-[0_0_20px_rgba(245,158,11,0.1)] hover:border-amber-500/30 rounded-xl tracking-wide transition-all duration-300 active:scale-[0.98]"
+              disabled={isLoading}
+            >
+              {isLoading ? (
+                <div className="flex items-center">
+                  <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin mr-2" />
+                  Sending...
+                </div>
+              ) : 'Send Reset Link'}
+            </Button>
+
+            <div className="pt-2 text-center">
+              <button
+                onClick={handleBackToLogin}
+                className="text-neutral-500 hover:text-white transition-colors text-sm flex items-center justify-center w-full group"
+              >
+                <ArrowLeft className="mr-2 h-4 w-4 group-hover:-translate-x-1 transition-transform" /> Back to welcome
+              </button>
+            </div>
+
+            {message && (
+              <div className={`p-4 rounded-xl text-xs font-semibold text-center mt-4 transition-all animate-in fade-in slide-in-from-top-2 ${message.includes('sent') || message.includes('check your email')
+                ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
+                }`}>
+                {message}
+              </div>
+            )}
+          </div>
+        </GlassCard>
       </div>
     </div>
   );
@@ -114,8 +136,8 @@ function ForgotPasswordContent() {
 export default function ForgotPasswordPage() {
   return (
     <Suspense fallback={
-      <div className="min-h-screen flex items-center justify-center bg-[#060606]">
-        <p className="text-white">Loading...</p>
+      <div className="min-h-screen flex items-center justify-center bg-transparent">
+        <div className="w-10 h-10 border-2 border-amber-500/20 border-t-amber-500 rounded-full animate-spin" />
       </div>
     }>
       <ForgotPasswordContent />

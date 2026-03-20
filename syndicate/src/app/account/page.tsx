@@ -7,7 +7,7 @@ import { supabase } from '@lib/supabase/client';
 import bcrypt from 'bcryptjs';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { GlassCard } from '@/components/ui/glass-card';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Check, Plus } from 'lucide-react';
@@ -104,7 +104,7 @@ export default function AccountPage() {
 
     // Optimistic UI update
     const previousUserInfo = { ...userInfo };
-    
+
     try {
       const { error: userError } = await supabase
         .from('users')
@@ -228,45 +228,45 @@ export default function AccountPage() {
   const generateInviteCode = useCallback(async () => {
     setMessage('');
     setInviteCode(null);
-  
+
     const { data: { user: authUser }, error: authError } = await supabase.auth.getUser();
     if (authError || !authUser) {
       console.error('Auth error:', authError);
       setMessage('Authentication error. Please try again.');
       return;
     }
-  
+
     const { data: userData, error: userError } = await supabase
       .from('users')
       .select('user_id, company_id')
       .eq('user_id', authUser.id)
       .single();
-  
+
     if (userError || !userData) {
       console.error('Error fetching user data:', userError);
       setMessage('Failed to identify current user.');
       return;
     }
-  
+
     const { user_id: createdUserId, company_id: companyId } = userData;
-  
+
     if (!companyId) {
       setMessage('You must be associated with a company to generate an invite code.');
       return;
     }
-  
+
     const { data, error } = await supabase
       .rpc('generate_invite_code', {
         p_user_id: createdUserId,
         p_company_id: companyId,
       });
-  
+
     if (error) {
       console.error('Error generating invite code:', error);
       setMessage(`Failed to generate invite code: ${error.message}`);
       return;
     }
-  
+
     setInviteCode(data);
     setMessage('Invite code generated successfully!');
   }, []);
@@ -281,8 +281,8 @@ export default function AccountPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#14130F] p-6 flex items-center justify-center">
-        <p className="text-gray-400">Loading...</p>
+      <div className="min-h-screen p-6 flex items-center justify-center">
+        <p className="text-neutral-400">Loading...</p>
       </div>
     );
   }
@@ -290,136 +290,135 @@ export default function AccountPage() {
   if (!isAuthenticated) return null;
 
   return (
-    <div className="min-h-screen bg-background p-6 flex items-center justify-center">
+    <div className="min-h-screen p-6 w-full flex items-center justify-center">
       <div className="w-full max-w-2xl space-y-8">
-        <h1 className="text-3xl font-bold text-[#bfbfbf] text-center">Account Settings</h1>
+        <h1 className="text-3xl font-bold text-white text-center">Account Settings</h1>
 
         {/* User Info Card */}
-        <Card className="bg-gradient-to-br from-[#212121] via-[#0f0f0f] to-[#2b2b2b] border-[#6a6a6a80]">
-          <CardHeader>
-            <CardTitle className="text-gray-300">Personal Information</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
+        <GlassCard className="p-6">
+          <div className="mb-6">
+            <h2 className="text-xl font-semibold text-white">Personal Information</h2>
+          </div>
+          <div className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <Label htmlFor="firstname" className="text-gray-300">First Name</Label>
+                <Label htmlFor="firstname" className="text-neutral-400">First Name</Label>
                 <Input
                   id="firstname"
                   value={userInfo?.firstname || ''}
                   onChange={(e) => debouncedSetUserInfo('firstname', e.target.value)}
-                  className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80]"
+                  className="bg-white/[0.02] text-neutral-200 border-white/[0.05] focus:border-amber-500/50"
                 />
               </div>
               <div>
-                <Label htmlFor="lastname" className="text-gray-300">Last Name</Label>
+                <Label htmlFor="lastname" className="text-neutral-400">Last Name</Label>
                 <Input
                   id="lastname"
                   value={userInfo?.lastname || ''}
                   onChange={(e) => debouncedSetUserInfo('lastname', e.target.value)}
-                  className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80]"
+                  className="bg-white/[0.02] text-neutral-200 border-white/[0.05] focus:border-amber-500/50"
                 />
               </div>
             </div>
             <div>
-              <Label htmlFor="email" className="text-gray-300">Email</Label>
+              <Label htmlFor="email" className="text-neutral-400">Email</Label>
               <Input
                 id="email"
                 type="email"
                 value={userInfo?.email || ''}
                 onChange={(e) => debouncedSetUserInfo('email', e.target.value)}
-                className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80]"
+                className="bg-white/[0.02] text-neutral-200 border-white/[0.05] focus:border-amber-500/50"
               />
             </div>
             <div>
-              <Label htmlFor="password" className="text-gray-300">New Password (leave blank to keep current)</Label>
+              <Label htmlFor="password" className="text-neutral-400">New Password (leave blank to keep current)</Label>
               <Input
                 id="password"
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80]"
+                className="bg-white/[0.02] text-neutral-200 border-white/[0.05] focus:border-amber-500/50"
               />
             </div>
             <Button
               onClick={handleUserUpdate}
               disabled={loading}
-              className="w-full bg-[#c8aa64] hover:bg-[#9d864e] text-[#242424]"
+              className="w-full bg-amber-500/10 text-amber-400 font-medium border border-amber-500/20 shadow-[0_0_15px_rgba(245,158,11,0.05)] hover:bg-amber-500/20 hover:shadow-[0_0_20px_rgba(245,158,11,0.1)] hover:border-amber-500/30 rounded-xl transition-all duration-300"
             >
               Save Personal Info
             </Button>
-          </CardContent>
-        </Card>
+          </div>
+        </GlassCard>
 
         {/* Company Info Card */}
-        <Card className="bg-gradient-to-br from-[#212121] via-[#0f0f0f] to-[#2b2b2b] border-[#6a6a6a80]">
-          <CardHeader>
-            <CardTitle className="text-gray-300">Company Information</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
+        <GlassCard className="p-6">
+          <div className="mb-6">
+            <h2 className="text-xl font-semibold text-white">Company Information</h2>
+          </div>
+          <div className="space-y-4">
             <div>
-              <Label htmlFor="companyName" className="text-gray-300">Company Name</Label>
+              <Label htmlFor="companyName" className="text-neutral-400">Company Name</Label>
               <Input
                 id="companyName"
                 value={companyInfo.name}
                 onChange={(e) => setCompanyInfo(prev => ({ ...prev, name: e.target.value }))}
-                className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80]"
+                className="bg-white/[0.02] text-neutral-200 border-white/[0.05] focus:border-amber-500/50"
               />
             </div>
             <div>
-              <Label htmlFor="companyEmail" className="text-gray-300">Company Email</Label>
+              <Label htmlFor="companyEmail" className="text-neutral-400">Company Email</Label>
               <Input
                 id="companyEmail"
                 type="email"
                 value={companyInfo.email}
                 onChange={(e) => setCompanyInfo(prev => ({ ...prev, email: e.target.value }))}
-                className="bg-[#1f1f1f] text-gray-300 border-[#6a6a6a80]"
+                className="bg-white/[0.02] text-neutral-200 border-white/[0.05] focus:border-amber-500/50"
               />
             </div>
             <Button
               onClick={handleCompanyUpdate}
               disabled={loading}
-              className="w-full bg-[#c8aa64] hover:bg-[#9d864e] text-[#242424]"
+              className="w-full bg-amber-500/10 text-amber-400 font-medium border border-amber-500/20 shadow-[0_0_15px_rgba(245,158,11,0.05)] hover:bg-amber-500/20 hover:shadow-[0_0_20px_rgba(245,158,11,0.1)] hover:border-amber-500/30 rounded-xl transition-all duration-300"
             >
               {userInfo && userInfo.company_id ? 'Save Company Info' : 'Add Company'}
             </Button>
-          </CardContent>
-        </Card>
+          </div>
+        </GlassCard>
 
         {/* Invite Code Card */}
         {userInfo?.company_id && (
-          <Card className="bg-gradient-to-br from-[#212121] via-[#0f0f0f] to-[#2b2b2b] border-[#6a6a6a80]">
-            <CardHeader>
-              <CardTitle className="text-gray-300">Invite to Company</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
+          <GlassCard className="p-6">
+            <div className="mb-6">
+              <h2 className="text-xl font-semibold text-white">Invite to Company</h2>
+            </div>
+            <div className="space-y-4">
               <Button
                 onClick={generateInviteCode}
                 disabled={loading}
-                className="w-full bg-[#c8aa64] hover:bg-[#9d864e] text-[#242424]"
+                className="w-full bg-amber-500/10 text-amber-400 font-medium border border-amber-500/20 shadow-[0_0_15px_rgba(245,158,11,0.05)] hover:bg-amber-500/20 hover:shadow-[0_0_20px_rgba(245,158,11,0.1)] hover:border-amber-500/30 rounded-xl transition-all duration-300"
               >
                 <Plus className="mr-2 h-4 w-4" />
                 Generate Invite Code
               </Button>
               {inviteCode && (
-                <Alert className="bg-[#235c12] text-[#bfbfbf]">
-                  <Check className="h-4 w-4 text-[#bfbfbf]" />
-                  <AlertTitle>New Invite Code</AlertTitle>
+                <Alert className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 backdrop-blur-md">
+                  <Check className="h-4 w-4 text-emerald-400" />
+                  <AlertTitle className="text-emerald-300">New Invite Code</AlertTitle>
                   <AlertDescription>
-                    <span className="font-mono text-lg">{inviteCode}</span>
-                    <p className="mt-1">Share this code to invite users to your company.</p>
+                    <span className="font-mono text-lg text-white">{inviteCode}</span>
+                    <p className="mt-1 text-emerald-400/80">Share this code to invite users to your company.</p>
                   </AlertDescription>
                 </Alert>
               )}
-            </CardContent>
-          </Card>
+            </div>
+          </GlassCard>
         )}
 
         {/* Message */}
         {message && (
           <p
-            className={`text-center text-sm ${
-              message.includes('successfully') ? 'text-green-400' : 'text-red-400'
-            }`}
+            className={`text-center text-sm ${message.includes('successfully') ? 'text-emerald-400' : 'text-rose-400'
+              }`}
           >
             {message}
           </p>
