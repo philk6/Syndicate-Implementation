@@ -2,64 +2,36 @@
 
 import { createClient } from '@supabase/supabase-js';
 import { revalidatePath } from 'next/cache';
-import { cookies } from 'next/headers';
 
-export async function revokeAndRefundAllocationAction(allocationId: number): Promise<{ success: boolean; message: string }> {
+export async function revokeAndRefundAllocationAction(
+  allocationId: number,
+  adminUserId: string
+): Promise<{ success: boolean; message: string }> {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
   const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
-  // Create a service-role client to bypass RLS for the admin check
-  const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
-
-  // Get the user's session token from cookies to identify who they are
-  const cookieStore = await cookies();
-  const accessToken = cookieStore.get('sb-access-token')?.value;
-  const refreshToken = cookieStore.get('sb-refresh-token')?.value;
-
-  // Try to get the user from the Supabase auth using the anon client
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-  const supabaseAuth = createClient(supabaseUrl, supabaseAnonKey);
-
-  // Attempt to set session from cookies  
-  let userId: string | null = null;
-
-  if (accessToken && refreshToken) {
-    const { data: sessionData } = await supabaseAuth.auth.setSession({
-      access_token: accessToken,
-      refresh_token: refreshToken,
-    });
-    userId = sessionData?.user?.id || null;
+  if (!adminUserId) {
+    return { success: false, message: 'Unauthorized: No admin user ID provided.' };
   }
 
-  if (!userId) {
-    // Fallback: try to get user from the auth header (Next.js middleware might pass it)
-    const { data: { user } } = await supabaseAuth.auth.getUser();
-    userId = user?.id || null;
-  }
+  // Use service-role client (same pattern as calculateOrderAllocation)
+  const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-  if (!userId) {
-    return { success: false, message: 'Unauthorized: Could not identify the current user.' };
-  }
-
-  // Verify the user is an admin
-  const { data: userData, error: userError } = await supabaseAdmin
+  // Double-check admin role on the server side before calling the RPC
+  const { data: userData, error: userError } = await supabase
     .from('users')
     .select('role')
-    .eq('user_id', userId)
+    .eq('user_id', adminUserId)
     .single();
 
-  if (userError || !userData) {
-    return { success: false, message: 'Unauthorized: Could not verify user role.' };
-  }
-
-  if (userData.role !== 'admin') {
+  if (userError || !userData || userData.role !== 'admin') {
     return { success: false, message: 'Forbidden: Only administrators can revoke allocations.' };
   }
 
-  // Call the RPC function
-  const { error: rpcError } = await supabaseAdmin.rpc('remove_allocation_and_refund', {
+  // Call the RPC function (which also verifies admin role at the DB level)
+  const { error: rpcError } = await supabase.rpc('remove_allocation_and_refund', {
     p_allocation_id: allocationId,
-    p_admin_user_id: userId,
+    p_admin_user_id: adminUserId,
   });
 
   if (rpcError) {
@@ -67,7 +39,7 @@ export async function revokeAndRefundAllocationAction(allocationId: number): Pro
     return { success: false, message: `Failed to revoke allocation: ${rpcError.message}` };
   }
 
-  // Revalidate all admin order pages so the UI updates
+  // Revalidate the admin order page so the UI updates
   revalidatePath('/admin/orders/[order_id]');
 
   return { success: true, message: 'Allocation revoked and credit refunded successfully.' };

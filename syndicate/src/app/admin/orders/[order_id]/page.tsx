@@ -34,7 +34,6 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
@@ -261,6 +260,35 @@ export default function AdminOrderManagementPage() {
   const [newAllocationCompanyId, setNewAllocationCompanyId] = useState<string>('');
   const [newAllocationQuantity, setNewAllocationQuantity] = useState<string>('');
 
+
+  // State for Revoke & Refund dialog
+  const [revokeDialogAllocationId, setRevokeDialogAllocationId] = useState<number | null>(null);
+  const revokeTarget = allocationResults.find(a => a.id === revokeDialogAllocationId);
+
+  const handleRevokeAndRefund = async () => {
+    if (!revokeDialogAllocationId || !user?.user_id) return;
+    const targetId = revokeDialogAllocationId;
+    setRevokeDialogAllocationId(null); // Close dialog immediately
+
+    startTransition(async () => {
+      try {
+        const response = await revokeAndRefundAllocationAction(targetId, user.user_id);
+        if (response.success) {
+          setFeedbackMessage({ type: 'success', text: response.message });
+          // Remove allocation from local state
+          setAllocationResults(prev => prev.filter(a => a.id !== targetId));
+          setEditedAllocations(prev => prev.filter(a => a.id !== targetId));
+          // Refresh company applications to show updated amounts
+          await fetchCompanyApplications(orderId);
+        } else {
+          setFeedbackMessage({ type: 'error', text: response.message });
+        }
+      } catch (err) {
+        console.error('Revoke and refund error:', err);
+        setFeedbackMessage({ type: 'error', text: 'An unexpected error occurred while revoking the allocation.' });
+      }
+    });
+  };
 
   const fetchCompanyApplications = async (currentOrderId: number) => {
     interface CompanyApplicationResult {
@@ -2367,66 +2395,15 @@ export default function AdminOrderManagementPage() {
                           <Trash2 className="h-4 w-4" />
                         </Button>
                         {/* Revoke & Refund: always enabled, even on closed orders */}
-                        <AlertDialog>
-                          <AlertDialogTrigger asChild>
-                            <Button
-                              variant="destructive"
-                              size="sm"
-                              className="h-9"
-                              disabled={isPending}
-                            >
-                              <DollarSign className="h-4 w-4 mr-1" /> Revoke & Refund
-                            </Button>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent className="bg-[#0a0a0a]/95 backdrop-blur-xl border-white/[0.08] text-white">
-                            <AlertDialogHeader>
-                              <AlertDialogTitle className="text-rose-400">Revoke Allocation & Refund Credit</AlertDialogTitle>
-                              <AlertDialogDescription className="text-neutral-400 space-y-3">
-                                <span className="block">
-                                  Are you sure you want to revoke this allocation?
-                                </span>
-                                <span className="block text-sm">
-                                  <strong className="text-white">Company:</strong> {result.company?.name || 'Unknown'}<br />
-                                  <strong className="text-white">Product:</strong> {result.order_products?.asin || 'N/A'}<br />
-                                  <strong className="text-white">Quantity:</strong> {result.quantity}<br />
-                                  <strong className="text-white">Refund Amount:</strong>{' '}
-                                  <span className="text-emerald-400 font-semibold">${result.invested_amount?.toFixed(2) || '0.00'}</span>
-                                </span>
-                                <span className="block text-sm">
-                                  The invested amount will be refunded to the company&apos;s credit balance.
-                                </span>
-                                <span className="block text-rose-400 font-semibold text-sm">
-                                  ⚠️ Manual Action Required: You must manually add this product to the next open order.
-                                </span>
-                              </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                              <AlertDialogCancel className="bg-white/[0.05] text-neutral-300 border-white/[0.1] hover:bg-white/[0.1] hover:text-white">
-                                Cancel
-                              </AlertDialogCancel>
-                              <AlertDialogAction
-                                className="bg-rose-600 text-white hover:bg-rose-700 border-0"
-                                onClick={() => {
-                                  startTransition(async () => {
-                                    const response = await revokeAndRefundAllocationAction(result.id);
-                                    if (response.success) {
-                                      setFeedbackMessage({ type: 'success', text: response.message });
-                                      // Remove allocation from local state
-                                      setAllocationResults(prev => prev.filter(a => a.id !== result.id));
-                                      setEditedAllocations(prev => prev.filter(a => a.id !== result.id));
-                                      // Refresh company applications to show updated amounts
-                                      await fetchCompanyApplications(orderId);
-                                    } else {
-                                      setFeedbackMessage({ type: 'error', text: response.message });
-                                    }
-                                  });
-                                }}
-                              >
-                                Yes, Revoke & Refund
-                              </AlertDialogAction>
-                            </AlertDialogFooter>
-                          </AlertDialogContent>
-                        </AlertDialog>
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          className="h-9"
+                          disabled={isPending}
+                          onClick={() => setRevokeDialogAllocationId(result.id)}
+                        >
+                          <DollarSign className="h-4 w-4 mr-1" /> Revoke & Refund
+                        </Button>
                       </div>
                     </TableCell>
                   </TableRow>
@@ -2436,6 +2413,53 @@ export default function AdminOrderManagementPage() {
           </Table>
         </GlassCard>
       )}
+
+      {/* Revoke & Refund Confirmation Dialog (controlled, outside the table) */}
+      <AlertDialog
+        open={revokeDialogAllocationId !== null}
+        onOpenChange={(open) => {
+          if (!open) setRevokeDialogAllocationId(null);
+        }}
+      >
+        <AlertDialogContent className="bg-[#0a0a0a]/95 backdrop-blur-xl border-white/[0.08] text-white">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-rose-400">Revoke Allocation & Refund Credit</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="text-neutral-400 space-y-3">
+                <span className="block">
+                  Are you sure you want to revoke this allocation?
+                </span>
+                {revokeTarget && (
+                  <span className="block text-sm">
+                    <strong className="text-white">Company:</strong> {revokeTarget.company?.name || 'Unknown'}<br />
+                    <strong className="text-white">Product:</strong> {revokeTarget.order_products?.asin || 'N/A'}<br />
+                    <strong className="text-white">Quantity:</strong> {revokeTarget.quantity}<br />
+                    <strong className="text-white">Refund Amount:</strong>{' '}
+                    <span className="text-emerald-400 font-semibold">${revokeTarget.invested_amount?.toFixed(2) || '0.00'}</span>
+                  </span>
+                )}
+                <span className="block text-sm">
+                  The invested amount will be refunded to the company&apos;s credit balance.
+                </span>
+                <span className="block text-rose-400 font-semibold text-sm">
+                  ⚠️ Manual Action Required: You must manually add this product to the next open order.
+                </span>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="bg-white/[0.05] text-neutral-300 border-white/[0.1] hover:bg-white/[0.1] hover:text-white">
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-rose-600 text-white hover:bg-rose-700 border-0"
+              onClick={handleRevokeAndRefund}
+            >
+              Yes, Revoke & Refund
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Add New Allocation Dialog */}
       <Dialog open={isAddAllocationDialogOpen} onOpenChange={setIsAddAllocationDialogOpen}>
