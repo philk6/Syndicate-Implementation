@@ -1795,6 +1795,9 @@ export default function AdminOrderManagementPage() {
           <h2 className="text-lg font-semibold text-white mb-6 flex items-center">
             <TrendingUp className="mr-2 h-5 w-5 text-amber-500" />
             Company Applications
+            <span className="ml-3 px-2.5 py-0.5 text-sm font-bold rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20">
+              {companyApplications.length}
+            </span>
           </h2>
           {companyApplications.length === 0 ? (
             <div className="text-center py-12 bg-white/[0.02] rounded-2xl border border-dashed border-white/[0.05]">
