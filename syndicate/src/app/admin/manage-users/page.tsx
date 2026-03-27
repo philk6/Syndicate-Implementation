@@ -24,7 +24,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Check, Plus, Loader2, Users, Settings2, CalendarClock } from 'lucide-react';
+import { Check, Plus, Loader2, Users, Settings2, CalendarClock, Pencil } from 'lucide-react';
+import { Input } from '@/components/ui/input';
 import ManageChatMentorsModal from '@/components/ManageChatMentorsModal';
 import { LoadingSpinner, PageLoadingSpinner } from '@/components/ui/loading-spinner';
 
@@ -65,6 +66,10 @@ export default function ManageUsersPage() {
   // Membership duration selection state
   const [pendingMembershipUserId, setPendingMembershipUserId] = useState<string | null>(null);
   const [pendingDuration, setPendingDuration] = useState<string>('');
+  const [pendingStartDate, setPendingStartDate] = useState<string>('');
+  const [editingMembershipUserId, setEditingMembershipUserId] = useState<string | null>(null);
+  const [editingDuration, setEditingDuration] = useState<string>('');
+  const [editingStartDate, setEditingStartDate] = useState<string>('');
 
   // 1-on-1 room management
   const [oneOnOneRooms, setOneOnOneRooms] = useState<ChatRoom1on1[]>([]);
@@ -190,8 +195,8 @@ export default function ManageUsersPage() {
 
   // ── Membership activation with duration ──────────────────────────────────
 
-  const calculateEndDate = (months: number): string => {
-    const date = new Date();
+  const calculateEndDate = (months: number, startDateStr?: string): string => {
+    const date = startDateStr ? new Date(startDateStr + 'T00:00:00') : new Date();
     date.setMonth(date.getMonth() + months);
     return date.toISOString();
   };
@@ -201,17 +206,18 @@ export default function ManageUsersPage() {
       // Turning OFF: immediately deactivate
       deactivateMembership(userId);
     } else {
-      // Turning ON: show the duration picker
+      // Turning ON: show the start date + duration picker
       setPendingMembershipUserId(userId);
       setPendingDuration('');
+      setPendingStartDate(new Date().toISOString().split('T')[0]); // default to today
     }
   };
 
-  const activateMembership = async (userId: string, durationMonths: number) => {
+  const activateMembership = async (userId: string, durationMonths: number, startDate?: string) => {
     setUpdatingUserId(userId);
     setMessage('');
 
-    const endDate = calculateEndDate(durationMonths);
+    const endDate = calculateEndDate(durationMonths, startDate);
 
     const { error } = await supabase
       .from('users')
@@ -274,15 +280,66 @@ export default function ManageUsersPage() {
 
   const handleDurationSelect = (value: string) => {
     setPendingDuration(value);
-    if (pendingMembershipUserId) {
-      const months = parseInt(value, 10);
-      activateMembership(pendingMembershipUserId, months);
+  };
+
+  const confirmActivation = () => {
+    if (pendingMembershipUserId && pendingDuration) {
+      const months = parseInt(pendingDuration, 10);
+      activateMembership(pendingMembershipUserId, months, pendingStartDate);
     }
   };
 
   const cancelPendingMembership = () => {
     setPendingMembershipUserId(null);
     setPendingDuration('');
+    setPendingStartDate('');
+  };
+
+  // ── Edit existing membership dates ──────────────────────────────────────
+
+  const startEditingMembership = (userId: string, endDate: string | null) => {
+    setEditingMembershipUserId(userId);
+    // Try to figure out a reasonable start date from the end date
+    // Default to today if no end date
+    setEditingStartDate(new Date().toISOString().split('T')[0]);
+    setEditingDuration('');
+  };
+
+  const cancelEditingMembership = () => {
+    setEditingMembershipUserId(null);
+    setEditingDuration('');
+    setEditingStartDate('');
+  };
+
+  const confirmEditMembership = async () => {
+    if (!editingMembershipUserId || !editingDuration || !editingStartDate) return;
+
+    setUpdatingUserId(editingMembershipUserId);
+    setMessage('');
+
+    const months = parseInt(editingDuration, 10);
+    const endDate = calculateEndDate(months, editingStartDate);
+
+    const { error } = await supabase
+      .from('users')
+      .update({ membership_end_date: endDate })
+      .eq('user_id', editingMembershipUserId);
+
+    if (error) {
+      console.error('Error updating membership dates:', error.message);
+      setMessage(`Failed to update membership dates: ${error.message}`);
+    } else {
+      setUsers((prev) =>
+        prev.map((u) =>
+          u.user_id === editingMembershipUserId
+            ? { ...u, membership_end_date: endDate }
+            : u,
+        ),
+      );
+      setMessage('Membership dates updated.');
+    }
+    setUpdatingUserId(null);
+    cancelEditingMembership();
   };
 
   // ── Toggle buyers group access ───────────────────────────────────────────
@@ -558,46 +615,81 @@ export default function ManageUsersPage() {
 
                       {/* 1-on-1 Membership Toggle + Duration */}
                       <TableCell>
-                        <div className="flex items-center gap-2">
-                          <Switch
-                            id={`membership-${u.user_id}`}
-                            checked={u.has_1on1_membership}
-                            onCheckedChange={() => handleMembershipToggle(u.user_id, u.has_1on1_membership)}
-                            disabled={updatingUserId === u.user_id}
-                            className="data-[state=checked]:bg-amber-500"
-                          />
-                          {/* Duration picker — shown when toggling ON */}
+                        <div className="flex flex-col gap-2">
+                          <div className="flex items-center gap-2">
+                            <Switch
+                              id={`membership-${u.user_id}`}
+                              checked={u.has_1on1_membership}
+                              onCheckedChange={() => handleMembershipToggle(u.user_id, u.has_1on1_membership)}
+                              disabled={updatingUserId === u.user_id}
+                              className="data-[state=checked]:bg-amber-500"
+                            />
+                            {updatingUserId === u.user_id && (
+                              <Loader2 className="w-3.5 h-3.5 text-amber-400 animate-spin" />
+                            )}
+                          </div>
+                          {/* Start date + duration picker — shown when toggling ON */}
                           {pendingMembershipUserId === u.user_id && (
-                            <div className="flex items-center gap-1.5">
-                              <Select
-                                value={pendingDuration}
-                                onValueChange={handleDurationSelect}
-                              >
-                                <SelectTrigger className="w-[120px] h-7 text-[11px] border-amber-500/20 bg-amber-500/5 text-amber-300 animate-in fade-in duration-200">
-                                  <SelectValue placeholder="Duration…" />
-                                </SelectTrigger>
-                                <SelectContent className="border-white/[0.08] bg-[#0a0a0a]/95 backdrop-blur-xl">
-                                  <SelectItem value="3" className="rounded-lg hover:bg-white/[0.04]">
-                                    3 Months
-                                  </SelectItem>
-                                  <SelectItem value="6" className="rounded-lg hover:bg-white/[0.04]">
-                                    6 Months
-                                  </SelectItem>
-                                  <SelectItem value="12" className="rounded-lg hover:bg-white/[0.04]">
-                                    1 Year
-                                  </SelectItem>
-                                </SelectContent>
-                              </Select>
-                              <button
-                                onClick={cancelPendingMembership}
-                                className="text-neutral-500 hover:text-neutral-300 text-xs transition-colors"
-                              >
-                                ✕
-                              </button>
+                            <div className="flex flex-col gap-1.5 animate-in fade-in slide-in-from-top-1 duration-200">
+                              <div className="flex items-center gap-1.5">
+                                <label className="text-[10px] text-neutral-500 whitespace-nowrap">Start:</label>
+                                <Input
+                                  type="date"
+                                  value={pendingStartDate}
+                                  onChange={(e) => setPendingStartDate(e.target.value)}
+                                  className="h-7 w-[130px] text-[11px] border-amber-500/20 bg-amber-500/5 text-amber-300 [color-scheme:dark]"
+                                />
+                              </div>
+                              <div className="flex items-center gap-1.5">
+                                <label className="text-[10px] text-neutral-500 whitespace-nowrap">Duration:</label>
+                                <Select
+                                  value={pendingDuration}
+                                  onValueChange={handleDurationSelect}
+                                >
+                                  <SelectTrigger className="w-[120px] h-7 text-[11px] border-amber-500/20 bg-amber-500/5 text-amber-300">
+                                    <SelectValue placeholder="Duration…" />
+                                  </SelectTrigger>
+                                  <SelectContent className="border-white/[0.08] bg-[#0a0a0a]/95 backdrop-blur-xl">
+                                    <SelectItem value="3" className="rounded-lg hover:bg-white/[0.04]">
+                                      3 Months
+                                    </SelectItem>
+                                    <SelectItem value="6" className="rounded-lg hover:bg-white/[0.04]">
+                                      6 Months
+                                    </SelectItem>
+                                    <SelectItem value="12" className="rounded-lg hover:bg-white/[0.04]">
+                                      1 Year
+                                    </SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              {pendingDuration && pendingStartDate && (
+                                <p className="text-[10px] text-neutral-500">
+                                  End date:{' '}
+                                  <span className="text-amber-300/80">
+                                    {new Date(
+                                      calculateEndDate(parseInt(pendingDuration, 10), pendingStartDate)
+                                    ).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                  </span>
+                                </p>
+                              )}
+                              <div className="flex items-center gap-1.5">
+                                <Button
+                                  size="sm"
+                                  onClick={confirmActivation}
+                                  disabled={!pendingDuration || !pendingStartDate}
+                                  className="h-6 px-3 text-[11px] bg-amber-500/20 text-amber-300 border border-amber-500/30 hover:bg-amber-500/30 disabled:opacity-40"
+                                >
+                                  <Check className="w-3 h-3 mr-1" />
+                                  Activate
+                                </Button>
+                                <button
+                                  onClick={cancelPendingMembership}
+                                  className="text-neutral-500 hover:text-neutral-300 text-xs transition-colors"
+                                >
+                                  ✕
+                                </button>
+                              </div>
                             </div>
-                          )}
-                          {updatingUserId === u.user_id && (
-                            <Loader2 className="w-3.5 h-3.5 text-amber-400 animate-spin" />
                           )}
                         </div>
                       </TableCell>
@@ -609,8 +701,86 @@ export default function ManageUsersPage() {
                           if (!u.has_1on1_membership) {
                             return <span className="text-neutral-600 text-xs">—</span>;
                           }
+
+                          {/* Editing existing membership */}
+                          if (editingMembershipUserId === u.user_id) {
+                            return (
+                              <div className="flex flex-col gap-1.5 animate-in fade-in slide-in-from-top-1 duration-200">
+                                <div className="flex items-center gap-1.5">
+                                  <label className="text-[10px] text-neutral-500 whitespace-nowrap">Start:</label>
+                                  <Input
+                                    type="date"
+                                    value={editingStartDate}
+                                    onChange={(e) => setEditingStartDate(e.target.value)}
+                                    className="h-7 w-[130px] text-[11px] border-amber-500/20 bg-amber-500/5 text-amber-300 [color-scheme:dark]"
+                                  />
+                                </div>
+                                <div className="flex items-center gap-1.5">
+                                  <label className="text-[10px] text-neutral-500 whitespace-nowrap">Duration:</label>
+                                  <Select
+                                    value={editingDuration}
+                                    onValueChange={(val) => setEditingDuration(val)}
+                                  >
+                                    <SelectTrigger className="w-[120px] h-7 text-[11px] border-amber-500/20 bg-amber-500/5 text-amber-300">
+                                      <SelectValue placeholder="Duration…" />
+                                    </SelectTrigger>
+                                    <SelectContent className="border-white/[0.08] bg-[#0a0a0a]/95 backdrop-blur-xl">
+                                      <SelectItem value="3" className="rounded-lg hover:bg-white/[0.04]">
+                                        3 Months
+                                      </SelectItem>
+                                      <SelectItem value="6" className="rounded-lg hover:bg-white/[0.04]">
+                                        6 Months
+                                      </SelectItem>
+                                      <SelectItem value="12" className="rounded-lg hover:bg-white/[0.04]">
+                                        1 Year
+                                      </SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                {editingDuration && editingStartDate && (
+                                  <p className="text-[10px] text-neutral-500">
+                                    New end date:{' '}
+                                    <span className="text-amber-300/80">
+                                      {new Date(
+                                        calculateEndDate(parseInt(editingDuration, 10), editingStartDate)
+                                      ).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                    </span>
+                                  </p>
+                                )}
+                                <div className="flex items-center gap-1.5">
+                                  <Button
+                                    size="sm"
+                                    onClick={confirmEditMembership}
+                                    disabled={!editingDuration || !editingStartDate}
+                                    className="h-6 px-3 text-[11px] bg-amber-500/20 text-amber-300 border border-amber-500/30 hover:bg-amber-500/30 disabled:opacity-40"
+                                  >
+                                    <Check className="w-3 h-3 mr-1" />
+                                    Save
+                                  </Button>
+                                  <button
+                                    onClick={cancelEditingMembership}
+                                    className="text-neutral-500 hover:text-neutral-300 text-xs transition-colors"
+                                  >
+                                    ✕
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          }
+
                           if (!expiry) {
-                            return <span className="text-neutral-500 text-xs">No date set</span>;
+                            return (
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-neutral-500 text-xs">No date set</span>
+                                <button
+                                  onClick={() => startEditingMembership(u.user_id, u.membership_end_date)}
+                                  className="text-amber-400/60 hover:text-amber-400 transition-colors"
+                                  title="Set membership dates"
+                                >
+                                  <Pencil className="w-3 h-3" />
+                                </button>
+                              </div>
+                            );
                           }
                           return (
                             <div className="flex items-center gap-1.5">
@@ -624,6 +794,13 @@ export default function ManageUsersPage() {
                               >
                                 {expiry.isExpired ? 'Expired' : `Expires ${expiry.formatted}`}
                               </span>
+                              <button
+                                onClick={() => startEditingMembership(u.user_id, u.membership_end_date)}
+                                className="text-amber-400/60 hover:text-amber-400 transition-colors"
+                                title="Edit membership dates"
+                              >
+                                <Pencil className="w-3 h-3" />
+                              </button>
                             </div>
                           );
                         })()}
