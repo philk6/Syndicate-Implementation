@@ -38,6 +38,7 @@ import {
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
 import { calculateOrderAllocation, revokeAndRefundAllocationAction } from './actions';
+import { AdjustShortfallModal } from '@/components/AdjustShortfallModal';
 import { PageLoadingSpinner } from '@/components/ui/loading-spinner';
 import { utils, write } from 'xlsx';
 import { debounce } from 'lodash';
@@ -2218,15 +2219,26 @@ export default function AdminOrderManagementPage() {
                           </div>
                         </TableCell>
                         <TableCell className="py-4 text-right">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleProductRemove(product.sequence)}
-                            disabled={!isOrderEditable}
-                            className="text-rose-400 hover:text-rose-300 hover:bg-rose-500/10"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
+                          <div className="flex justify-end gap-1">
+                            {allocationResults.some(a => a.sequence === product.sequence) && user?.user_id && (
+                              <AdjustShortfallModal
+                                orderId={orderId}
+                                sequence={product.sequence}
+                                asin={product.asin}
+                                currentQuantity={product.quantity}
+                                adminUserId={user.user_id}
+                              />
+                            )}
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleProductRemove(product.sequence)}
+                              disabled={!isOrderEditable}
+                              className="text-rose-400 hover:text-rose-300 hover:bg-rose-500/10"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
                         </TableCell>
                       </TableRow>
                     );
