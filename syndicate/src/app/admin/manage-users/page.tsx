@@ -297,7 +297,7 @@ export default function ManageUsersPage() {
 
   // ── Edit existing membership dates ──────────────────────────────────────
 
-  const startEditingMembership = (userId: string, endDate: string | null) => {
+  const startEditingMembership = (userId: string) => {
     setEditingMembershipUserId(userId);
     // Try to figure out a reasonable start date from the end date
     // Default to today if no end date
@@ -773,7 +773,7 @@ export default function ManageUsersPage() {
                               <div className="flex items-center gap-1.5">
                                 <span className="text-neutral-500 text-xs">No date set</span>
                                 <button
-                                  onClick={() => startEditingMembership(u.user_id, u.membership_end_date)}
+                                  onClick={() => startEditingMembership(u.user_id)}
                                   className="text-amber-400/60 hover:text-amber-400 transition-colors"
                                   title="Set membership dates"
                                 >
@@ -795,7 +795,7 @@ export default function ManageUsersPage() {
                                 {expiry.isExpired ? 'Expired' : `Expires ${expiry.formatted}`}
                               </span>
                               <button
-                                onClick={() => startEditingMembership(u.user_id, u.membership_end_date)}
+                                onClick={() => startEditingMembership(u.user_id)}
                                 className="text-amber-400/60 hover:text-amber-400 transition-colors"
                                 title="Edit membership dates"
                               >
