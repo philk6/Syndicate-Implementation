@@ -25,6 +25,7 @@ export default function ChatPage() {
     userRole,
     selectRoom,
     sendMessage,
+    deleteMessage,
   } = useChat();
 
   // Redirect if not authenticated
@@ -62,6 +63,7 @@ export default function ChatPage() {
         loadingMessages={loadingMessages}
         sending={sending}
         onSend={sendMessage}
+        onDelete={deleteMessage}
         userPlatformRole={userPlatformRole}
         userMembershipEndDate={userMembershipEndDate}
         userRole={userRole}

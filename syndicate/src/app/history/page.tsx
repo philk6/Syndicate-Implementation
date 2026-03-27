@@ -16,6 +16,7 @@ import {
 import { StatusPill } from '@/components/ui/status-pill';
 import { GlassCard } from '@/components/ui/glass-card';
 import { History, Clock, ArrowRight } from 'lucide-react';
+import { LoadingSpinner } from '@/components/ui/loading-spinner';
 
 interface Order {
   order_id: number;
@@ -145,9 +146,8 @@ export default function HistoryPage() {
           </div>
 
           {loadingOrders ? (
-            <div className="p-12 text-center text-neutral-500 italic flex flex-col items-center">
-              <div className="w-10 h-10 border-2 border-amber-500/20 border-t-amber-500 rounded-full animate-spin mb-4" />
-              Loading your history...
+            <div className="p-12 flex items-center justify-center">
+              <LoadingSpinner size="md" />
             </div>
           ) : orders.length === 0 ? (
             <div className="p-12 text-center text-neutral-500 italic">

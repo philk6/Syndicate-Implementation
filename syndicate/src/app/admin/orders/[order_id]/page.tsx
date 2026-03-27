@@ -38,6 +38,8 @@ import {
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
 import { calculateOrderAllocation, revokeAndRefundAllocationAction } from './actions';
+import { AdjustShortfallModal } from '@/components/AdjustShortfallModal';
+import { PageLoadingSpinner } from '@/components/ui/loading-spinner';
 import { utils, write } from 'xlsx';
 import { debounce } from 'lodash';
 
@@ -253,6 +255,10 @@ export default function AdminOrderManagementPage() {
   // State for new dialogs
   const [isCompanyAllocationSummaryDialogOpen, setIsCompanyAllocationSummaryDialogOpen] = useState(false);
   const [isUnallocatedProductsDialogOpen, setIsUnallocatedProductsDialogOpen] = useState(false);
+
+  // State for Company Product Detail Dialog
+  const [isCompanyDetailDialogOpen, setIsCompanyDetailDialogOpen] = useState(false);
+  const [selectedCompanyForDetail, setSelectedCompanyForDetail] = useState<{ company_id: number; company_name: string } | null>(null);
 
   // State for Add New Allocation Dialog
   const [isAddAllocationDialogOpen, setIsAddAllocationDialogOpen] = useState(false);
@@ -1329,6 +1335,32 @@ export default function AdminOrderManagementPage() {
     });
   }, [companyApplications, allocationResults]);
 
+  // Per-product breakdown for the selected company
+  const selectedCompanyProductBreakdown = useMemo(() => {
+    if (!selectedCompanyForDetail) return [];
+    const companyAllocations = allocationResults.filter(ar => ar.company_id === selectedCompanyForDetail.company_id);
+    // Group by sequence (product)
+    const grouped = new Map<number, { sequence: number; asin: string; description: string | null; quantity: number; unitPrice: number; subtotal: number }>();
+    for (const ar of companyAllocations) {
+      const existing = grouped.get(ar.sequence);
+      const unitPrice = ar.order_products?.price || 0;
+      if (existing) {
+        existing.quantity += ar.quantity;
+        existing.subtotal += ar.quantity * unitPrice;
+      } else {
+        grouped.set(ar.sequence, {
+          sequence: ar.sequence,
+          asin: ar.order_products?.asin || 'Unknown',
+          description: ar.order_products?.description || null,
+          quantity: ar.quantity,
+          unitPrice,
+          subtotal: ar.quantity * unitPrice,
+        });
+      }
+    }
+    return Array.from(grouped.values()).sort((a, b) => a.sequence - b.sequence);
+  }, [selectedCompanyForDetail, allocationResults]);
+
   const unallocatedProductsSummary = useMemo(() => {
     return products.map(product => {
       const totalAllocatedForProduct = allocationResults
@@ -1477,7 +1509,7 @@ export default function AdminOrderManagementPage() {
 
 
   if (authLoading || loading) {
-    return <div className="min-h-screen bg-[#14130F] p-6 flex items-center justify-center"><p className="text-gray-400">Loading...</p></div>;
+    return <PageLoadingSpinner />;
   }
 
   if (!isAuthenticated || user?.role !== 'admin') return null;
@@ -1764,6 +1796,9 @@ export default function AdminOrderManagementPage() {
           <h2 className="text-lg font-semibold text-white mb-6 flex items-center">
             <TrendingUp className="mr-2 h-5 w-5 text-amber-500" />
             Company Applications
+            <span className="ml-3 px-2.5 py-0.5 text-sm font-bold rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20">
+              {companyApplications.length}
+            </span>
           </h2>
           {companyApplications.length === 0 ? (
             <div className="text-center py-12 bg-white/[0.02] rounded-2xl border border-dashed border-white/[0.05]">
@@ -2184,15 +2219,26 @@ export default function AdminOrderManagementPage() {
                           </div>
                         </TableCell>
                         <TableCell className="py-4 text-right">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleProductRemove(product.sequence)}
-                            disabled={!isOrderEditable}
-                            className="text-rose-400 hover:text-rose-300 hover:bg-rose-500/10"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
+                          <div className="flex justify-end gap-1">
+                            {allocationResults.some(a => a.sequence === product.sequence) && user?.user_id && (
+                              <AdjustShortfallModal
+                                orderId={orderId}
+                                sequence={product.sequence}
+                                asin={product.asin}
+                                currentQuantity={product.quantity}
+                                adminUserId={user.user_id}
+                              />
+                            )}
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleProductRemove(product.sequence)}
+                              disabled={!isOrderEditable}
+                              className="text-rose-400 hover:text-rose-300 hover:bg-rose-500/10"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
                         </TableCell>
                       </TableRow>
                     );
@@ -2567,8 +2613,20 @@ export default function AdminOrderManagementPage() {
                 </TableHeader>
                 <TableBody>
                   {companyAllocationSummary.map((summary) => (
-                    <TableRow key={summary.company_id} className="hover:bg-white/[0.02] transition-colors border-white/[0.02]">
-                      <TableCell className="text-white font-medium py-4">{summary.company_name}</TableCell>
+                    <TableRow
+                      key={summary.company_id}
+                      className="hover:bg-white/[0.05] transition-colors border-white/[0.02] cursor-pointer group"
+                      onClick={() => {
+                        setSelectedCompanyForDetail({ company_id: summary.company_id, company_name: summary.company_name });
+                        setIsCompanyDetailDialogOpen(true);
+                      }}
+                    >
+                      <TableCell className="text-white font-medium py-4 group-hover:text-amber-400 transition-colors">
+                        <span className="flex items-center gap-2">
+                          {summary.company_name}
+                          <PackageSearch className="h-3.5 w-3.5 text-neutral-600 group-hover:text-amber-400/60 transition-colors" />
+                        </span>
+                      </TableCell>
                       <TableCell className="text-neutral-400 text-right py-4">${summary.max_investment.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
                       <TableCell className="text-emerald-400 text-right font-bold py-4">${summary.totalAllocatedValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
                     </TableRow>
@@ -2581,6 +2639,62 @@ export default function AdminOrderManagementPage() {
             <Button
               variant="ghost"
               onClick={() => setIsCompanyAllocationSummaryDialogOpen(false)}
+              className="text-neutral-400 hover:text-white"
+            >
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Company Product Detail Dialog */}
+      <Dialog open={isCompanyDetailDialogOpen} onOpenChange={(open) => { setIsCompanyDetailDialogOpen(open); if (!open) setSelectedCompanyForDetail(null); }}>
+        <DialogContent className="bg-[#0a0a0a]/90 backdrop-blur-xl border-white/[0.08] text-white max-w-4xl">
+          <DialogHeader>
+            <DialogTitle>
+              Product Breakdown for <span className="text-amber-500">{selectedCompanyForDetail?.company_name}</span>
+            </DialogTitle>
+          </DialogHeader>
+          <div className="max-h-[70vh] overflow-y-auto pr-2">
+            {selectedCompanyProductBreakdown.length === 0 ? (
+              <p className="text-neutral-500 italic p-8 text-center">No products allocated to this company.</p>
+            ) : (
+              <>
+                <Table>
+                  <TableHeader>
+                    <TableRow className="hover:bg-transparent border-white/[0.05]">
+                      <TableHead className="text-neutral-400 font-medium">ASIN</TableHead>
+                      <TableHead className="text-neutral-400 font-medium">Description</TableHead>
+                      <TableHead className="text-neutral-400 font-medium text-right">Quantity</TableHead>
+                      <TableHead className="text-neutral-400 font-medium text-right">Unit Price</TableHead>
+                      <TableHead className="text-neutral-400 font-medium text-right">Subtotal</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {selectedCompanyProductBreakdown.map((item) => (
+                      <TableRow key={item.sequence} className="hover:bg-white/[0.02] transition-colors border-white/[0.02]">
+                        <TableCell className="text-white font-mono text-xs">{item.asin}</TableCell>
+                        <TableCell className="text-neutral-400 text-sm max-w-[200px] truncate">{item.description || 'N/A'}</TableCell>
+                        <TableCell className="text-neutral-200 text-right">{item.quantity}</TableCell>
+                        <TableCell className="text-neutral-400 text-right">${item.unitPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
+                        <TableCell className="text-emerald-400 text-right font-bold">${item.subtotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+                <div className="flex justify-between items-center mt-4 pt-4 border-t border-white/[0.05] px-2">
+                  <span className="text-neutral-400 font-medium">Grand Total</span>
+                  <span className="text-emerald-400 font-bold text-lg">
+                    ${selectedCompanyProductBreakdown.reduce((sum, item) => sum + item.subtotal, 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </span>
+                </div>
+              </>
+            )}
+          </div>
+          <DialogFooter className="pt-4 border-t border-white/[0.05]">
+            <Button
+              variant="ghost"
+              onClick={() => { setIsCompanyDetailDialogOpen(false); setSelectedCompanyForDetail(null); }}
               className="text-neutral-400 hover:text-white"
             >
               Close

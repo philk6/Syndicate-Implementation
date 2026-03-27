@@ -6,6 +6,7 @@ import { useAuth } from '../../../../lib/auth';
 import { supabase } from '../../../../lib/supabase/client';
 import { PostgrestError } from '@supabase/supabase-js';
 import { GlassCard } from '@/components/ui/glass-card';
+import { PageLoadingSpinner } from '@/components/ui/loading-spinner';
 import { StatusPill } from '@/components/ui/status-pill';
 import {
   Table,
@@ -128,11 +129,7 @@ export default function AdminDashboardPage() {
   }, [isAuthenticated, authLoading, router, user]);
 
   if (loading) {
-    return (
-      <div className="min-h-screen p-6 flex items-center justify-center">
-        <p className="text-neutral-400">Loading...</p>
-      </div>
-    );
+    return <PageLoadingSpinner />;
   }
 
   if (!isAuthenticated || user?.role !== 'admin') return null;

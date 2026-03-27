@@ -14,6 +14,7 @@ import {
 import { GlassCard } from '@/components/ui/glass-card';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Banknote, Landmark, Wallet, AlertCircle } from 'lucide-react';
+import { PageLoadingSpinner } from '@/components/ui/loading-spinner';
 
 // Type definitions
 interface UserCreditSummary {
@@ -104,7 +105,7 @@ export default function UserCreditDashboardPage() {
   }, [session, user?.company_id, fetchData]);
 
   if (authLoading || loadingData) {
-    return <div className="min-h-screen p-6 flex items-center justify-center"><p className="text-neutral-400">Loading Credit Information...</p></div>;
+    return <PageLoadingSpinner />;
   }
 
   if (error) {

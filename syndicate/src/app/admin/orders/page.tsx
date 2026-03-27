@@ -34,6 +34,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { toast, Toaster } from 'sonner';
 import Link from 'next/link';
+import { PageLoadingSpinner } from '@/components/ui/loading-spinner';
 
 interface Order {
   order_id: number;
@@ -273,11 +274,7 @@ export default function AdminOrdersPage() {
 
 
   if (authLoading || loadingOrders) {
-    return (
-      <div className="min-h-screen p-6 flex items-center justify-center">
-        <p className="text-neutral-400">Loading...</p>
-      </div>
-    );
+    return <PageLoadingSpinner />;
   }
 
   if (!isAuthenticated || user?.role !== 'admin') return null;
