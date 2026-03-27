@@ -155,7 +155,7 @@ export async function calculateShortfallAdjustments(
     // 1. Fetch current allocations for this specific product
     const { data: allocations, error: allocError } = await supabase
       .from('allocation_results')
-      .select('company_id, quantity')
+      .select('company_id, quantity, invested_amount')
       .eq('order_id', orderId)
       .eq('sequence', sequence);
 
@@ -168,20 +168,7 @@ export async function calculateShortfallAdjustments(
       return { success: false, message: 'No allocations found for this product.' };
     }
 
-    // 2. Fetch the product price
-    const { data: product, error: productError } = await supabase
-      .from('order_products')
-      .select('price')
-      .eq('order_id', orderId)
-      .eq('sequence', sequence)
-      .single();
-
-    if (productError || !product) {
-      console.error('Error fetching product price:', productError);
-      return { success: false, message: `Failed to fetch product price: ${productError?.message ?? 'Product not found'}` };
-    }
-
-    const price = Number(product.price);
+    // 2. No longer need to fetch price — refund is based on invested_amount
     const totalAllocated = allocations.reduce((sum, a) => sum + a.quantity, 0);
 
     // Guard: actualStock must be less than totalAllocated (otherwise no shortfall)
@@ -208,6 +195,7 @@ export async function calculateShortfallAdjustments(
       return {
         company_id: a.company_id as number,
         original_quantity: a.quantity as number,
+        invested_amount: Number(a.invested_amount ?? 0),
         floored,
         remainder,
       };
@@ -226,13 +214,18 @@ export async function calculateShortfallAdjustments(
     }
 
     // 4. Build the adjustments array
+    //    Refund is the proportional reduction of invested_amount (what the company actually paid),
+    //    NOT units_lost * retail price (which ignores the max_investment cap).
     const adjustments: ShortfallAdjustment[] = intermediate.map((entry) => {
       const unitsLost = entry.original_quantity - entry.floored;
+      const refund = entry.original_quantity > 0
+        ? entry.invested_amount * (unitsLost / entry.original_quantity)
+        : 0;
       return {
         company_id: entry.company_id,
         new_quantity: entry.floored,
         units_lost: unitsLost,
-        refund_amount: parseFloat((unitsLost * price).toFixed(2)),
+        refund_amount: parseFloat(refund.toFixed(2)),
       };
     });
 
