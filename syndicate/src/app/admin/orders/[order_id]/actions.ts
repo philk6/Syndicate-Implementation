@@ -132,3 +132,155 @@ export async function calculateOrderAllocation(orderId: number) {
     return { success: false, message: `An unexpected error occurred: ${(error as Error).message}` };
   }
 }
+
+// --- Shortfall Adjustment (Largest Remainder Method) ---
+
+export interface ShortfallAdjustment {
+  company_id: number;
+  new_quantity: number;
+  units_lost: number;
+  refund_amount: number;
+}
+
+export async function calculateShortfallAdjustments(
+  orderId: number,
+  sequence: number,
+  actualStock: number
+): Promise<{ success: boolean; message: string; adjustments?: ShortfallAdjustment[] }> {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+  const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+  try {
+    // 1. Fetch current allocations for this specific product
+    const { data: allocations, error: allocError } = await supabase
+      .from('allocation_results')
+      .select('company_id, quantity')
+      .eq('order_id', orderId)
+      .eq('sequence', sequence);
+
+    if (allocError) {
+      console.error('Error fetching allocations:', allocError);
+      return { success: false, message: `Failed to fetch allocations: ${allocError.message}` };
+    }
+
+    if (!allocations || allocations.length === 0) {
+      return { success: false, message: 'No allocations found for this product.' };
+    }
+
+    // 2. Fetch the product price
+    const { data: product, error: productError } = await supabase
+      .from('order_products')
+      .select('price')
+      .eq('order_id', orderId)
+      .eq('sequence', sequence)
+      .single();
+
+    if (productError || !product) {
+      console.error('Error fetching product price:', productError);
+      return { success: false, message: `Failed to fetch product price: ${productError?.message ?? 'Product not found'}` };
+    }
+
+    const price = Number(product.price);
+    const totalAllocated = allocations.reduce((sum, a) => sum + a.quantity, 0);
+
+    // Guard: actualStock must be less than totalAllocated (otherwise no shortfall)
+    if (actualStock >= totalAllocated) {
+      return {
+        success: false,
+        message: `Actual stock (${actualStock}) is not less than total allocated (${totalAllocated}). No shortfall to process.`,
+      };
+    }
+
+    if (actualStock < 0) {
+      return { success: false, message: 'Actual stock cannot be negative.' };
+    }
+
+    // 3. Largest Remainder Method
+    //    - Multiply each allocation by (actualStock / totalAllocated), floor the result
+    //    - Distribute the remaining units to companies with the highest decimal fractions
+    const ratio = actualStock / totalAllocated;
+
+    const intermediate = allocations.map((a) => {
+      const exact = a.quantity * ratio;
+      const floored = Math.floor(exact);
+      const remainder = exact - floored;
+      return {
+        company_id: a.company_id as number,
+        original_quantity: a.quantity as number,
+        floored,
+        remainder,
+      };
+    });
+
+    const flooredTotal = intermediate.reduce((sum, i) => sum + i.floored, 0);
+    let unitsToDistribute = actualStock - flooredTotal;
+
+    // Sort by remainder descending to give extra units to highest fractions first
+    const sorted = [...intermediate].sort((a, b) => b.remainder - a.remainder);
+
+    for (const entry of sorted) {
+      if (unitsToDistribute <= 0) break;
+      entry.floored += 1;
+      unitsToDistribute -= 1;
+    }
+
+    // 4. Build the adjustments array
+    const adjustments: ShortfallAdjustment[] = intermediate.map((entry) => {
+      const unitsLost = entry.original_quantity - entry.floored;
+      return {
+        company_id: entry.company_id,
+        new_quantity: entry.floored,
+        units_lost: unitsLost,
+        refund_amount: parseFloat((unitsLost * price).toFixed(2)),
+      };
+    });
+
+    return {
+      success: true,
+      message: `Shortfall adjustments calculated. Reducing from ${totalAllocated} to ${actualStock} units across ${adjustments.length} companies.`,
+      adjustments,
+    };
+  } catch (error) {
+    console.error('Error in calculateShortfallAdjustments:', error);
+    return { success: false, message: `An unexpected error occurred: ${(error as Error).message}` };
+  }
+}
+
+export async function applyShortfallAdjustments(
+  orderId: number,
+  sequence: number,
+  actualStock: number,
+  adminUserId: string,
+  adjustments: ShortfallAdjustment[]
+): Promise<{ success: boolean; message: string }> {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+  const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+  try {
+    const { error: rpcError } = await supabase.rpc('apply_shortfall_adjustments', {
+      p_order_id: orderId,
+      p_sequence: sequence,
+      p_actual_stock: actualStock,
+      p_admin_user_id: adminUserId,
+      p_adjustments: JSON.stringify(adjustments),
+    });
+
+    if (rpcError) {
+      console.error('RPC apply_shortfall_adjustments error:', rpcError);
+      return { success: false, message: `Failed to apply shortfall: ${rpcError.message}` };
+    }
+
+    revalidatePath('/admin/orders/[order_id]');
+
+    const totalRefund = adjustments.reduce((sum, a) => sum + a.refund_amount, 0);
+    return {
+      success: true,
+      message: `Shortfall applied successfully. ${adjustments.filter(a => a.units_lost > 0).length} companies adjusted, $${totalRefund.toFixed(2)} total refunded.`,
+    };
+  } catch (error) {
+    console.error('Error in applyShortfallAdjustments:', error);
+    return { success: false, message: `An unexpected error occurred: ${(error as Error).message}` };
+  }
+}
