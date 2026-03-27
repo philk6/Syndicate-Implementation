@@ -264,7 +264,7 @@ export async function applyShortfallAdjustments(
       p_sequence: sequence,
       p_actual_stock: actualStock,
       p_admin_user_id: adminUserId,
-      p_adjustments: JSON.stringify(adjustments),
+      p_adjustments: adjustments,
     });
 
     if (rpcError) {
