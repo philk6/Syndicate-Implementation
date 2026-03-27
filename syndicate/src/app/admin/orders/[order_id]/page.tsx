@@ -255,6 +255,10 @@ export default function AdminOrderManagementPage() {
   const [isCompanyAllocationSummaryDialogOpen, setIsCompanyAllocationSummaryDialogOpen] = useState(false);
   const [isUnallocatedProductsDialogOpen, setIsUnallocatedProductsDialogOpen] = useState(false);
 
+  // State for Company Product Detail Dialog
+  const [isCompanyDetailDialogOpen, setIsCompanyDetailDialogOpen] = useState(false);
+  const [selectedCompanyForDetail, setSelectedCompanyForDetail] = useState<{ company_id: number; company_name: string } | null>(null);
+
   // State for Add New Allocation Dialog
   const [isAddAllocationDialogOpen, setIsAddAllocationDialogOpen] = useState(false);
   const [newAllocationSequence, setNewAllocationSequence] = useState<string>('');
@@ -1329,6 +1333,32 @@ export default function AdminOrderManagementPage() {
       };
     });
   }, [companyApplications, allocationResults]);
+
+  // Per-product breakdown for the selected company
+  const selectedCompanyProductBreakdown = useMemo(() => {
+    if (!selectedCompanyForDetail) return [];
+    const companyAllocations = allocationResults.filter(ar => ar.company_id === selectedCompanyForDetail.company_id);
+    // Group by sequence (product)
+    const grouped = new Map<number, { sequence: number; asin: string; description: string | null; quantity: number; unitPrice: number; subtotal: number }>();
+    for (const ar of companyAllocations) {
+      const existing = grouped.get(ar.sequence);
+      const unitPrice = ar.order_products?.price || 0;
+      if (existing) {
+        existing.quantity += ar.quantity;
+        existing.subtotal += ar.quantity * unitPrice;
+      } else {
+        grouped.set(ar.sequence, {
+          sequence: ar.sequence,
+          asin: ar.order_products?.asin || 'Unknown',
+          description: ar.order_products?.description || null,
+          quantity: ar.quantity,
+          unitPrice,
+          subtotal: ar.quantity * unitPrice,
+        });
+      }
+    }
+    return Array.from(grouped.values()).sort((a, b) => a.sequence - b.sequence);
+  }, [selectedCompanyForDetail, allocationResults]);
 
   const unallocatedProductsSummary = useMemo(() => {
     return products.map(product => {
@@ -2568,8 +2598,20 @@ export default function AdminOrderManagementPage() {
                 </TableHeader>
                 <TableBody>
                   {companyAllocationSummary.map((summary) => (
-                    <TableRow key={summary.company_id} className="hover:bg-white/[0.02] transition-colors border-white/[0.02]">
-                      <TableCell className="text-white font-medium py-4">{summary.company_name}</TableCell>
+                    <TableRow
+                      key={summary.company_id}
+                      className="hover:bg-white/[0.05] transition-colors border-white/[0.02] cursor-pointer group"
+                      onClick={() => {
+                        setSelectedCompanyForDetail({ company_id: summary.company_id, company_name: summary.company_name });
+                        setIsCompanyDetailDialogOpen(true);
+                      }}
+                    >
+                      <TableCell className="text-white font-medium py-4 group-hover:text-amber-400 transition-colors">
+                        <span className="flex items-center gap-2">
+                          {summary.company_name}
+                          <PackageSearch className="h-3.5 w-3.5 text-neutral-600 group-hover:text-amber-400/60 transition-colors" />
+                        </span>
+                      </TableCell>
                       <TableCell className="text-neutral-400 text-right py-4">${summary.max_investment.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
                       <TableCell className="text-emerald-400 text-right font-bold py-4">${summary.totalAllocatedValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
                     </TableRow>
@@ -2582,6 +2624,62 @@ export default function AdminOrderManagementPage() {
             <Button
               variant="ghost"
               onClick={() => setIsCompanyAllocationSummaryDialogOpen(false)}
+              className="text-neutral-400 hover:text-white"
+            >
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Company Product Detail Dialog */}
+      <Dialog open={isCompanyDetailDialogOpen} onOpenChange={(open) => { setIsCompanyDetailDialogOpen(open); if (!open) setSelectedCompanyForDetail(null); }}>
+        <DialogContent className="bg-[#0a0a0a]/90 backdrop-blur-xl border-white/[0.08] text-white max-w-4xl">
+          <DialogHeader>
+            <DialogTitle>
+              Product Breakdown for <span className="text-amber-500">{selectedCompanyForDetail?.company_name}</span>
+            </DialogTitle>
+          </DialogHeader>
+          <div className="max-h-[70vh] overflow-y-auto pr-2">
+            {selectedCompanyProductBreakdown.length === 0 ? (
+              <p className="text-neutral-500 italic p-8 text-center">No products allocated to this company.</p>
+            ) : (
+              <>
+                <Table>
+                  <TableHeader>
+                    <TableRow className="hover:bg-transparent border-white/[0.05]">
+                      <TableHead className="text-neutral-400 font-medium">ASIN</TableHead>
+                      <TableHead className="text-neutral-400 font-medium">Description</TableHead>
+                      <TableHead className="text-neutral-400 font-medium text-right">Quantity</TableHead>
+                      <TableHead className="text-neutral-400 font-medium text-right">Unit Price</TableHead>
+                      <TableHead className="text-neutral-400 font-medium text-right">Subtotal</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {selectedCompanyProductBreakdown.map((item) => (
+                      <TableRow key={item.sequence} className="hover:bg-white/[0.02] transition-colors border-white/[0.02]">
+                        <TableCell className="text-white font-mono text-xs">{item.asin}</TableCell>
+                        <TableCell className="text-neutral-400 text-sm max-w-[200px] truncate">{item.description || 'N/A'}</TableCell>
+                        <TableCell className="text-neutral-200 text-right">{item.quantity}</TableCell>
+                        <TableCell className="text-neutral-400 text-right">${item.unitPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
+                        <TableCell className="text-emerald-400 text-right font-bold">${item.subtotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+                <div className="flex justify-between items-center mt-4 pt-4 border-t border-white/[0.05] px-2">
+                  <span className="text-neutral-400 font-medium">Grand Total</span>
+                  <span className="text-emerald-400 font-bold text-lg">
+                    ${selectedCompanyProductBreakdown.reduce((sum, item) => sum + item.subtotal, 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </span>
+                </div>
+              </>
+            )}
+          </div>
+          <DialogFooter className="pt-4 border-t border-white/[0.05]">
+            <Button
+              variant="ghost"
+              onClick={() => { setIsCompanyDetailDialogOpen(false); setSelectedCompanyForDetail(null); }}
               className="text-neutral-400 hover:text-white"
             >
               Close
