@@ -32,6 +32,7 @@ export interface ChatParticipant {
   user?: {
     firstname: string | null;
     lastname: string | null;
+    company_id?: number | null;
   };
 }
 
@@ -162,7 +163,8 @@ export function useChat() {
           joined_at,
           user:users!chat_participants_user_id_fkey (
             firstname,
-            lastname
+            lastname,
+            company_id
           )
         `)
         .eq('room_id', roomId);

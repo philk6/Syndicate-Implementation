@@ -6,6 +6,7 @@ import {
   ChevronsUpDown,
   CreditCard,
   LogOut,
+  Building,
 } from "lucide-react"
 import { useRouter } from "next/navigation"
 
@@ -87,6 +88,10 @@ export function NavUser({
               <DropdownMenuItem className="cursor-pointer rounded-lg text-neutral-400 hover:text-amber-400 hover:bg-amber-500/10 focus:text-amber-400 focus:bg-amber-500/10 transition-all duration-200" onClick={() => router.push('/account')}>
                 <BadgeCheck className="text-neutral-500" />
                 Account
+              </DropdownMenuItem>
+              <DropdownMenuItem className="cursor-pointer rounded-lg text-neutral-400 hover:text-amber-400 hover:bg-amber-500/10 focus:text-amber-400 focus:bg-amber-500/10 transition-all duration-200" onClick={() => router.push('/company')}>
+                <Building className="text-neutral-500" />
+                Company
               </DropdownMenuItem>
               <DropdownMenuItem className="cursor-pointer rounded-lg text-neutral-400 hover:text-amber-400 hover:bg-amber-500/10 focus:text-amber-400 focus:bg-amber-500/10 transition-all duration-200">
                 <CreditCard className="text-neutral-500" />
