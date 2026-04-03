@@ -91,7 +91,7 @@ export default function CommandCenterPage() {
 
       // 6. Fetch user progress for those tasks
       const taskIds = (taskData ?? []).map((t) => t.id);
-      let progressMap: Record<number, { id: number; status: string; proof_submission: string | null }> = {};
+      const progressMap: Record<number, { id: number; status: string; proof_submission: string | null }> = {};
 
       if (taskIds.length > 0) {
         const { data: progressData } = await supabase
