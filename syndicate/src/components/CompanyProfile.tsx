@@ -29,6 +29,16 @@ import {
 } from '@/lib/actions/companyProfile';
 import { toast } from 'sonner';
 import { Loader2, Upload, FileText, Trash2, CheckCircle2, Circle, Pencil } from 'lucide-react';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 interface CompanyProfileProps {
   companyId: number;
@@ -57,6 +67,9 @@ export function CompanyProfile({ companyId, isAdmin }: CompanyProfileProps) {
   const [noteContent, setNoteContent] = useState('');
   const [noteIsPublic, setNoteIsPublic] = useState(false);
   const [editingNoteId, setEditingNoteId] = useState<number | null>(null);
+
+  // Delete confirm states
+  const [deleteDialogItem, setDeleteDialogItem] = useState<{ id: number, type: 'goal' | 'note' | 'po', extraData?: any } | null>(null);
 
   const loadData = async () => {
     if (!user?.user_id) return;
@@ -107,16 +120,7 @@ export function CompanyProfile({ companyId, isAdmin }: CompanyProfileProps) {
     }
   };
 
-  const handleDeleteGoal = async (goalId: number) => {
-    if (!user?.user_id || !confirm('Are you sure you want to delete this goal?')) return;
-    try {
-      await deleteCompanyGoal(goalId, user.user_id);
-      setGoals(goals.filter(g => g.id !== goalId));
-      toast.success('Goal deleted');
-    } catch (error: any) {
-      toast.error(error.message);
-    }
-  };
+  const handleDeleteGoal = (goalId: number) => setDeleteDialogItem({ id: goalId, type: 'goal' });
 
   const handleToggleGoal = async (goalId: number, isCompleted: boolean) => {
     if (!user?.user_id) return;
@@ -156,16 +160,7 @@ export function CompanyProfile({ companyId, isAdmin }: CompanyProfileProps) {
     }
   };
 
-  const handleDeletePO = async (poId: number, filePath: string) => {
-    if (!user?.user_id || !confirm('Are you sure you want to delete this PO?')) return;
-    try {
-      await deleteCompanyPO(poId, filePath, user.user_id);
-      setPos(pos.filter(p => p.id !== poId));
-      toast.success('PO deleted');
-    } catch (error: any) {
-      toast.error(error.message);
-    }
-  };
+  const handleDeletePO = (poId: number, filePath: string) => setDeleteDialogItem({ id: poId, type: 'po', extraData: filePath });
 
   const handleViewPO = async (filePath: string) => {
     try {
@@ -200,14 +195,29 @@ export function CompanyProfile({ companyId, isAdmin }: CompanyProfileProps) {
     }
   };
 
-  const handleDeleteNote = async (noteId: number) => {
-    if (!user?.user_id || !confirm('Are you sure you want to delete this note?')) return;
+  const handleDeleteNote = (noteId: number) => setDeleteDialogItem({ id: noteId, type: 'note' });
+
+  const handleConfirmDelete = async () => {
+    if (!deleteDialogItem || !user?.user_id) return;
     try {
-      await deleteCompanyNote(noteId, user.user_id);
-      setNotes(notes.filter(n => n.id !== noteId));
-      toast.success('Note deleted');
+      const { id, type, extraData } = deleteDialogItem;
+      if (type === 'goal') {
+        await deleteCompanyGoal(id, user.user_id);
+        setGoals(goals.filter(g => g.id !== id));
+        toast.success('Goal deleted');
+      } else if (type === 'po') {
+        await deleteCompanyPO(id, extraData, user.user_id);
+        setPos(pos.filter(p => p.id !== id));
+        toast.success('PO deleted');
+      } else if (type === 'note') {
+        await deleteCompanyNote(id, user.user_id);
+        setNotes(notes.filter(n => n.id !== id));
+        toast.success('Note deleted');
+      }
     } catch (err: any) {
       toast.error(err.message);
+    } finally {
+      setDeleteDialogItem(null);
     }
   };
 
@@ -224,6 +234,21 @@ export function CompanyProfile({ companyId, isAdmin }: CompanyProfileProps) {
 
   return (
     <div className="w-full">
+      <AlertDialog open={!!deleteDialogItem} onOpenChange={(open) => !open && setDeleteDialogItem(null)}>
+        <AlertDialogContent className="bg-[#0a0a0a] border-white/10 text-white">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+            <AlertDialogDescription className="text-neutral-400">
+              This action cannot be undone. This will permanently delete the {deleteDialogItem?.type === 'goal' ? 'goal' : deleteDialogItem?.type === 'po' ? 'purchase order' : 'note'}.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="bg-transparent border-white/10 text-white hover:bg-white/5 hover:text-white">Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmDelete} className="bg-red-500/90 text-white hover:bg-red-500 border border-red-500/20">Delete</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <Tabs defaultValue="info" className="w-full">
         <TabsList className="mb-6 bg-white/[0.05] border border-white/10 p-1 rounded-xl">
           <TabsTrigger value="info" className="rounded-lg data-[state=active]:bg-amber-500/20 data-[state=active]:text-amber-400">Info & Users</TabsTrigger>
