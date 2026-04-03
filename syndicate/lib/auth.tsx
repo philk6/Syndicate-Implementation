@@ -51,6 +51,7 @@ interface AuthUser {
   company_id?: number | null;
   tos_accepted: boolean;
   buyersgroup: boolean;
+  totalXp: number;
 }
 
 interface AuthContextType {
@@ -153,17 +154,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         
         const result = await query.single();
         console.log('Database query result:', result);
-        return result;
+
+        // Fetch total XP alongside user data
+        let totalXp = 0;
+        try {
+          const { data: xpRows } = await supabase
+            .from('xp_transactions')
+            .select('amount')
+            .eq('user_id', userId);
+          if (xpRows) {
+            totalXp = xpRows.reduce((sum: number, r: { amount: number }) => sum + r.amount, 0);
+          }
+        } catch {
+          console.warn('Failed to fetch XP, defaulting to 0');
+        }
+
+        return { ...result, totalXp };
       };
 
       const timeoutPromise = new Promise((_, reject) => 
         setTimeout(() => reject(new Error('User details fetch timeout')), 5000)
       );
 
-      const { data: userData, error: userError } = await Promise.race([
+      const fetchResult = await Promise.race([
         userDetailsPromise(),
         timeoutPromise
-      ]) as UserDetailsResponse;
+      ]) as UserDetailsResponse & { totalXp: number };
+
+      const { data: userData, error: userError, totalXp } = fetchResult;
       
       if (signal?.aborted) {
         isFetchingUserDetailsRef.current = false;
@@ -189,7 +207,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           email: currentSession.user.email || '',
           role: 'user', // This will be updated if database fetch succeeds later
           tos_accepted: true,
-          buyersgroup: false
+          buyersgroup: false,
+          totalXp: 0
         };
         setUser(minimalUser);
         localStorage.setItem('token', currentSession.access_token);
@@ -197,7 +216,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return;
       } else {
         console.log('User data fetched successfully:', userData);
-        const userWithId = { ...userData, email: userData?.email || currentSession.user.email || '', user_id: userData?.user_id || currentSession.user.id };
+        const userWithId = { ...userData, email: userData?.email || currentSession.user.email || '', user_id: userData?.user_id || currentSession.user.id, totalXp };
         userCache.set(userId, userWithId as AuthUser);
         console.log('Updating user with full database data:', userWithId);
         setUser(userWithId as AuthUser);
@@ -226,7 +245,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         email: currentSession.user.email || '',
         role: 'user',
         tos_accepted: true,
-        buyersgroup: false
+        buyersgroup: false,
+        totalXp: 0
       };
       setUser(minimalUser);
       localStorage.setItem('token', currentSession.access_token);
@@ -307,7 +327,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 email: currentSession.user.email || '',
                 role: 'user', // Default role, will be updated if database fetch succeeds
                 tos_accepted: true, // Default to true, will be updated if database fetch succeeds
-                buyersgroup: false
+                buyersgroup: false,
+                totalXp: 0
               };
               console.log('checkAuth: Setting minimal user from session (not admin, not fetching):', minimalUser);
               setUser(minimalUser);
@@ -408,7 +429,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 email: newSession.user.email || '',
                 role: 'user',
                 tos_accepted: true,
-                buyersgroup: false
+                buyersgroup: false,
+                totalXp: 0
               };
               console.log('SIGNED_IN: Setting minimal user object (no email, not fetching, not admin):', minimalUser);
               setUser(minimalUser);
