@@ -72,6 +72,20 @@ export async function toggleCompanyGoalStatus(goalId: number, isCompleted: boole
   if (error) throw new Error(error.message);
 }
 
+export async function updateCompanyGoal(goalId: number, title: string, description: string, adminUserId: string) {
+  await verifyAdmin(adminUserId);
+  const supabase = getSupabaseService();
+  const { error } = await supabase.from('company_goals').update({ title, description }).eq('id', goalId);
+  if (error) throw new Error(error.message);
+}
+
+export async function deleteCompanyGoal(goalId: number, adminUserId: string) {
+  await verifyAdmin(adminUserId);
+  const supabase = getSupabaseService();
+  const { error } = await supabase.from('company_goals').delete().eq('id', goalId);
+  if (error) throw new Error(error.message);
+}
+
 // -------------------------------------------------------------
 // POs
 // -------------------------------------------------------------
@@ -153,5 +167,23 @@ export async function addCompanyNote(companyId: number, title: string, content: 
     is_public: isPublic,
     created_by: adminUserId
   });
+  if (error) throw new Error(error.message);
+}
+
+export async function updateCompanyNote(noteId: number, title: string, content: string, isPublic: boolean, adminUserId: string) {
+  await verifyAdmin(adminUserId);
+  const supabase = getSupabaseService();
+  const { error } = await supabase.from('company_notes').update({
+    title,
+    content,
+    is_public: isPublic
+  }).eq('id', noteId);
+  if (error) throw new Error(error.message);
+}
+
+export async function deleteCompanyNote(noteId: number, adminUserId: string) {
+  await verifyAdmin(adminUserId);
+  const supabase = getSupabaseService();
+  const { error } = await supabase.from('company_notes').delete().eq('id', noteId);
   if (error) throw new Error(error.message);
 }

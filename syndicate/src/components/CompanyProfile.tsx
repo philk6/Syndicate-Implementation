@@ -17,14 +17,18 @@ import {
   fetchCompanyGoals,
   addCompanyGoal,
   toggleCompanyGoalStatus,
+  updateCompanyGoal,
+  deleteCompanyGoal,
   fetchCompanyPOs,
   addCompanyPOMetadata,
   deleteCompanyPO,
   fetchCompanyNotes,
-  addCompanyNote
+  addCompanyNote,
+  updateCompanyNote,
+  deleteCompanyNote,
 } from '@/lib/actions/companyProfile';
 import { toast } from 'sonner';
-import { Loader2, Upload, FileText, Trash2, CheckCircle2, Circle } from 'lucide-react';
+import { Loader2, Upload, FileText, Trash2, CheckCircle2, Circle, Pencil } from 'lucide-react';
 
 interface CompanyProfileProps {
   companyId: number;
@@ -45,10 +49,14 @@ export function CompanyProfile({ companyId, isAdmin }: CompanyProfileProps) {
   // Form states
   const [goalTitle, setGoalTitle] = useState('');
   const [goalDesc, setGoalDesc] = useState('');
+  const [editingGoalId, setEditingGoalId] = useState<number | null>(null);
+  
   const [isUploadingPO, setIsUploadingPO] = useState(false);
+  
   const [noteTitle, setNoteTitle] = useState('');
   const [noteContent, setNoteContent] = useState('');
   const [noteIsPublic, setNoteIsPublic] = useState(false);
+  const [editingNoteId, setEditingNoteId] = useState<number | null>(null);
 
   const loadData = async () => {
     if (!user?.user_id) return;
@@ -83,11 +91,28 @@ export function CompanyProfile({ companyId, isAdmin }: CompanyProfileProps) {
     e.preventDefault();
     if (!user?.user_id || !goalTitle.trim()) return;
     try {
-      await addCompanyGoal(companyId, goalTitle, goalDesc, user.user_id);
-      toast.success('Goal added successfully');
+      if (editingGoalId) {
+        await updateCompanyGoal(editingGoalId, goalTitle, goalDesc, user.user_id);
+        toast.success('Goal updated successfully');
+        setEditingGoalId(null);
+      } else {
+        await addCompanyGoal(companyId, goalTitle, goalDesc, user.user_id);
+        toast.success('Goal added successfully');
+      }
       setGoalTitle('');
       setGoalDesc('');
       loadData();
+    } catch (error: any) {
+      toast.error(error.message);
+    }
+  };
+
+  const handleDeleteGoal = async (goalId: number) => {
+    if (!user?.user_id || !confirm('Are you sure you want to delete this goal?')) return;
+    try {
+      await deleteCompanyGoal(goalId, user.user_id);
+      setGoals(goals.filter(g => g.id !== goalId));
+      toast.success('Goal deleted');
     } catch (error: any) {
       toast.error(error.message);
     }
@@ -142,18 +167,47 @@ export function CompanyProfile({ companyId, isAdmin }: CompanyProfileProps) {
     }
   };
 
+  const handleViewPO = async (filePath: string) => {
+    try {
+      const { data, error } = await supabase.storage.from('company_pos').createSignedUrl(filePath, 3600);
+      if (error) throw error;
+      if (data?.signedUrl) {
+        window.open(data.signedUrl, '_blank');
+      }
+    } catch (err: any) {
+      toast.error('Failed to open file: ' + err.message);
+    }
+  };
+
   const handleAddNote = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user?.user_id || !noteTitle.trim()) return;
     try {
-      await addCompanyNote(companyId, noteTitle, noteContent, noteIsPublic, user.user_id);
-      toast.success('Note added successfully');
+      if (editingNoteId) {
+        await updateCompanyNote(editingNoteId, noteTitle, noteContent, noteIsPublic, user.user_id);
+        toast.success('Note updated successfully');
+        setEditingNoteId(null);
+      } else {
+        await addCompanyNote(companyId, noteTitle, noteContent, noteIsPublic, user.user_id);
+        toast.success('Note added successfully');
+      }
       setNoteTitle('');
       setNoteContent('');
       setNoteIsPublic(false);
       loadData();
     } catch (error: any) {
       toast.error(error.message);
+    }
+  };
+
+  const handleDeleteNote = async (noteId: number) => {
+    if (!user?.user_id || !confirm('Are you sure you want to delete this note?')) return;
+    try {
+      await deleteCompanyNote(noteId, user.user_id);
+      setNotes(notes.filter(n => n.id !== noteId));
+      toast.success('Note deleted');
+    } catch (err: any) {
+      toast.error(err.message);
     }
   };
 
@@ -188,7 +242,14 @@ export function CompanyProfile({ companyId, isAdmin }: CompanyProfileProps) {
                   <p className="text-sm text-neutral-400">Company ID</p>
                   <p className="font-medium text-white">{companyInfo.company_id}</p>
                 </div>
-                {/* Additional company specific fields can go here */}
+                <div className="space-y-1">
+                  <p className="text-sm text-neutral-400">Company Name</p>
+                  <p className="font-medium text-white">{companyInfo.name || 'N/A'}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-sm text-neutral-400">Contact Email</p>
+                  <p className="font-medium text-white">{companyInfo.email || 'N/A'}</p>
+                </div>
               </div>
             )}
           </GlassCard>
@@ -233,7 +294,7 @@ export function CompanyProfile({ companyId, isAdmin }: CompanyProfileProps) {
         <TabsContent value="goals" className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
           {isAdmin && (
             <GlassCard className="p-6 border-white/5">
-              <h3 className="text-lg font-semibold text-white mb-4">Add New Goal</h3>
+              <h3 className="text-lg font-semibold text-white mb-4">{editingGoalId ? 'Edit Goal' : 'Add New Goal'}</h3>
               <form onSubmit={handleAddGoal} className="space-y-4">
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2">
@@ -256,9 +317,16 @@ export function CompanyProfile({ companyId, isAdmin }: CompanyProfileProps) {
                     />
                   </div>
                 </div>
-                <Button type="submit" className="bg-amber-500 hover:bg-amber-600 text-black font-semibold">
-                  Create Goal
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button type="submit" className="bg-amber-500 hover:bg-amber-600 text-black font-semibold">
+                    {editingGoalId ? 'Save Changes' : 'Create Goal'}
+                  </Button>
+                  {editingGoalId && (
+                    <Button type="button" variant="ghost" onClick={() => { setEditingGoalId(null); setGoalTitle(''); setGoalDesc(''); }} className="text-neutral-400 hover:text-white">
+                      Cancel
+                    </Button>
+                  )}
+                </div>
               </form>
             </GlassCard>
           )}
@@ -268,7 +336,7 @@ export function CompanyProfile({ companyId, isAdmin }: CompanyProfileProps) {
               <div className="text-center py-12 text-neutral-500 bg-white/[0.02] rounded-xl border border-white/5">No goals set yet.</div>
             ) : (
               goals.map(goal => (
-                <div key={goal.id} className={`flex items-start gap-4 p-5 rounded-xl border transition-all duration-300 ${goal.is_completed ? 'bg-green-500/5 border-green-500/20' : 'bg-white/[0.03] border-white/10 hover:border-white/20'}`}>
+                <div key={goal.id} className={`group flex items-start gap-4 p-5 rounded-xl border transition-all duration-300 ${goal.is_completed ? 'bg-green-500/5 border-green-500/20' : 'bg-white/[0.03] border-white/10 hover:border-white/20'}`}>
                   {isAdmin ? (
                     <button onClick={() => handleToggleGoal(goal.id, !goal.is_completed)} className="mt-1 flex-shrink-0 text-white/50 hover:text-amber-400 transition-colors">
                       {goal.is_completed ? <CheckCircle2 className="w-6 h-6 text-green-500" /> : <Circle className="w-6 h-6" />}
@@ -279,9 +347,23 @@ export function CompanyProfile({ companyId, isAdmin }: CompanyProfileProps) {
                     </div>
                   )}
                   <div className="flex-1">
-                    <h4 className={`text-lg font-medium ${goal.is_completed ? 'text-green-400 line-through opacity-70' : 'text-white'}`}>{goal.title}</h4>
-                    {goal.description && <p className={`text-sm mt-1 ${goal.is_completed ? 'text-neutral-500' : 'text-neutral-400'}`}>{goal.description}</p>}
-                    <p className="text-xs text-neutral-600 mt-2">Added on {new Date(goal.created_at).toLocaleDateString()}</p>
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <h4 className={`text-lg font-medium ${goal.is_completed ? 'text-green-400 line-through opacity-70' : 'text-white'}`}>{goal.title}</h4>
+                        {goal.description && <p className={`text-sm mt-1 ${goal.is_completed ? 'text-neutral-500' : 'text-neutral-400'}`}>{goal.description}</p>}
+                        <p className="text-xs text-neutral-600 mt-2">Added on {new Date(goal.created_at).toLocaleDateString()}</p>
+                      </div>
+                      {isAdmin && (
+                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button onClick={() => { setEditingGoalId(goal.id); setGoalTitle(goal.title); setGoalDesc(goal.description || ''); }} className="p-1.5 text-neutral-500 hover:text-white transition-colors" title="Edit Goal">
+                            <Pencil className="w-4 h-4" />
+                          </button>
+                          <button onClick={() => handleDeleteGoal(goal.id)} className="p-1.5 text-neutral-500 hover:text-red-400 transition-colors" title="Delete Goal">
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               ))
@@ -333,8 +415,6 @@ export function CompanyProfile({ companyId, isAdmin }: CompanyProfileProps) {
                     <TableRow className="border-white/5"><TableCell colSpan={4} className="text-center text-neutral-500 py-8">No purchase orders uploaded.</TableCell></TableRow>
                   ) : (
                     pos.map(po => {
-                      const { data: fileData } = supabase.storage.from('company_pos').getPublicUrl(po.file_path);
-                      
                       return (
                         <TableRow key={po.id} className="border-white/5 hover:bg-white/[0.02] transition-colors">
                           <TableCell>
@@ -349,8 +429,8 @@ export function CompanyProfile({ companyId, isAdmin }: CompanyProfileProps) {
                           <TableCell className="text-neutral-400 text-sm whitespace-nowrap">{new Date(po.created_at).toLocaleString()}</TableCell>
                           <TableCell className="text-right">
                             <div className="flex items-center justify-end gap-2">
-                              <Button variant="outline" size="sm" className="bg-black/20 border-white/10 hover:bg-white/10 hover:text-white" asChild>
-                                <a href={fileData?.publicUrl} target="_blank" rel="noopener noreferrer">View</a>
+                              <Button variant="outline" size="sm" className="bg-black/20 border-white/10 hover:bg-white/10 hover:text-white" onClick={() => handleViewPO(po.file_path)}>
+                                View
                               </Button>
                               <Button variant="ghost" size="icon" onClick={() => handleDeletePO(po.id, po.file_path)} className="text-red-400 hover:text-red-300 hover:bg-red-400/10">
                                 <Trash2 className="w-4 h-4" />
@@ -371,7 +451,7 @@ export function CompanyProfile({ companyId, isAdmin }: CompanyProfileProps) {
         <TabsContent value="notes" className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
           {isAdmin && (
             <GlassCard className="p-6 border-white/5">
-              <h3 className="text-lg font-semibold text-white mb-4">Add Note</h3>
+              <h3 className="text-lg font-semibold text-white mb-4">{editingNoteId ? 'Edit Note' : 'Add Note'}</h3>
               <form onSubmit={handleAddNote} className="space-y-4">
                 <div className="space-y-2">
                   <label className="text-sm text-neutral-400">Title</label>
@@ -403,9 +483,16 @@ export function CompanyProfile({ companyId, isAdmin }: CompanyProfileProps) {
                     Make this note visible to company users
                   </label>
                 </div>
-                <Button type="submit" className="bg-amber-500 hover:bg-amber-600 text-black font-semibold">
-                  Save Note
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button type="submit" className="bg-amber-500 hover:bg-amber-600 text-black font-semibold">
+                    {editingNoteId ? 'Save Changes' : 'Save Note'}
+                  </Button>
+                  {editingNoteId && (
+                    <Button type="button" variant="ghost" onClick={() => { setEditingNoteId(null); setNoteTitle(''); setNoteContent(''); setNoteIsPublic(false); }} className="text-neutral-400 hover:text-white">
+                      Cancel
+                    </Button>
+                  )}
+                </div>
               </form>
             </GlassCard>
           )}
@@ -417,12 +504,24 @@ export function CompanyProfile({ companyId, isAdmin }: CompanyProfileProps) {
               </div>
             ) : (
               notes.map(note => (
-                <GlassCard key={note.id} className="p-5 flex flex-col h-full border-white/5 hover:border-white/10 transition-colors">
+                <GlassCard key={note.id} className="group p-5 flex flex-col h-full border-white/5 hover:border-white/10 transition-colors">
                   <div className="flex justify-between items-start mb-3">
-                    <h4 className="text-lg font-medium text-white line-clamp-1">{note.title}</h4>
-                    <Badge variant="outline" className={note.is_public ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' : 'bg-neutral-800 text-neutral-400 border-neutral-700'}>
-                      {note.is_public ? 'Public' : 'Private'}
-                    </Badge>
+                    <h4 className="text-lg font-medium text-white line-clamp-1 pr-2">{note.title}</h4>
+                    <div className="flex items-center gap-2 shrink-0">
+                      {isAdmin && (
+                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button onClick={() => { setEditingNoteId(note.id); setNoteTitle(note.title); setNoteContent(note.content || ''); setNoteIsPublic(note.is_public); }} className="p-1 text-neutral-500 hover:text-white transition-colors" title="Edit Note">
+                            <Pencil className="w-4 h-4" />
+                          </button>
+                          <button onClick={() => handleDeleteNote(note.id)} className="p-1 text-neutral-500 hover:text-red-400 transition-colors" title="Delete Note">
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      )}
+                      <Badge variant="outline" className={note.is_public ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' : 'bg-neutral-800 text-neutral-400 border-neutral-700'}>
+                        {note.is_public ? 'Public' : 'Private'}
+                      </Badge>
+                    </div>
                   </div>
                   <div className="text-neutral-300 text-sm whitespace-pre-wrap flex-1 mb-4">
                     {note.content || <span className="text-neutral-600 italic">No content</span>}
