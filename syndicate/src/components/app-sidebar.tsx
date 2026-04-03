@@ -18,7 +18,7 @@ import {
 } from '@/components/ui/sidebar';
 import { NavUser } from '@/components/nav-user';
 import { useRouter, usePathname } from 'next/navigation';
-import { ShoppingCart, History, Settings, Users, LayoutDashboard, CreditCard, MessageCircle } from 'lucide-react';
+import { ShoppingCart, History, Settings, Users, LayoutDashboard, CreditCard, MessageCircle, Crosshair } from 'lucide-react';
 import SidebarLink from '@/components/SidebarLink';
 import {
   Dialog,
@@ -39,6 +39,7 @@ const data = {
         { title: 'History', url: '/history', icon: History },
         { title: 'Credit Overview', url: '/credit-overview', icon: CreditCard },
         { title: 'Chat', url: '/chat', icon: MessageCircle },
+        { title: 'Command Center', url: '/command-center', icon: Crosshair },
       ],
     },
     {
@@ -58,7 +59,7 @@ const BUYERS_GROUP_RESTRICTED_PATHS = ['/orders', '/credit-overview'];
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const { isAuthenticated, user, logout, session } = useAuth();
-  const [userData, setUserData] = useState({ name: 'Loading...', email: '', avatar: '/syndicate_logo.jpeg' });
+  const [userData, setUserData] = useState({ name: 'Loading...', email: '', avatar: '/syndicate_logo.jpeg', totalXp: 0 });
   const [userDataLoaded, setUserDataLoaded] = useState(false);
   const [buyersGroupDialogOpen, setBuyersGroupDialogOpen] = useState(false);
   const router = useRouter();
@@ -87,6 +88,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           name: fallbackName.charAt(0).toUpperCase() + fallbackName.slice(1).toLowerCase(),
           email: fallbackEmail,
           avatar: '/syndicate_logo.jpeg',
+          totalXp: user?.totalXp ?? 0,
         };
         setUserData(fallbackUserData);
         setUserDataLoaded(true);
@@ -116,6 +118,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           name: fallbackName.charAt(0).toUpperCase() + fallbackName.slice(1).toLowerCase(),
           email: sessionEmail,
           avatar: '/syndicate_logo.jpeg',
+          totalXp: 0,
         });
         setUserDataLoaded(true);
         return;
@@ -179,6 +182,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           name: fullName,
           email: user.email || user.user_id || '',
           avatar: '/syndicate_logo.jpeg',
+          totalXp: user.totalXp ?? 0,
         };
 
         console.log('Setting user data:', finalUserData);
@@ -193,6 +197,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           name: user.email?.split('@')[0] || 'User',
           email: user.email || user.user_id || '',
           avatar: '/syndicate_logo.jpeg',
+          totalXp: user.totalXp ?? 0,
         };
         setUserData(fallbackUserData);
         setUserDataLoaded(true);

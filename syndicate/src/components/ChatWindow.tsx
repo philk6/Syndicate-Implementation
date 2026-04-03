@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils';
 import { Send, MessageCircle, Hash, Users, Loader2, ShieldAlert, Trash2 } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { LevelBadge } from '@/components/LevelBadge';
 
 interface ChatWindowProps {
   room: ChatRoom | null;
@@ -253,10 +254,13 @@ export default function ChatWindow({
                         isOwn ? 'items-end' : 'items-start',
                       )}
                     >
-                      {/* Sender name (only for others) */}
+                      {/* Sender name + level (only for others) */}
                       {!isOwn && (
-                        <p className="text-[11px] font-medium text-neutral-500 mb-0.5 px-1">
+                        <p className="text-[11px] font-medium text-neutral-500 mb-0.5 px-1 flex items-center gap-1">
                           {getSenderName(msg)}
+                          {msg.sender?.totalXp !== undefined && (
+                            <LevelBadge totalXp={msg.sender.totalXp} size="sm" />
+                          )}
                         </p>
                       )}
                       <div className="relative">

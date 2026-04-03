@@ -9,6 +9,7 @@ import {
   Building,
 } from "lucide-react"
 import { useRouter } from "next/navigation"
+import { LevelBadge } from "@/components/LevelBadge"
 
 import {
   Avatar,
@@ -39,6 +40,7 @@ export function NavUser({
     name: string
     email: string
     avatar: string
+    totalXp?: number
   }
   onLogout?: () => void
 }) {
@@ -59,7 +61,10 @@ export function NavUser({
                 <AvatarFallback className="rounded-xl bg-amber-500/10 text-amber-400 text-xs font-bold">CN</AvatarFallback>
               </Avatar>
               <div className="grid flex-1 text-left text-sm leading-tight">
-                <span className="truncate font-semibold text-white">{user.name}</span>
+                <span className="truncate font-semibold text-white flex items-center gap-1.5">
+                  {user.name}
+                  {user.totalXp !== undefined && <LevelBadge totalXp={user.totalXp} size="sm" />}
+                </span>
                 <span className="truncate text-xs text-neutral-500">{user.email}</span>
               </div>
               <ChevronsUpDown className="ml-auto size-4 text-neutral-500" />
@@ -78,7 +83,10 @@ export function NavUser({
                   <AvatarFallback className="rounded-xl bg-amber-500/10 text-amber-400 text-xs font-bold">CN</AvatarFallback>
                 </Avatar>
                 <div className="grid flex-1 text-left text-sm leading-tight">
-                  <span className="truncate font-semibold text-white">{user.name}</span>
+                  <span className="truncate font-semibold text-white flex items-center gap-1.5">
+                    {user.name}
+                    {user.totalXp !== undefined && <LevelBadge totalXp={user.totalXp} size="md" showProgress />}
+                  </span>
                   <span className="truncate text-xs text-neutral-500">{user.email}</span>
                 </div>
               </div>
