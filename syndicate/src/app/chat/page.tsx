@@ -16,6 +16,7 @@ export default function ChatPage() {
     activeRoom,
     activeRoomId,
     messages,
+    participants,
     loadingRooms,
     loadingMessages,
     sending,
@@ -59,6 +60,7 @@ export default function ChatPage() {
       <ChatWindow
         room={activeRoom}
         messages={messages}
+        participants={participants}
         currentUserId={currentUserId}
         loadingMessages={loadingMessages}
         sending={sending}

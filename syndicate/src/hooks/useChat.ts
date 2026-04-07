@@ -22,6 +22,7 @@ export interface ChatMessage {
   sender?: {
     firstname: string | null;
     lastname: string | null;
+    totalXp?: number;
   };
 }
 
@@ -32,6 +33,7 @@ export interface ChatParticipant {
   user?: {
     firstname: string | null;
     lastname: string | null;
+    company_id?: number | null;
   };
 }
 
@@ -141,7 +143,34 @@ export function useChat() {
           ...msg,
           sender: Array.isArray(msg.sender) ? msg.sender[0] : msg.sender,
         })) as ChatMessage[];
-        setMessages(normalized);
+
+        // Fetch XP totals for all unique senders in one go
+        const senderIds = [...new Set(normalized.map((m) => m.sender_id))];
+        const xpBySender: Record<string, number> = {};
+        if (senderIds.length > 0) {
+          try {
+            const { data: xpRows } = await supabase
+              .from('xp_transactions')
+              .select('user_id, amount')
+              .in('user_id', senderIds);
+            if (xpRows) {
+              for (const row of xpRows) {
+                xpBySender[row.user_id] = (xpBySender[row.user_id] ?? 0) + row.amount;
+              }
+            }
+          } catch {
+            // XP fetch is non-critical — skip silently
+          }
+        }
+
+        const withXp = normalized.map((msg) => ({
+          ...msg,
+          sender: msg.sender
+            ? { ...msg.sender, totalXp: xpBySender[msg.sender_id] ?? 0 }
+            : msg.sender,
+        }));
+
+        setMessages(withXp);
       }
     } catch (err) {
       console.error('Exception fetching messages:', err);
@@ -162,7 +191,8 @@ export function useChat() {
           joined_at,
           user:users!chat_participants_user_id_fkey (
             firstname,
-            lastname
+            lastname,
+            company_id
           )
         `)
         .eq('room_id', roomId);
@@ -266,16 +296,31 @@ export function useChat() {
         async (payload) => {
           const newMsg = payload.new as ChatMessage;
 
-          // Fetch the sender details for the new message
+          // Fetch the sender details and XP for the new message
           const { data: senderData } = await supabase
             .from('users')
             .select('firstname, lastname')
             .eq('user_id', newMsg.sender_id)
             .single();
 
+          let senderXp = 0;
+          try {
+            const { data: xpRows } = await supabase
+              .from('xp_transactions')
+              .select('amount')
+              .eq('user_id', newMsg.sender_id);
+            if (xpRows) {
+              senderXp = xpRows.reduce((sum: number, r: { amount: number }) => sum + r.amount, 0);
+            }
+          } catch {
+            // non-critical
+          }
+
           const enrichedMsg: ChatMessage = {
             ...newMsg,
-            sender: senderData ?? { firstname: null, lastname: null },
+            sender: senderData
+              ? { ...senderData, totalXp: senderXp }
+              : { firstname: null, lastname: null, totalXp: senderXp },
           };
 
           setMessages((prev) => {

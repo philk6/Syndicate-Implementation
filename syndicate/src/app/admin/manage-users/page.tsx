@@ -27,6 +27,7 @@ import {
 import { Check, Plus, Loader2, Users, Settings2, CalendarClock, Pencil } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import ManageChatMentorsModal from '@/components/ManageChatMentorsModal';
+import { CompanyProfileDrawer } from '@/components/CompanyProfileDrawer';
 import { LoadingSpinner, PageLoadingSpinner } from '@/components/ui/loading-spinner';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -41,6 +42,7 @@ interface User {
   has_1on1_membership: boolean;
   membership_end_date: string | null;
   company: { name: string } | null;
+  company_id: number | null;
   buyersgroup: boolean;
 }
 
@@ -94,6 +96,7 @@ export default function ManageUsersPage() {
         has_1on1_membership,
         membership_end_date,
         buyersgroup,
+        company_id,
         company (name)
       `)
       .order('firstname', { ascending: true });
@@ -104,6 +107,7 @@ export default function ManageUsersPage() {
     } else {
       const transformedUsers = (data || []).map((u) => ({
         ...u,
+        company_id: u.company_id ?? null,
         company: Array.isArray(u.company)
           ? u.company.length > 0 ? u.company[0] : null
           : u.company ?? null,
@@ -824,7 +828,13 @@ export default function ManageUsersPage() {
 
                       {/* Company */}
                       <TableCell className="text-neutral-400 text-sm">
-                        {u.company?.name || 'N/A'}
+                        {u.company_id ? (
+                          <CompanyProfileDrawer companyId={u.company_id} isAdmin={true}>
+                            {u.company?.name || `Company #${u.company_id}`}
+                          </CompanyProfileDrawer>
+                        ) : (
+                          u.company?.name || 'N/A'
+                        )}
                       </TableCell>
                     </TableRow>
                   ))}

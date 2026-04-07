@@ -1,15 +1,18 @@
 'use client';
 
 import { useState, useRef, useEffect, KeyboardEvent } from 'react';
-import { ChatMessage, ChatRoom } from '@/hooks/useChat';
+import { ChatMessage, ChatRoom, ChatParticipant } from '@/hooks/useChat';
+import { CompanyProfileDrawer } from '@/components/CompanyProfileDrawer';
 import { cn } from '@/lib/utils';
 import { Send, MessageCircle, Hash, Users, Loader2, ShieldAlert, Trash2 } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { LevelBadge } from '@/components/LevelBadge';
 
 interface ChatWindowProps {
   room: ChatRoom | null;
   messages: ChatMessage[];
+  participants: ChatParticipant[];
   currentUserId: string | null;
   loadingMessages: boolean;
   sending: boolean;
@@ -23,6 +26,7 @@ interface ChatWindowProps {
 export default function ChatWindow({
   room,
   messages,
+  participants,
   currentUserId,
   loadingMessages,
   sending,
@@ -167,7 +171,23 @@ export default function ChatWindow({
           )}
         </div>
         <div className="min-w-0">
-          <h2 className="text-sm font-semibold text-white truncate">{room.name}</h2>
+          <h2 className="text-sm font-semibold text-white truncate">
+            {room.type === '1on1' ? (() => {
+              const otherParticipant = participants.find(p => p.user_id !== currentUserId);
+              const otherCompanyId = otherParticipant?.user?.company_id;
+              
+              if (otherCompanyId) {
+                return (
+                  <CompanyProfileDrawer companyId={otherCompanyId} isAdmin={isAdmin}>
+                    {room.name}
+                  </CompanyProfileDrawer>
+                );
+              }
+              return room.name;
+            })() : (
+              room.name
+            )}
+          </h2>
           <p className="text-[11px] text-neutral-500">
             {room.type === 'global' ? 'Global Announcements' : '1-on-1 Mentoring'}
           </p>
@@ -234,10 +254,13 @@ export default function ChatWindow({
                         isOwn ? 'items-end' : 'items-start',
                       )}
                     >
-                      {/* Sender name (only for others) */}
+                      {/* Sender name + level (only for others) */}
                       {!isOwn && (
-                        <p className="text-[11px] font-medium text-neutral-500 mb-0.5 px-1">
+                        <p className="text-[11px] font-medium text-neutral-500 mb-0.5 px-1 flex items-center gap-1">
                           {getSenderName(msg)}
+                          {msg.sender?.totalXp !== undefined && (
+                            <LevelBadge totalXp={msg.sender.totalXp} size="sm" />
+                          )}
                         </p>
                       )}
                       <div className="relative">
