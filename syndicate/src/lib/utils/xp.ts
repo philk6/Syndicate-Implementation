@@ -1,56 +1,61 @@
 /**
- * XP ↔ Level utilities
+ * XP → Rank utilities.
  *
- * Formula:  Total XP required for a level = 4.8 × level²
- *
- * This gives an infinite leveling curve where:
- *   Level 10  →    480 XP
- *   Level 25  →  3,000 XP
- *   Level 50  → 12,000 XP  (≈ 1 year target)
+ * Rank tiers (mirror of public.ranks table; duplicated here for sync
+ * client-side use).
  */
 
-const XP_SCALE = 4.8;
-
-/**
- * Derive the current level from an accumulated XP total.
- *
- * Reverses the formula:  level = floor( sqrt( totalXp / 4.8 ) )
- *
- * @param totalXp - The user's cumulative XP (must be ≥ 0).
- * @returns The user's current level (0-indexed, so 0 XP = level 0).
- */
-export function calculateLevelFromXP(totalXp: number): number {
-  if (totalXp <= 0) return 0;
-  return Math.floor(Math.sqrt(totalXp / XP_SCALE));
+export interface Rank {
+  id: number;
+  name: string;
+  min_xp: number;
+  color: string;
 }
 
-/**
- * Calculate the **total** XP required to reach the *next* level.
- *
- * @param currentLevel - The user's current level.
- * @returns Total XP threshold for `currentLevel + 1`.
- */
-export function calculateXpForNextLevel(currentLevel: number): number {
-  const nextLevel = currentLevel + 1;
-  return Math.ceil(XP_SCALE * nextLevel * nextLevel);
+export const RANKS: Rank[] = [
+  { id: 1, name: 'Recruit',          min_xp:      0, color: '#888888' },
+  { id: 2, name: 'Hustler',          min_xp:   1000, color: '#FF6B35' },
+  { id: 3, name: 'Operator',         min_xp:   5000, color: '#4ECDC4' },
+  { id: 4, name: 'Merchant',         min_xp:  15000, color: '#A8E6CF' },
+  { id: 5, name: 'Distributor',      min_xp:  35000, color: '#FFD93D' },
+  { id: 6, name: 'Mogul',            min_xp:  75000, color: '#C77DFF' },
+  { id: 7, name: 'Syndicate Elite',  min_xp: 150000, color: '#FF0080' },
+];
+
+export function getRankForXp(totalXp: number): Rank {
+  const xp = Math.max(0, totalXp);
+  let current = RANKS[0];
+  for (const r of RANKS) {
+    if (xp >= r.min_xp) current = r;
+    else break;
+  }
+  return current;
 }
 
-/**
- * Convenience: return a snapshot of a user's leveling state.
- */
-export function getLevelProgress(totalXp: number) {
-  const level = calculateLevelFromXP(totalXp);
-  const xpForCurrentLevel = Math.ceil(XP_SCALE * level * level);
-  const xpForNextLevel = calculateXpForNextLevel(level);
+export function getNextRank(totalXp: number): Rank | null {
+  const current = getRankForXp(totalXp);
+  const nextIndex = RANKS.findIndex((r) => r.id === current.id) + 1;
+  return RANKS[nextIndex] ?? null;
+}
 
+export function getXpProgressPercent(totalXp: number): number {
+  const current = getRankForXp(totalXp);
+  const next = getNextRank(totalXp);
+  if (!next) return 100;
+  const span = next.min_xp - current.min_xp;
+  if (span <= 0) return 100;
+  return Math.min(100, Math.round(((totalXp - current.min_xp) / span) * 100));
+}
+
+export function getRankProgress(totalXp: number) {
+  const current = getRankForXp(totalXp);
+  const next = getNextRank(totalXp);
   return {
-    level,
     totalXp,
-    /** XP the user has earned *within* the current level band. */
-    xpIntoCurrentLevel: totalXp - xpForCurrentLevel,
-    /** Total XP width of the current level band. */
-    xpRequiredForLevelUp: xpForNextLevel - xpForCurrentLevel,
-    /** Total XP needed to reach the next level. */
-    xpForNextLevel,
+    rank: current,
+    nextRank: next,
+    xpIntoRank: totalXp - current.min_xp,
+    xpToNextRank: next ? next.min_xp - totalXp : 0,
+    progressPercent: getXpProgressPercent(totalXp),
   };
 }

@@ -7,19 +7,10 @@ import { supabase } from '@lib/supabase/client';
 import { PageLoadingSpinner } from '@/components/ui/loading-spinner';
 
 import { XpHeader } from '@/components/command-center/XpHeader';
-import { MissionCard, type Mission, type Task } from '@/components/command-center/MissionCard';
+import { MissionCard, type Mission } from '@/components/command-center/MissionCard';
 import { PlaceholderCard } from '@/components/command-center/PlaceholderCard';
 import { Target } from 'lucide-react';
-
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-interface UserProfile {
-  firstname: string | null;
-  has_1on1_membership: boolean;
-  buyersgroup: boolean;
-}
-
-// ─── Page ─────────────────────────────────────────────────────────────────────
+import { getMissionControlData } from '@/lib/missionControl';
 
 export default function CommandCenterPage() {
   const { isAuthenticated, loading: authLoading, user } = useAuth();
@@ -27,128 +18,35 @@ export default function CommandCenterPage() {
 
   const [loading, setLoading] = useState(true);
   const [totalXp, setTotalXp] = useState(0);
-  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [firstname, setFirstname] = useState<string | undefined>(undefined);
   const [missions, setMissions] = useState<Mission[]>([]);
-
-  // ── Data fetching ─────────────────────────────────────────────────────────
 
   const fetchData = useCallback(async () => {
     if (!user?.user_id) return;
-
     setLoading(true);
-
     try {
-      // 1. Fetch user profile
-      const { data: profileData } = await supabase
-        .from('users')
-        .select('firstname, has_1on1_membership, buyersgroup')
-        .eq('user_id', user.user_id)
-        .single();
-
-      const userProfile: UserProfile = {
-        firstname: profileData?.firstname ?? null,
-        has_1on1_membership: profileData?.has_1on1_membership ?? false,
-        buyersgroup: profileData?.buyersgroup ?? false,
-      };
-      setProfile(userProfile);
-
-      // 2. Fetch total XP
-      const { data: xpRows } = await supabase
-        .from('xp_transactions')
-        .select('amount')
-        .eq('user_id', user.user_id);
-
-      const xpTotal = (xpRows ?? []).reduce((sum, r) => sum + r.amount, 0);
-      setTotalXp(xpTotal);
-
-      // 3. Build audience filter — user can see missions with audience 'all' + any matching booleans
-      const allowedAudiences = ['all'];
-      if (userProfile.has_1on1_membership) allowedAudiences.push('1on1');
-      if (userProfile.buyersgroup) allowedAudiences.push('buyersgroup');
-
-      // 4. Fetch active missions matching the audience
-      const { data: missionData } = await supabase
-        .from('missions')
-        .select('id, title, description, xp_reward, target_audience')
-        .eq('is_active', true)
-        .in('target_audience', allowedAudiences)
-        .order('created_at', { ascending: false });
-
-      if (!missionData || missionData.length === 0) {
-        setMissions([]);
-        setLoading(false);
-        return;
-      }
-
-      const missionIds = missionData.map((m) => m.id);
-
-      // 5. Fetch tasks for those missions
-      const { data: taskData } = await supabase
-        .from('tasks')
-        .select('id, mission_id, title, description, order_index, requires_proof')
-        .in('mission_id', missionIds)
-        .order('order_index', { ascending: true });
-
-      // 6. Fetch user progress for those tasks
-      const taskIds = (taskData ?? []).map((t) => t.id);
-      const progressMap: Record<number, { id: number; status: string; proof_submission: string | null }> = {};
-
-      if (taskIds.length > 0) {
-        const { data: progressData } = await supabase
-          .from('user_task_progress')
-          .select('id, task_id, status, proof_submission')
+      const [{ data: profile }, mc] = await Promise.all([
+        supabase
+          .from('users')
+          .select('firstname')
           .eq('user_id', user.user_id)
-          .in('task_id', taskIds);
+          .single(),
+        getMissionControlData(user.user_id),
+      ]);
 
-        if (progressData) {
-          for (const p of progressData) {
-            progressMap[p.task_id] = {
-              id: p.id,
-              status: p.status,
-              proof_submission: p.proof_submission,
-            };
-          }
-        }
-      }
-
-      // 7. Assemble the mission objects
-      const assembledMissions: Mission[] = missionData.map((m) => {
-        const mTasks: Task[] = (taskData ?? [])
-          .filter((t) => t.mission_id === m.id)
-          .map((t) => ({
-            id: t.id,
-            title: t.title,
-            description: t.description,
-            order_index: t.order_index,
-            requires_proof: t.requires_proof,
-            progress: progressMap[t.id]
-              ? {
-                  id: progressMap[t.id].id,
-                  status: progressMap[t.id].status as 'pending' | 'submitted' | 'approved' | 'rejected',
-                  proof_submission: progressMap[t.id].proof_submission,
-                }
-              : null,
-          }));
-
-        return {
-          id: m.id,
-          title: m.title,
-          description: m.description,
-          xp_reward: m.xp_reward,
-          target_audience: m.target_audience,
-          tasks: mTasks,
-        };
-      });
-
-      setMissions(assembledMissions);
+      setFirstname(
+        profile?.firstname
+          ? profile.firstname.charAt(0).toUpperCase() + profile.firstname.slice(1).toLowerCase()
+          : undefined,
+      );
+      setTotalXp(mc.totalXp);
+      setMissions(mc.missions);
     } catch (err) {
       console.error('Error fetching command center data:', err);
     } finally {
       setLoading(false);
     }
   }, [user?.user_id]);
-
-  // ── Effects ─────────────────────────────────────────────────────────────────
 
   useEffect(() => {
     if (authLoading) return;
@@ -157,34 +55,18 @@ export default function CommandCenterPage() {
       return;
     }
     if (!user?.user_id) return;
-
     fetchData();
   }, [isAuthenticated, authLoading, router, user?.user_id, fetchData]);
 
-  // ── Loading / auth guard ────────────────────────────────────────────────────
-
-  if (authLoading || loading) {
-    return <PageLoadingSpinner />;
-  }
-
+  if (authLoading || loading) return <PageLoadingSpinner />;
   if (!isAuthenticated) return null;
-
-  // Format first name for display
-  const firstName = profile?.firstname
-    ? profile.firstname.charAt(0).toUpperCase() + profile.firstname.slice(1).toLowerCase()
-    : undefined;
-
-  // ── Render ──────────────────────────────────────────────────────────────────
 
   return (
     <div className="min-h-screen p-6 w-full">
       <div className="max-w-7xl mx-auto">
-        {/* ── XP Header ────────────────────────────────────────────────── */}
-        <XpHeader totalXp={totalXp} firstname={firstName} />
+        <XpHeader totalXp={totalXp} firstname={firstname} />
 
-        {/* ── Grid Layout ──────────────────────────────────────────────── */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {/* ── Main Column: Active Missions (span 2) ──────────────────── */}
           <div className="md:col-span-2 space-y-4">
             <div className="flex items-center gap-2 mb-1">
               <Target className="w-4 h-4 text-amber-400" />
@@ -220,7 +102,6 @@ export default function CommandCenterPage() {
             )}
           </div>
 
-          {/* ── Side Column: Operations Brief (span 1) ─────────────────── */}
           <div className="space-y-4">
             <h2 className="text-sm font-semibold text-white uppercase tracking-wider mb-1">
               Operations Brief

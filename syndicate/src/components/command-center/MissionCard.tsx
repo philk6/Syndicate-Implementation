@@ -2,321 +2,262 @@
 
 import { useState } from 'react';
 import { GlassCard } from '@/components/ui/glass-card';
-import { SubmitProofDialog } from './SubmitProofDialog';
 import {
   Target,
   CheckCircle2,
-  Clock,
-  Send,
-  XCircle,
-  FileCheck,
   ChevronDown,
   ChevronUp,
   Zap,
+  Award,
+  Loader2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { supabase } from '@lib/supabase/client';
+import {
+  completeTask,
+  uncompleteTask,
+  type Mission as MCMission,
+  type Task as MCTask,
+} from '@/lib/missionControl';
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-export interface TaskProgress {
-  id: number;
-  status: 'pending' | 'submitted' | 'approved' | 'rejected';
-  proof_submission: string | null;
-}
-
-export interface Task {
-  id: number;
-  title: string;
-  description: string | null;
-  order_index: number;
-  requires_proof: boolean;
-  progress?: TaskProgress | null;
-}
-
-export interface Mission {
-  id: number;
-  title: string;
-  description: string | null;
-  xp_reward: number;
-  target_audience: string;
-  tasks: Task[];
-}
-
-// ─── Status helpers ───────────────────────────────────────────────────────────
-
-const statusConfig: Record<string, { label: string; icon: React.ReactNode; className: string }> = {
-  approved: {
-    label: 'Approved',
-    icon: <CheckCircle2 className="w-3.5 h-3.5" />,
-    className: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
-  },
-  submitted: {
-    label: 'In Review',
-    icon: <Clock className="w-3.5 h-3.5" />,
-    className: 'bg-blue-500/10 text-blue-400 border-blue-500/20',
-  },
-  rejected: {
-    label: 'Rejected',
-    icon: <XCircle className="w-3.5 h-3.5" />,
-    className: 'bg-red-500/10 text-red-400 border-red-500/20',
-  },
-  pending: {
-    label: 'Pending',
-    icon: <FileCheck className="w-3.5 h-3.5" />,
-    className: 'bg-neutral-500/10 text-neutral-400 border-neutral-500/20',
-  },
-};
-
-function StatusBadge({ status }: { status: string }) {
-  const config = statusConfig[status] ?? statusConfig.pending;
-  return (
-    <span
-      className={cn(
-        'inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-semibold border leading-none',
-        config.className,
-      )}
-    >
-      {config.icon}
-      {config.label}
-    </span>
-  );
-}
-
-// ─── Mission Card ─────────────────────────────────────────────────────────────
+// Re-exported so the page's existing imports keep working.
+export type Task = MCTask;
+export type Mission = MCMission;
 
 interface MissionCardProps {
   mission: Mission;
   userId: string;
   onProgressUpdate: () => void;
+  onXpAwarded?: (amount: number) => void;
+  onBadgeEarned?: (badgeName: string) => void;
 }
 
-export function MissionCard({ mission, userId, onProgressUpdate }: MissionCardProps) {
+export function MissionCard({
+  mission,
+  onProgressUpdate,
+  onXpAwarded,
+  onBadgeEarned,
+}: MissionCardProps) {
   const [expanded, setExpanded] = useState(true);
-  const [proofDialogOpen, setProofDialogOpen] = useState(false);
-  const [activeTask, setActiveTask] = useState<Task | null>(null);
+  const [pendingTaskIds, setPendingTaskIds] = useState<Set<number>>(new Set());
+  const [optimisticStatus, setOptimisticStatus] = useState<Record<number, 'approved' | null>>({});
+  const [xpFlash, setXpFlash] = useState<{ taskId: number; amount: number } | null>(null);
 
-  const completedCount = mission.tasks.filter(
-    (t) => t.progress?.status === 'approved',
-  ).length;
+  const effectiveStatus = (task: Task): 'approved' | 'pending' => {
+    if (task.id in optimisticStatus) {
+      return optimisticStatus[task.id] === 'approved' ? 'approved' : 'pending';
+    }
+    return task.progress?.status === 'approved' ? 'approved' : 'pending';
+  };
+
+  const completedCount = mission.tasks.filter((t) => effectiveStatus(t) === 'approved').length;
   const totalTasks = mission.tasks.length;
   const isFullyCompleted = totalTasks > 0 && completedCount === totalTasks;
   const progressPct = totalTasks > 0 ? Math.round((completedCount / totalTasks) * 100) : 0;
 
-  const handleOpenProofDialog = (task: Task) => {
-    setActiveTask(task);
-    setProofDialogOpen(true);
-  };
+  const handleToggle = async (task: Task) => {
+    if (pendingTaskIds.has(task.id)) return;
 
-  const handleSubmitProof = async (proof: string) => {
-    if (!activeTask) return;
+    const wasApproved = effectiveStatus(task) === 'approved';
+    const nextStatus: 'approved' | null = wasApproved ? null : 'approved';
 
-    const existing = activeTask.progress;
+    // Optimistic update
+    setOptimisticStatus((s) => ({ ...s, [task.id]: nextStatus }));
+    setPendingTaskIds((s) => new Set(s).add(task.id));
 
-    if (existing) {
-      // Update existing progress
-      await supabase
-        .from('user_task_progress')
-        .update({
-          status: 'submitted',
-          proof_submission: proof,
-          submitted_at: new Date().toISOString(),
-        })
-        .eq('id', existing.id);
-    } else {
-      // Insert new progress
-      await supabase.from('user_task_progress').insert({
-        user_id: userId,
-        task_id: activeTask.id,
-        status: 'submitted',
-        proof_submission: proof,
-        submitted_at: new Date().toISOString(),
+    try {
+      if (nextStatus === 'approved') {
+        const result = await completeTask(task.id);
+        if (result.awarded_xp > 0) {
+          setXpFlash({ taskId: task.id, amount: result.awarded_xp });
+          onXpAwarded?.(result.awarded_xp);
+          window.setTimeout(() => setXpFlash(null), 1800);
+        }
+        if (result.badge_earned) {
+          onBadgeEarned?.(result.badge_earned);
+        }
+      } else {
+        await uncompleteTask(task.id);
+      }
+      onProgressUpdate();
+    } catch (err) {
+      // Revert on error
+      setOptimisticStatus((s) => {
+        const next = { ...s };
+        delete next[task.id];
+        return next;
+      });
+      console.error('Failed to toggle task:', err);
+    } finally {
+      setPendingTaskIds((s) => {
+        const next = new Set(s);
+        next.delete(task.id);
+        return next;
       });
     }
-
-    onProgressUpdate();
-  };
-
-  const handleMarkComplete = async (task: Task) => {
-    // For tasks that don't require proof — auto-submit as 'submitted'
-    const existing = task.progress;
-
-    if (existing) {
-      await supabase
-        .from('user_task_progress')
-        .update({ status: 'submitted', submitted_at: new Date().toISOString() })
-        .eq('id', existing.id);
-    } else {
-      await supabase.from('user_task_progress').insert({
-        user_id: userId,
-        task_id: task.id,
-        status: 'submitted',
-        submitted_at: new Date().toISOString(),
-      });
-    }
-
-    onProgressUpdate();
   };
 
   return (
-    <>
-      <GlassCard className={cn('transition-all duration-300', isFullyCompleted && 'border-emerald-500/20')}>
-        {/* Card header */}
-        <button
-          type="button"
-          onClick={() => setExpanded((v) => !v)}
-          className="w-full flex items-start gap-4 p-5 text-left cursor-pointer group"
+    <GlassCard className={cn('transition-all duration-300', isFullyCompleted && 'border-emerald-500/20')}>
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        className="w-full flex items-start gap-4 p-5 text-left cursor-pointer group"
+      >
+        <div
+          className={cn(
+            'w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-colors',
+            isFullyCompleted
+              ? 'bg-emerald-500/15 text-emerald-400'
+              : 'bg-amber-500/10 text-amber-400',
+          )}
         >
-          <div
-            className={cn(
-              'w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-colors',
-              isFullyCompleted
-                ? 'bg-emerald-500/15 text-emerald-400'
-                : 'bg-amber-500/10 text-amber-400',
+          {isFullyCompleted ? (
+            <CheckCircle2 className="w-5 h-5" />
+          ) : (
+            <Target className="w-5 h-5" />
+          )}
+        </div>
+
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-1 flex-wrap">
+            <h3 className="text-sm font-semibold text-white truncate">
+              {mission.title}
+            </h3>
+            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/15 whitespace-nowrap">
+              <Zap className="w-2.5 h-2.5" />
+              {mission.tasks.reduce((s, t) => s + t.xp_reward, 0)} XP
+            </span>
+            {mission.mission_type !== 'core' && (
+              <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-semibold uppercase tracking-wider bg-white/[0.04] text-neutral-400 border border-white/[0.08]">
+                {mission.mission_type}
+              </span>
             )}
-          >
-            {isFullyCompleted ? (
-              <CheckCircle2 className="w-5 h-5" />
-            ) : (
-              <Target className="w-5 h-5" />
+            {isFullyCompleted && mission.badge_name && (
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                <Award className="w-2.5 h-2.5" />
+                {mission.badge_name}
+              </span>
             )}
           </div>
+          {mission.description && (
+            <p className="text-xs text-neutral-500 line-clamp-2">{mission.description}</p>
+          )}
 
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-1">
-              <h3 className="text-sm font-semibold text-white truncate">
-                {mission.title}
-              </h3>
-              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/15 whitespace-nowrap">
-                <Zap className="w-2.5 h-2.5" />
-                {mission.xp_reward} XP
-              </span>
+          <div className="flex items-center gap-2 mt-2.5">
+            <div className="flex-1 h-1.5 rounded-full bg-white/[0.06] overflow-hidden">
+              <div
+                className={cn(
+                  'h-full rounded-full transition-all duration-500',
+                  isFullyCompleted
+                    ? 'bg-emerald-500'
+                    : 'bg-gradient-to-r from-amber-500 to-amber-400',
+                )}
+                style={{ width: `${progressPct}%` }}
+              />
             </div>
-            {mission.description && (
-              <p className="text-xs text-neutral-500 line-clamp-2">{mission.description}</p>
-            )}
+            <span className="text-[10px] text-neutral-500 font-medium tabular-nums whitespace-nowrap">
+              {completedCount}/{totalTasks}
+            </span>
+          </div>
+        </div>
 
-            {/* Progress bar */}
-            <div className="flex items-center gap-2 mt-2.5">
-              <div className="flex-1 h-1.5 rounded-full bg-white/[0.06] overflow-hidden">
+        <div className="text-neutral-600 group-hover:text-neutral-400 transition-colors mt-1">
+          {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+        </div>
+      </button>
+
+      {expanded && (
+        <div className="border-t border-white/[0.05] divide-y divide-white/[0.03]">
+          {mission.tasks
+            .slice()
+            .sort((a, b) => a.order_index - b.order_index)
+            .map((task) => {
+              const isApproved = effectiveStatus(task) === 'approved';
+              const isPending = pendingTaskIds.has(task.id);
+              const showFlash = xpFlash?.taskId === task.id;
+
+              return (
                 <div
+                  key={task.id}
                   className={cn(
-                    'h-full rounded-full transition-all duration-500',
-                    isFullyCompleted
-                      ? 'bg-emerald-500'
-                      : 'bg-gradient-to-r from-amber-500 to-amber-400',
+                    'flex items-center gap-3 px-5 py-3 transition-colors relative',
+                    isApproved && 'bg-emerald-500/[0.02]',
                   )}
-                  style={{ width: `${progressPct}%` }}
-                />
-              </div>
-              <span className="text-[10px] text-neutral-500 font-medium tabular-nums whitespace-nowrap">
-                {completedCount}/{totalTasks}
-              </span>
-            </div>
-          </div>
-
-          <div className="text-neutral-600 group-hover:text-neutral-400 transition-colors mt-1">
-            {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-          </div>
-        </button>
-
-        {/* Task list */}
-        {expanded && (
-          <div className="border-t border-white/[0.05] divide-y divide-white/[0.03]">
-            {mission.tasks
-              .sort((a, b) => a.order_index - b.order_index)
-              .map((task) => {
-                const status = task.progress?.status ?? 'pending';
-                const isCompleted = status === 'approved';
-                const isSubmitted = status === 'submitted';
-                const isRejected = status === 'rejected';
-                const canSubmit = !isCompleted && !isSubmitted;
-
-                return (
-                  <div
-                    key={task.id}
+                >
+                  <button
+                    type="button"
+                    onClick={() => handleToggle(task)}
+                    disabled={isPending}
                     className={cn(
-                      'flex items-center gap-3 px-5 py-3 transition-colors',
-                      isCompleted && 'bg-emerald-500/[0.02]',
+                      'w-6 h-6 rounded-lg flex items-center justify-center shrink-0 text-[10px] font-bold border transition-all cursor-pointer',
+                      isApproved
+                        ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+                        : 'bg-white/[0.03] text-neutral-500 border-white/[0.08] hover:bg-amber-500/10 hover:text-amber-400 hover:border-amber-500/20',
+                      isPending && 'opacity-60 cursor-wait',
                     )}
+                    aria-label={isApproved ? 'Uncheck task' : 'Complete task'}
                   >
-                    {/* Step indicator */}
-                    <div
+                    {isPending ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : isApproved ? (
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                    ) : (
+                      task.order_index + 1
+                    )}
+                  </button>
+
+                  <div className="flex-1 min-w-0">
+                    <p
                       className={cn(
-                        'w-6 h-6 rounded-lg flex items-center justify-center shrink-0 text-[10px] font-bold border',
-                        isCompleted
-                          ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/20'
-                          : 'bg-white/[0.03] text-neutral-500 border-white/[0.08]',
+                        'text-sm font-medium truncate',
+                        isApproved ? 'text-neutral-500 line-through' : 'text-neutral-200',
                       )}
                     >
-                      {isCompleted ? (
-                        <CheckCircle2 className="w-3.5 h-3.5" />
-                      ) : (
-                        task.order_index + 1
-                      )}
-                    </div>
-
-                    {/* Task info */}
-                    <div className="flex-1 min-w-0">
-                      <p
-                        className={cn(
-                          'text-sm font-medium truncate',
-                          isCompleted ? 'text-neutral-500 line-through' : 'text-neutral-200',
-                        )}
-                      >
-                        {task.title}
+                      {task.title}
+                    </p>
+                    {task.description && (
+                      <p className="text-[11px] text-neutral-600 truncate mt-0.5">
+                        {task.description}
                       </p>
-                      {task.description && (
-                        <p className="text-[11px] text-neutral-600 truncate mt-0.5">
-                          {task.description}
-                        </p>
-                      )}
-                    </div>
-
-                    {/* Status / Action */}
-                    <div className="shrink-0 flex items-center gap-2">
-                      {(isSubmitted || isCompleted || isRejected) && (
-                        <StatusBadge status={status} />
-                      )}
-
-                      {canSubmit && task.requires_proof && (
-                        <button
-                          type="button"
-                          onClick={() => handleOpenProofDialog(task)}
-                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/20 hover:bg-amber-500/20 hover:border-amber-500/30 transition-all cursor-pointer"
-                        >
-                          <Send className="w-3 h-3" />
-                          Submit Proof
-                        </button>
-                      )}
-
-                      {canSubmit && !task.requires_proof && (
-                        <button
-                          type="button"
-                          onClick={() => handleMarkComplete(task)}
-                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-white/[0.04] text-neutral-400 border border-white/[0.08] hover:bg-amber-500/10 hover:text-amber-400 hover:border-amber-500/20 transition-all cursor-pointer"
-                        >
-                          <CheckCircle2 className="w-3 h-3" />
-                          Mark Done
-                        </button>
-                      )}
-                    </div>
+                    )}
                   </div>
-                );
-              })}
-          </div>
-        )}
-      </GlassCard>
 
-      {/* Proof submission dialog */}
-      {activeTask && (
-        <SubmitProofDialog
-          open={proofDialogOpen}
-          onOpenChange={setProofDialogOpen}
-          taskTitle={activeTask.title}
-          onSubmit={handleSubmitProof}
-        />
+                  <div className="shrink-0 flex items-center gap-2">
+                    <span
+                      className={cn(
+                        'inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md text-[10px] font-bold border whitespace-nowrap',
+                        isApproved
+                          ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                          : 'bg-amber-500/10 text-amber-400 border-amber-500/15',
+                      )}
+                    >
+                      <Zap className="w-2.5 h-2.5" />
+                      {task.xp_reward}
+                    </span>
+                  </div>
+
+                  {showFlash && (
+                    <span
+                      key={`flash-${task.id}-${xpFlash?.amount}`}
+                      className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-emerald-400 font-bold text-sm animate-[xpFlash_1.8s_ease-out_forwards]"
+                    >
+                      +{xpFlash!.amount} XP
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+        </div>
       )}
-    </>
+
+      <style jsx global>{`
+        @keyframes xpFlash {
+          0%   { opacity: 0; transform: translate(0, 0); }
+          15%  { opacity: 1; transform: translate(0, -4px); }
+          75%  { opacity: 1; transform: translate(0, -18px); }
+          100% { opacity: 0; transform: translate(0, -28px); }
+        }
+      `}</style>
+    </GlassCard>
   );
 }
