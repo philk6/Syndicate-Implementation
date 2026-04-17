@@ -5,17 +5,13 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '../../../../lib/auth';
 import { supabase } from '../../../../lib/supabase/client';
 import { PostgrestError } from '@supabase/supabase-js';
-import { GlassCard } from '@/components/ui/glass-card';
 import { PageLoadingSpinner } from '@/components/ui/loading-spinner';
-import { StatusPill } from '@/components/ui/status-pill';
+import { AdminWeeklyCheckIns } from '@/components/AdminWeeklyCheckIns';
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
+  PageShell, PageHeader, SectionLabel, MetricCard, DsCard, DsStatusPill,
+  DsTable, DsThead, DsTh, DsTr, DsTd, DsEmpty, DsCountPill, DS,
+} from '@/components/ui/ds';
+import { ShoppingCart, DollarSign, TrendingUp } from 'lucide-react';
 
 interface Order {
   order_id: number;
@@ -36,6 +32,20 @@ interface RecentOrderQueryData {
   deadline: string;
   order_statuses: { description: string } | null;
 }
+
+const STATUS_COLOR: Record<string, string> = {
+  open: '#4ade80',
+  closed: '#FF4444',
+  new: '#3B82F6',
+  late: '#FF4444',
+  done: '#4ade80',
+  progress: '#FFD93D',
+  warehouse: '#FFD93D',
+  amazon: '#818cf8',
+  walmart: '#22d3ee',
+  active: '#4ade80',
+  pending: '#FFD93D',
+};
 
 export default function AdminDashboardPage() {
   const [metrics, setMetrics] = useState<DashboardMetrics>({ totalOrders: 0, totalRevenue: 0, averageRoi: null });
@@ -64,11 +74,11 @@ export default function AdminDashboardPage() {
         console.error('Error fetching total orders:', ordersError.message);
       }
 
-      // Fetch total revenue (sum of total_amount from orders)
-      const { data: revenueData, error: revenueError } = await supabase
-        .from('orders')
-        .select('total_amount')
-        .not('total_amount', 'is', null);
+      // Fetch total revenue + average ROI in parallel, capped for safety
+      const [{ data: revenueData, error: revenueError }, { data: roiData, error: roiError }] = await Promise.all([
+        supabase.from('orders').select('total_amount').not('total_amount', 'is', null).limit(500),
+        supabase.from('order_company').select('roi').not('roi', 'is', null).limit(500),
+      ]);
 
       const totalRevenue = revenueData
         ? revenueData.reduce((sum, order) => sum + order.total_amount, 0)
@@ -77,12 +87,6 @@ export default function AdminDashboardPage() {
       if (revenueError) {
         console.error('Error fetching total revenue:', revenueError.message);
       }
-
-      // Fetch average ROI from order_company
-      const { data: roiData, error: roiError } = await supabase
-        .from('order_company')
-        .select('roi')
-        .not('roi', 'is', null);
 
       const averageRoi = roiData && roiData.length > 0
         ? roiData.reduce((sum, record) => sum + (record.roi || 0), 0) / roiData.length
@@ -135,82 +139,75 @@ export default function AdminDashboardPage() {
   if (!isAuthenticated || user?.role !== 'admin') return null;
 
   return (
-    <div className="min-h-screen p-6 w-full">
-      <div className="max-w-7xl mx-auto">
-        <h1 className="text-3xl font-bold text-white mb-6">Admin Dashboard</h1>
+    <PageShell>
+      <PageHeader label="Admin Console" title="ADMIN DASHBOARD" />
 
-        {/* Metric Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <GlassCard className="p-6">
-            <div className="mb-2">
-              <h3 className="text-sm font-medium text-neutral-400">Total Orders</h3>
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-white tracking-tight">{metrics.totalOrders}</p>
-              <p className="text-xs text-neutral-500 mt-1">All orders processed</p>
-            </div>
-          </GlassCard>
-          <GlassCard className="p-6">
-            <div className="mb-2">
-              <h3 className="text-sm font-medium text-neutral-400">Total Revenue</h3>
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-white tracking-tight">${metrics.totalRevenue.toLocaleString()}</p>
-              <p className="text-xs text-neutral-500 mt-1">Sum of order amounts</p>
-            </div>
-          </GlassCard>
-          <GlassCard className="p-6">
-            <div className="mb-2">
-              <h3 className="text-sm font-medium text-neutral-400">Average ROI</h3>
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-white tracking-tight">
-                {metrics.averageRoi != null ? metrics.averageRoi.toFixed(2) : 'N/A'}%
-              </p>
-              <p className="text-xs text-neutral-500 mt-1">Across all company investments</p>
-            </div>
-          </GlassCard>
-        </div>
+      {/* Weekly Check-Ins */}
+      <AdminWeeklyCheckIns />
 
-        {/* Recent Orders Table */}
-        <GlassCard>
-          <div className="p-6 pb-2">
-            <h2 className="text-xl font-semibold text-white">Recent Orders</h2>
-          </div>
-          <div className="p-6 pt-0 overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow className="border-b border-white/[0.05] hover:bg-transparent">
-                  <TableHead className="text-neutral-400">Order ID</TableHead>
-                  <TableHead className="text-neutral-400">Status</TableHead>
-                  <TableHead className="text-neutral-400">Deadline</TableHead>
-                  <TableHead className="text-neutral-400">Total Amount</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {recentOrders.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={4} className="text-neutral-500 text-center py-8">
-                      No recent orders found.
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  recentOrders.map((order) => (
-                    <TableRow key={order.order_id} className="hover:bg-white/[0.02] transition-colors border-b border-white/[0.02]">
-                      <TableCell className="text-neutral-200">#{order.order_id}</TableCell>
-                      <TableCell className="text-neutral-200">
-                        <StatusPill text={order.status} type={order.status} />
-                      </TableCell>
-                      <TableCell className="text-neutral-200">{new Date(order.deadline).toLocaleString()}</TableCell>
-                      <TableCell className="text-white font-medium">${order.total_amount.toLocaleString()}</TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </div>
-        </GlassCard>
+      {/* Metric Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <MetricCard
+          label="Total Orders"
+          value={metrics.totalOrders}
+          sub="All orders processed"
+          accent={DS.orange}
+          icon={<ShoppingCart className="w-4 h-4" />}
+        />
+        <MetricCard
+          label="Total Revenue"
+          value={`$${metrics.totalRevenue.toLocaleString()}`}
+          sub="Sum of order amounts"
+          accent={DS.teal}
+          icon={<DollarSign className="w-4 h-4" />}
+        />
+        <MetricCard
+          label="Average ROI"
+          value={metrics.averageRoi != null ? `${metrics.averageRoi.toFixed(2)}%` : 'N/A'}
+          sub="Across all company investments"
+          accent={DS.gold}
+          icon={<TrendingUp className="w-4 h-4" />}
+        />
       </div>
-    </div>
+
+      {/* Recent Orders Table */}
+      <div>
+        <SectionLabel accent={DS.orange}>
+          Recent Orders <DsCountPill count={recentOrders.length} />
+        </SectionLabel>
+
+        {recentOrders.length === 0 ? (
+          <DsEmpty
+            icon={<ShoppingCart className="w-6 h-6" />}
+            title="No Orders"
+            body="No recent orders found."
+          />
+        ) : (
+          <DsTable>
+            <DsThead>
+              <DsTh>Order ID</DsTh>
+              <DsTh>Status</DsTh>
+              <DsTh>Deadline</DsTh>
+              <DsTh>Total Amount</DsTh>
+            </DsThead>
+            <tbody>
+              {recentOrders.map((order) => (
+                <DsTr key={order.order_id}>
+                  <DsTd className="font-medium text-white">#{order.order_id}</DsTd>
+                  <DsTd>
+                    <DsStatusPill
+                      label={order.status}
+                      color={STATUS_COLOR[order.status.toLowerCase()] || DS.muted}
+                    />
+                  </DsTd>
+                  <DsTd>{new Date(order.deadline).toLocaleString()}</DsTd>
+                  <DsTd className="font-medium text-white">${order.total_amount.toLocaleString()}</DsTd>
+                </DsTr>
+              ))}
+            </tbody>
+          </DsTable>
+        )}
+      </div>
+    </PageShell>
   );
 }

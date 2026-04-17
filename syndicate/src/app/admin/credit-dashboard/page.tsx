@@ -4,17 +4,6 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@lib/auth';
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { GlassCard } from '@/components/ui/glass-card';
-import {
   Dialog,
   DialogContent,
   DialogHeader,
@@ -34,6 +23,10 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { ArrowUpDown, Banknote, Landmark, Wallet, Users, PlusCircle, AlertCircle, History } from 'lucide-react';
+import {
+  PageShell, PageHeader, SectionLabel, MetricCard, DsCard, DsStatusPill,
+  DsTable, DsThead, DsTh, DsTr, DsTd, DsButton, DsInput, DsEmpty, DsCountPill, DS,
+} from '@/components/ui/ds';
 
 // Type definitions
 interface CompanySummary {
@@ -157,7 +150,6 @@ export default function CreditDashboardPage() {
       setHistoryTransactions(data);
     } catch (e: unknown) {
       console.error('Error fetching transaction history:', e);
-      // You could set a specific error state for the history modal here
     } finally {
       setHistoryLoading(false);
     }
@@ -214,100 +206,132 @@ export default function CreditDashboardPage() {
   }
 
   if (authLoading || loadingData) {
-    return <div className="min-h-screen p-6 flex items-center justify-center"><p className="text-neutral-400">Loading Dashboard...</p></div>;
+    return (
+      <PageShell>
+        <div className="flex items-center justify-center min-h-[60vh]">
+          <p className="text-neutral-400 font-mono text-sm">Loading Dashboard...</p>
+        </div>
+      </PageShell>
+    );
   }
 
   if (error) {
     return (
-      <div className="min-h-screen p-6">
-        <Alert variant="destructive" className="max-w-2xl mx-auto bg-rose-500/10 border-rose-500/20 text-rose-400 backdrop-blur-md">
-          <AlertCircle className="h-4 w-4" /><AlertTitle>Error</AlertTitle><AlertDescription>{error}</AlertDescription>
-        </Alert>
-      </div>
+      <PageShell>
+        <PageHeader title="CREDIT DASHBOARD" accent={DS.gold} />
+        <DsCard accent={DS.red} className="p-6">
+          <div className="flex items-center gap-3">
+            <AlertCircle className="w-5 h-5 text-[#FF4444] shrink-0" />
+            <div>
+              <p className="text-sm font-bold text-[#FF4444]">Error</p>
+              <p className="text-xs text-neutral-400 mt-0.5">{error}</p>
+            </div>
+          </div>
+        </DsCard>
+      </PageShell>
     );
   }
 
   return (
-    <div className="min-h-screen p-6 w-full">
-      <div className="mx-auto">
-        <h1 className="text-3xl font-bold text-white mb-6">Credit Dashboard</h1>
+    <PageShell>
+      <PageHeader
+        title="CREDIT DASHBOARD"
+        accent={DS.gold}
+        subtitle="Manage company credit balances and transactions"
+        right={
+          <DsButton onClick={() => { resetAddModal(); setIsAddModalOpen(true); }} accent={DS.gold}>
+            <PlusCircle className="w-3.5 h-3.5" /> Add / Debit Credit
+          </DsButton>
+        }
+      />
 
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-6">
-          {/* Summary Cards */}
-          <GlassCard className="p-6">
-            <div className="flex flex-row items-center justify-between pb-2">
-              <h3 className="text-sm font-medium text-neutral-400">Total Credits</h3>
-              <Landmark className="h-4 w-4 text-neutral-500" />
-            </div>
-            <div>
-              <div className="text-2xl font-bold text-white">${stats.totalCredits.toLocaleString()}</div>
-              <p className="text-xs text-neutral-500 mt-1">Total value in the system</p>
-            </div>
-          </GlassCard>
-          <GlassCard className="p-6">
-            <div className="flex flex-row items-center justify-between pb-2">
-              <h3 className="text-sm font-medium text-neutral-400">Available Credits</h3>
-              <Banknote className="h-4 w-4 text-neutral-500" />
-            </div>
-            <div>
-              <div className="text-2xl font-bold text-white">${stats.totalAvailable.toLocaleString()}</div>
-              <p className="text-xs text-neutral-500 mt-1">Available for use</p>
-            </div>
-          </GlassCard>
-          <GlassCard className="p-6">
-            <div className="flex flex-row items-center justify-between pb-2">
-              <h3 className="text-sm font-medium text-neutral-400">Total Held</h3>
-              <Wallet className="h-4 w-4 text-neutral-500" />
-            </div>
-            <div>
-              <div className="text-2xl font-bold text-white">${stats.totalHeld.toLocaleString()}</div>
-              <p className="text-xs text-neutral-500 mt-1">Amount held in active orders</p>
-            </div>
-          </GlassCard>
-          <GlassCard className="p-6">
-            <div className="flex flex-row items-center justify-between pb-2">
-              <h3 className="text-sm font-medium text-neutral-400">Active Companies</h3>
-              <Users className="h-4 w-4 text-neutral-500" />
-            </div>
-            <div>
-              <div className="text-2xl font-bold text-white">{stats.activeCompanies}</div>
-              <p className="text-xs text-neutral-500 mt-1">Companies with a positive balance</p>
-            </div>
-          </GlassCard>
+      {/* Metric Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <MetricCard
+          label="Total Credits"
+          value={`$${stats.totalCredits.toLocaleString()}`}
+          sub="Total value in the system"
+          accent={DS.gold}
+          icon={<Landmark className="w-4 h-4" />}
+        />
+        <MetricCard
+          label="Available Credits"
+          value={`$${stats.totalAvailable.toLocaleString()}`}
+          sub="Available for use"
+          accent={DS.teal}
+          icon={<Banknote className="w-4 h-4" />}
+        />
+        <MetricCard
+          label="Total Held"
+          value={`$${stats.totalHeld.toLocaleString()}`}
+          sub="Amount held in active orders"
+          accent={DS.orange}
+          icon={<Wallet className="w-4 h-4" />}
+        />
+        <MetricCard
+          label="Active Companies"
+          value={stats.activeCompanies}
+          sub="Companies with a positive balance"
+          accent={DS.blue}
+          icon={<Users className="w-4 h-4" />}
+        />
+      </div>
+
+      {/* Company Credit Summary Table */}
+      <div>
+        <SectionLabel accent={DS.gold}>
+          Company Credit Summary <DsCountPill count={filteredAndSortedSummaries.length} accent={DS.gold} />
+        </SectionLabel>
+
+        <div className="mb-4">
+          <DsInput
+            placeholder="Filter by company name..."
+            value={filter}
+            onChange={setFilter}
+            className="max-w-sm"
+          />
         </div>
 
-        <GlassCard className="p-6">
-          <div className="flex justify-between items-center mb-6">
-            <Input placeholder="Filter by company name..." value={filter} onChange={(e) => setFilter(e.target.value)} className="max-w-sm bg-white/[0.02] text-neutral-200 border-white/[0.05] focus:border-amber-500/50" />
-            <Button onClick={() => { resetAddModal(); setIsAddModalOpen(true); }} className="bg-amber-500/10 text-amber-400 font-medium border border-amber-500/20 shadow-[0_0_15px_rgba(245,158,11,0.05)] hover:bg-amber-500/20 hover:shadow-[0_0_20px_rgba(245,158,11,0.1)] hover:border-amber-500/30 transition-all duration-300"><PlusCircle className="mr-2 h-4 w-4" /> Add / Debit Credit</Button>
-          </div>
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow className="border-b border-white/[0.05] hover:bg-transparent">
-                  <TableHead className="text-neutral-400 cursor-pointer" onClick={() => handleSort('company_id')}>Company <ArrowUpDown className="ml-2 h-4 w-4 inline" /></TableHead>
-                  <TableHead className="text-neutral-400 cursor-pointer" onClick={() => handleSort('total_balance')}>Total Balance <ArrowUpDown className="ml-2 h-4 w-4 inline" /></TableHead>
-                  <TableHead className="text-neutral-400 cursor-pointer" onClick={() => handleSort('available_balance')}>Available Balance <ArrowUpDown className="ml-2 h-4 w-4 inline" /></TableHead>
-                  <TableHead className="text-neutral-400 cursor-pointer" onClick={() => handleSort('held_balance')}>Held Balance <ArrowUpDown className="ml-2 h-4 w-4 inline" /></TableHead>
-                  <TableHead className="text-neutral-400">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredAndSortedSummaries.map((summary) => (
-                  <TableRow key={summary.company_id} className="hover:bg-white/[0.02] transition-colors border-b border-white/[0.02]">
-                    <TableCell className="text-neutral-200 font-medium">{summary.company?.name ?? 'N/A'}</TableCell>
-                    <TableCell className="text-neutral-200 font-semibold">${summary.total_balance.toLocaleString()}</TableCell>
-                    <TableCell className="text-emerald-400 font-semibold">${summary.available_balance.toLocaleString()}</TableCell>
-                    <TableCell className="text-neutral-400">${summary.held_balance.toLocaleString()}</TableCell>
-                    <TableCell>
-                      <Button onClick={() => handleViewHistory(summary)} variant="outline" size="sm" className="bg-white/[0.05] border-white/[0.1] text-white hover:bg-white/[0.1]"><History className="mr-2 h-4 w-4" />View History</Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        </GlassCard>
+        {filteredAndSortedSummaries.length === 0 ? (
+          <DsEmpty
+            icon={<Landmark className="w-6 h-6" />}
+            title="No Companies"
+            body="No companies match the current filter."
+          />
+        ) : (
+          <DsTable>
+            <DsThead>
+              <DsTh>
+                <button onClick={() => handleSort('company_id')} className="inline-flex items-center gap-1 cursor-pointer hover:text-white transition-colors">Company <ArrowUpDown className="w-3 h-3" /></button>
+              </DsTh>
+              <DsTh>
+                <button onClick={() => handleSort('total_balance')} className="inline-flex items-center gap-1 cursor-pointer hover:text-white transition-colors">Total Balance <ArrowUpDown className="w-3 h-3" /></button>
+              </DsTh>
+              <DsTh>
+                <button onClick={() => handleSort('available_balance')} className="inline-flex items-center gap-1 cursor-pointer hover:text-white transition-colors">Available <ArrowUpDown className="w-3 h-3" /></button>
+              </DsTh>
+              <DsTh>
+                <button onClick={() => handleSort('held_balance')} className="inline-flex items-center gap-1 cursor-pointer hover:text-white transition-colors">Held <ArrowUpDown className="w-3 h-3" /></button>
+              </DsTh>
+              <DsTh>Actions</DsTh>
+            </DsThead>
+            <tbody>
+              {filteredAndSortedSummaries.map((summary) => (
+                <DsTr key={summary.company_id}>
+                  <DsTd className="font-medium text-white">{summary.company?.name ?? 'N/A'}</DsTd>
+                  <DsTd className="font-semibold text-white">${summary.total_balance.toLocaleString()}</DsTd>
+                  <DsTd className="font-semibold"><span style={{ color: DS.teal }}>${summary.available_balance.toLocaleString()}</span></DsTd>
+                  <DsTd className="text-neutral-400">${summary.held_balance.toLocaleString()}</DsTd>
+                  <DsTd>
+                    <DsButton variant="ghost" onClick={() => handleViewHistory(summary)} className="text-[10px]">
+                      <History className="w-3.5 h-3.5" /> View History
+                    </DsButton>
+                  </DsTd>
+                </DsTr>
+              ))}
+            </tbody>
+          </DsTable>
+        )}
       </div>
 
       {/* Add Credit Modal */}
@@ -331,7 +355,15 @@ export default function CreditDashboardPage() {
             </div>
             <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="amount" className="text-right text-neutral-400">Amount</Label>
-              <Input id="amount" type="number" value={amount} onChange={e => setAmount(e.target.value)} className="col-span-3 bg-white/[0.02] text-neutral-200 border-white/[0.05]" placeholder="e.g., 5000 or -500" />
+              <input
+                id="amount"
+                type="number"
+                value={amount}
+                onChange={e => setAmount(e.target.value)}
+                className="col-span-3 w-full text-sm text-white border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#FFD70066] placeholder-neutral-600"
+                style={{ backgroundColor: DS.inputBg, borderColor: 'rgba(255,255,255,0.1)' }}
+                placeholder="e.g., 5000 or -500"
+              />
             </div>
             <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="description" className="text-right text-neutral-400">Description</Label>
@@ -339,17 +371,25 @@ export default function CreditDashboardPage() {
             </div>
           </div>
           {modalFeedback && (
-            <Alert variant={modalFeedback.type === 'error' ? 'destructive' : 'default'} className={modalFeedback.type === 'success' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' : 'bg-rose-500/10 border-rose-500/20 text-rose-400'}>
-              <AlertCircle className="h-4 w-4" />
-              <AlertTitle>{modalFeedback.type === 'success' ? 'Success' : 'Error'}</AlertTitle>
-              <AlertDescription>{modalFeedback.text}</AlertDescription>
-            </Alert>
+            <DsCard accent={modalFeedback.type === 'success' ? '#4ade80' : DS.red} className="p-4">
+              <div className="flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" style={{ color: modalFeedback.type === 'success' ? '#4ade80' : DS.red }} />
+                <div>
+                  <p className="text-xs font-bold" style={{ color: modalFeedback.type === 'success' ? '#4ade80' : DS.red }}>
+                    {modalFeedback.type === 'success' ? 'Success' : 'Error'}
+                  </p>
+                  <p className="text-xs text-neutral-400">{modalFeedback.text}</p>
+                </div>
+              </div>
+            </DsCard>
           )}
           <DialogFooter>
             <DialogClose asChild>
-              <Button type="button" variant="secondary" className="bg-amber-500/10 text-amber-400 font-medium border border-amber-500/20 hover:bg-amber-500/20 hover:border-amber-500/30 transition-all duration-300">Cancel</Button>
+              <DsButton variant="ghost">Cancel</DsButton>
             </DialogClose>
-            <Button onClick={handleAddCredit} disabled={isSubmitting} className="bg-amber-500/10 text-amber-400 font-medium border border-amber-500/20 shadow-[0_0_15px_rgba(245,158,11,0.05)] hover:bg-amber-500/20 hover:shadow-[0_0_20px_rgba(245,158,11,0.1)] hover:border-amber-500/30 transition-all duration-300">{isSubmitting ? "Processing..." : "Confirm Transaction"}</Button>
+            <DsButton onClick={handleAddCredit} disabled={isSubmitting} accent={DS.gold}>
+              {isSubmitting ? "Processing..." : "Confirm Transaction"}
+            </DsButton>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -365,40 +405,49 @@ export default function CreditDashboardPage() {
           </DialogHeader>
           <div className="mt-4 max-h-[60vh] overflow-y-auto">
             {historyLoading ? (
-              <p className="text-neutral-500">Loading history...</p>
+              <p className="text-neutral-500 font-mono text-sm">Loading history...</p>
             ) : historyTransactions.length === 0 ? (
-              <p className="text-neutral-500">No transactions found for this company.</p>
+              <DsEmpty
+                icon={<History className="w-6 h-6" />}
+                title="No Transactions"
+                body="No transactions found for this company."
+              />
             ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow className="border-b border-white/[0.05] hover:bg-transparent">
-                    <TableHead className="text-neutral-400">Date</TableHead>
-                    <TableHead className="text-neutral-400">Type</TableHead>
-                    <TableHead className="text-neutral-400">Amount</TableHead>
-                    <TableHead className="text-neutral-400">Description</TableHead>
-                    <TableHead className="text-neutral-400">Order ID</TableHead>
-                    <TableHead className="text-neutral-400">Processed By</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
+              <DsTable>
+                <DsThead>
+                  <DsTh>Date</DsTh>
+                  <DsTh>Type</DsTh>
+                  <DsTh>Amount</DsTh>
+                  <DsTh>Description</DsTh>
+                  <DsTh>Order ID</DsTh>
+                  <DsTh>Processed By</DsTh>
+                </DsThead>
+                <tbody>
                   {historyTransactions.map((tx) => (
-                    <TableRow key={tx.transaction_id} className="hover:bg-white/[0.02] transition-colors border-b border-white/[0.02]">
-                      <TableCell className="text-neutral-200">{new Date(tx.created_at).toLocaleString()}</TableCell>
-                      <TableCell className="text-neutral-200 capitalize">{tx.transaction_type}</TableCell>
-                      <TableCell className={tx.amount >= 0 ? 'text-emerald-400 font-semibold' : 'text-rose-400 font-semibold'}>
-                        {tx.amount >= 0 ? '+' : ''}${tx.amount.toLocaleString()}
-                      </TableCell>
-                      <TableCell className="text-neutral-400 text-sm">{tx.description}</TableCell>
-                      <TableCell className="text-neutral-200">{tx.order_id || 'N/A'}</TableCell>
-                      <TableCell className="text-neutral-400 text-sm">{tx.users?.email || 'System'}</TableCell>
-                    </TableRow>
+                    <DsTr key={tx.transaction_id}>
+                      <DsTd>{new Date(tx.created_at).toLocaleString()}</DsTd>
+                      <DsTd>
+                        <DsStatusPill
+                          label={tx.transaction_type}
+                          color={tx.amount >= 0 ? '#4ade80' : DS.red}
+                        />
+                      </DsTd>
+                      <DsTd className="font-semibold">
+                        <span style={{ color: tx.amount >= 0 ? '#4ade80' : DS.red }}>
+                          {tx.amount >= 0 ? '+' : ''}${tx.amount.toLocaleString()}
+                        </span>
+                      </DsTd>
+                      <DsTd className="text-neutral-400 text-xs">{tx.description}</DsTd>
+                      <DsTd>{tx.order_id || 'N/A'}</DsTd>
+                      <DsTd className="text-neutral-400 text-xs">{tx.users?.email || 'System'}</DsTd>
+                    </DsTr>
                   ))}
-                </TableBody>
-              </Table>
+                </tbody>
+              </DsTable>
             )}
           </div>
         </DialogContent>
       </Dialog>
-    </div>
+    </PageShell>
   );
 }

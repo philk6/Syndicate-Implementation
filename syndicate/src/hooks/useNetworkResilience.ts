@@ -30,23 +30,24 @@ export function useNetworkResilience() {
 
         for (let attempt = 0; attempt <= retries; attempt++) {
           try {
-            // Create timeout promise
+            let timeoutId: ReturnType<typeof setTimeout> | null = null;
             const timeoutPromise = new Promise<never>((_, reject) => {
-              const timeoutId = setTimeout(() => {
+              timeoutId = setTimeout(() => {
                 reject(new Error(`Network request timeout after ${timeout}ms`));
               }, timeout);
 
-              // Clear timeout if operation completes or is aborted
               abortController.signal.addEventListener('abort', () => {
-                clearTimeout(timeoutId);
+                if (timeoutId !== null) clearTimeout(timeoutId);
               });
             });
 
-            // Race between operation and timeout
             const result = await Promise.race([
               operation(abortController.signal),
               timeoutPromise
             ]);
+
+            // Clear timeout on success (prevents stale timer firing after GC)
+            if (timeoutId !== null) clearTimeout(timeoutId);
 
             return result;
           } catch (error) {

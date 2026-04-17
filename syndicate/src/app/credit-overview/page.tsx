@@ -3,18 +3,12 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@lib/auth';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import { GlassCard } from '@/components/ui/glass-card';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Banknote, Landmark, Wallet, AlertCircle } from 'lucide-react';
+import { Banknote, Landmark, Wallet, AlertCircle, ArrowUpRight, ArrowDownRight, Clock } from 'lucide-react';
 import { PageLoadingSpinner } from '@/components/ui/loading-spinner';
+import {
+  DS, PageShell, PageHeader, SectionLabel, DsCard, MetricCard, DsStatusPill,
+  DsTable, DsThead, DsTh, DsTr, DsTd, DsEmpty,
+} from '@/components/ui/ds';
 
 // Type definitions
 interface UserCreditSummary {
@@ -36,11 +30,25 @@ interface Transaction {
   users: { email: string } | null;
 }
 
+const TYPE_COLORS: Record<string, string> = {
+  deposit: DS.teal,
+  credit: DS.teal,
+  purchase: DS.orange,
+  debit: DS.orange,
+  hold: DS.yellow,
+  release: DS.blue,
+  refund: DS.gold,
+  adjustment: '#C77DFF',
+};
+
+function txColor(type: string): string {
+  return TYPE_COLORS[type.toLowerCase()] ?? DS.muted;
+}
+
 export default function UserCreditDashboardPage() {
   const { isAuthenticated, loading: authLoading, user, session } = useAuth();
   const router = useRouter();
 
-  // Component State
   const [creditSummary, setCreditSummary] = useState<UserCreditSummary | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loadingData, setLoadingData] = useState(true);
@@ -55,28 +63,21 @@ export default function UserCreditDashboardPage() {
       const token = session.access_token;
       const headers = { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' };
 
-      // Fetch user's credit summary
       const summaryResponse = await fetch('/api/credits/balance', { headers });
-
       if (!summaryResponse.ok) {
         const summaryError = await summaryResponse.json();
         throw new Error(`Failed to fetch credit balance: ${summaryError.error}`);
       }
-
       const summaryData: UserCreditSummary = await summaryResponse.json();
       setCreditSummary(summaryData);
 
-      // Fetch user's transaction history
       const historyResponse = await fetch('/api/credits/transactions', { headers });
-
       if (!historyResponse.ok) {
         const historyError = await historyResponse.json();
         throw new Error(`Failed to fetch transaction history: ${historyError.error}`);
       }
-
       const historyData: Transaction[] = await historyResponse.json();
       setTransactions(historyData);
-
     } catch (e: unknown) {
       console.error('Error fetching data:', e);
       setError(e instanceof Error ? e.message : 'An unknown error occurred');
@@ -92,7 +93,6 @@ export default function UserCreditDashboardPage() {
       return;
     }
 
-    // Buyers group access check — admins always have access
     const hasBuyersGroupAccess = user?.buyersgroup === true || user?.role === 'admin';
     if (!hasBuyersGroupAccess) {
       router.push('/dashboard');
@@ -110,120 +110,156 @@ export default function UserCreditDashboardPage() {
 
   if (error) {
     return (
-      <div className="min-h-screen p-6">
-        <Alert variant="destructive" className="max-w-2xl mx-auto bg-rose-500/10 border-rose-500/20 text-rose-400 backdrop-blur-md">
-          <AlertCircle className="h-4 w-4" /><AlertTitle>Error</AlertTitle><AlertDescription>{error}</AlertDescription>
-        </Alert>
-      </div>
+      <PageShell>
+        <DsCard className="p-6 max-w-2xl mx-auto" accent={DS.red}>
+          <div className="flex items-start gap-3">
+            <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" style={{ color: DS.red }} />
+            <div>
+              <h3 className="text-sm font-bold text-white mb-1">Error</h3>
+              <p className="text-xs text-neutral-400">{error}</p>
+            </div>
+          </div>
+        </DsCard>
+      </PageShell>
     );
   }
 
   if (!creditSummary) {
     return (
-      <div className="min-h-screen p-6">
-        <Alert className="max-w-2xl mx-auto bg-white/[0.03] border-white/[0.08] text-neutral-400 backdrop-blur-md">
-          <AlertCircle className="h-4 w-4" /><AlertTitle>No Credit Information</AlertTitle><AlertDescription>No credit information found for your account.</AlertDescription>
-        </Alert>
-      </div>
+      <PageShell>
+        <DsEmpty
+          icon={<Wallet className="w-7 h-7" />}
+          title="No Credit Information"
+          body="No credit information found for your account."
+        />
+      </PageShell>
     );
   }
 
   return (
-    <div className="min-h-screen p-6 w-full">
-      <div className="mx-auto">
-        <h1 className="text-3xl font-bold text-white mb-6">My Credits</h1>
-
-        <div className="grid gap-4 md:grid-cols-3 mb-6">
-          {/* Summary Cards */}
-          <GlassCard className="p-6">
-            <div className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <h3 className="text-sm font-medium text-neutral-400">Total Credits</h3>
-              <Landmark className="h-4 w-4 text-neutral-500" />
+    <PageShell>
+      <PageHeader
+        label="Finance"
+        title="CREDIT OVERVIEW"
+        accent={DS.gold}
+        subtitle={creditSummary.company?.name ?? undefined}
+        right={
+          <div className="text-right">
+            <div className="text-[10px] font-bold uppercase tracking-widest text-neutral-500 mb-0.5">
+              Total Balance
             </div>
-            <div>
-              <div className="text-2xl font-bold text-white">${creditSummary.total_balance.toLocaleString()}</div>
-              <p className="text-xs text-neutral-500">Your total credit balance</p>
+            <div
+              className="text-3xl sm:text-4xl font-black tabular-nums tracking-tight"
+              style={{ color: DS.gold, textShadow: `0 0 24px ${DS.gold}44` }}
+            >
+              ${creditSummary.total_balance.toLocaleString()}
             </div>
-          </GlassCard>
-
-          <GlassCard className="p-6">
-            <div className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <h3 className="text-sm font-medium text-neutral-400">Available Credits</h3>
-              <Banknote className="h-4 w-4 text-neutral-500" />
-            </div>
-            <div>
-              <div className="text-2xl font-bold text-white">${creditSummary.available_balance.toLocaleString()}</div>
-              <p className="text-xs text-neutral-500">Available for investments</p>
-            </div>
-          </GlassCard>
-
-          <GlassCard className="p-6">
-            <div className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <h3 className="text-sm font-medium text-neutral-400">Held Credits</h3>
-              <Wallet className="h-4 w-4 text-neutral-500" />
-            </div>
-            <div>
-              <div className="text-2xl font-bold text-white">${creditSummary.held_balance.toLocaleString()}</div>
-              <p className="text-xs text-neutral-500">Reserved for active orders</p>
-            </div>
-          </GlassCard>
-        </div>
-
-        <GlassCard>
-          <div className="p-6 pb-2">
-            <h2 className="text-xl font-semibold text-white">Transaction History</h2>
           </div>
+        }
+      />
 
-          {transactions.length === 0 ? (
-            <div className="p-6">
-              <p className="text-neutral-500 text-center py-8">No transactions found.</p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto p-6 pt-0">
-              <Table>
-                <TableHeader>
-                  <TableRow className="border-b border-white/[0.05] hover:bg-transparent">
-                    <TableHead className="text-neutral-400">Date</TableHead>
-                    <TableHead className="text-neutral-400">Type</TableHead>
-                    <TableHead className="text-neutral-400">Amount</TableHead>
-                    <TableHead className="text-neutral-400">Description</TableHead>
-                    <TableHead className="text-neutral-400">Order ID</TableHead>
-                    <TableHead className="text-neutral-400">Processed By</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {transactions.map((tx) => (
-                    <TableRow key={tx.transaction_id} className="hover:bg-white/[0.02] transition-colors border-b border-white/[0.02]">
-                      <TableCell className="text-neutral-200">
-                        {new Date(tx.created_at).toLocaleString()}
-                      </TableCell>
-                      <TableCell className="text-neutral-200 capitalize">
-                        {tx.transaction_type}
-                      </TableCell>
-                      <TableCell className={tx.amount >= 0 ? 'text-emerald-400 font-semibold' : 'text-rose-400 font-semibold'}>
-                        {tx.amount >= 0 ? '+' : ''}{tx.amount.toLocaleString()} $
-                      </TableCell>
-                      <TableCell className="text-neutral-200">{tx.description}</TableCell>
-                      <TableCell className="text-neutral-200">
-                        {tx.order_id ? (
-                          <a href={`/orders/${tx.order_id}`} className="text-amber-500 hover:text-amber-400 transition-colors">
-                            #{tx.order_id}
-                          </a>
-                        ) : 'N/A'}
-                      </TableCell>
-                      <TableCell className="text-neutral-200">{tx.users?.email || 'System'}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          )}
-        </GlassCard>
-
-        <div className="mt-4 text-sm text-neutral-500">
-          <p>Last updated: {new Date(creditSummary.last_updated).toLocaleString()}</p>
-        </div>
+      {/* Metric cards */}
+      <div className="grid gap-4 grid-cols-1 sm:grid-cols-3">
+        <MetricCard
+          label="Available Credits"
+          value={`$${creditSummary.available_balance.toLocaleString()}`}
+          sub="Available for investments"
+          accent={DS.teal}
+          icon={<Banknote className="w-4 h-4" />}
+        />
+        <MetricCard
+          label="Held Credits"
+          value={`$${creditSummary.held_balance.toLocaleString()}`}
+          sub="Reserved for active orders"
+          accent={DS.orange}
+          icon={<Wallet className="w-4 h-4" />}
+        />
+        <MetricCard
+          label="Total Credits"
+          value={`$${creditSummary.total_balance.toLocaleString()}`}
+          sub="Your total credit balance"
+          accent={DS.gold}
+          icon={<Landmark className="w-4 h-4" />}
+        />
       </div>
-    </div>
+
+      {/* Transaction history */}
+      <div className="space-y-3">
+        <SectionLabel accent={DS.gold}>Transaction History</SectionLabel>
+
+        {transactions.length === 0 ? (
+          <DsEmpty
+            icon={<Clock className="w-7 h-7" />}
+            title="No Transactions"
+            body="No transactions found yet."
+          />
+        ) : (
+          <DsTable>
+            <DsThead>
+              <DsTh>Date</DsTh>
+              <DsTh>Type</DsTh>
+              <DsTh>Amount</DsTh>
+              <DsTh className="hidden sm:table-cell">Description</DsTh>
+              <DsTh className="hidden md:table-cell">Order</DsTh>
+              <DsTh className="hidden lg:table-cell">Processed By</DsTh>
+            </DsThead>
+            <tbody>
+              {transactions.map((tx) => (
+                <DsTr key={tx.transaction_id}>
+                  <DsTd className="whitespace-nowrap text-neutral-400 tabular-nums">
+                    {new Date(tx.created_at).toLocaleDateString()}{' '}
+                    <span className="text-neutral-600">
+                      {new Date(tx.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  </DsTd>
+                  <DsTd>
+                    <DsStatusPill label={tx.transaction_type} color={txColor(tx.transaction_type)} />
+                  </DsTd>
+                  <DsTd>
+                    <span
+                      className="font-bold tabular-nums flex items-center gap-1"
+                      style={{ color: tx.amount >= 0 ? DS.teal : DS.red }}
+                    >
+                      {tx.amount >= 0 ? (
+                        <ArrowUpRight className="w-3 h-3" />
+                      ) : (
+                        <ArrowDownRight className="w-3 h-3" />
+                      )}
+                      {tx.amount >= 0 ? '+' : ''}{tx.amount.toLocaleString()} $
+                    </span>
+                  </DsTd>
+                  <DsTd className="hidden sm:table-cell max-w-[200px] truncate">
+                    {tx.description}
+                  </DsTd>
+                  <DsTd className="hidden md:table-cell">
+                    {tx.order_id ? (
+                      <a
+                        href={`/orders/${tx.order_id}`}
+                        className="font-mono font-bold transition-colors"
+                        style={{ color: DS.orange }}
+                        onMouseEnter={(e) => { e.currentTarget.style.color = DS.gold; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.color = DS.orange; }}
+                      >
+                        #{tx.order_id}
+                      </a>
+                    ) : (
+                      <span className="text-neutral-600">--</span>
+                    )}
+                  </DsTd>
+                  <DsTd className="hidden lg:table-cell text-neutral-500">
+                    {tx.users?.email || 'System'}
+                  </DsTd>
+                </DsTr>
+              ))}
+            </tbody>
+          </DsTable>
+        )}
+      </div>
+
+      {/* Footer */}
+      <div className="text-[10px] text-neutral-600 font-mono tracking-wider uppercase text-right">
+        Last updated: {new Date(creditSummary.last_updated).toLocaleString()}
+      </div>
+    </PageShell>
   );
 }

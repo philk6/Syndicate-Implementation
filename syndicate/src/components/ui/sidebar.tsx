@@ -187,7 +187,7 @@ const Sidebar = React.forwardRef<
       return (
         <div
           className={cn(
-            "flex h-full w-[--sidebar-width] flex-col bg-white/[0.03] backdrop-blur-xl border-r border-white/[0.08] text-sidebar-foreground",
+            "flex h-full w-[--sidebar-width] flex-col bg-[#0d0d12] border-r border-white/[0.08] text-sidebar-foreground",
             className
           )}
           ref={ref}
@@ -204,7 +204,7 @@ const Sidebar = React.forwardRef<
           <SheetContent
             data-sidebar="sidebar"
             data-mobile="true"
-            className="w-[--sidebar-width] bg-white/[0.03] backdrop-blur-xl p-0 text-sidebar-foreground [&>button]:hidden"
+            className="w-[--sidebar-width] bg-[#0d0d12] p-0 text-sidebar-foreground [&>button]:hidden"
             style={
               {
                 "--sidebar-width": SIDEBAR_WIDTH_MOBILE,
@@ -258,7 +258,7 @@ const Sidebar = React.forwardRef<
         >
           <div
             data-sidebar="sidebar"
-            className="flex h-full w-full flex-col bg-white/[0.03] backdrop-blur-xl group-data-[variant=floating]:rounded-lg group-data-[variant=floating]:border group-data-[variant=floating]:border-white/[0.08] group-data-[variant=floating]:shadow shadow-[4px_0_24px_#0000001a] border-r border-white/[0.08]"
+            className="flex h-full w-full flex-col bg-[#0d0d12] group-data-[variant=floating]:rounded-lg group-data-[variant=floating]:border group-data-[variant=floating]:border-white/[0.08] group-data-[variant=floating]:shadow shadow-[4px_0_24px_#0000001a] border-r border-white/[0.08]"
           >
             {children}
           </div>

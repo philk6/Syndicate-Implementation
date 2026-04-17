@@ -4,18 +4,6 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@lib/auth';
 import { supabase } from '@lib/supabase/client';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import { Button } from '@/components/ui/button';
-import { GlassCard } from '@/components/ui/glass-card';
-import { StatusPill } from '@/components/ui/status-pill';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Switch } from '@/components/ui/switch';
 import {
   Select,
@@ -24,11 +12,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Check, Plus, Loader2, Users, Settings2, CalendarClock, Pencil } from 'lucide-react';
 import { Input } from '@/components/ui/input';
+import { Check, Plus, Loader2, Users, Settings2, CalendarClock, Pencil } from 'lucide-react';
 import ManageChatMentorsModal from '@/components/ManageChatMentorsModal';
 import { CompanyProfileDrawer } from '@/components/CompanyProfileDrawer';
 import { LoadingSpinner, PageLoadingSpinner } from '@/components/ui/loading-spinner';
+import {
+  PageShell, PageHeader, SectionLabel, DsCard, DsStatusPill,
+  DsTable, DsThead, DsTh, DsTr, DsTd, DsButton, DsInput, DsEmpty, DsCountPill, DS,
+} from '@/components/ui/ds';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -51,15 +43,22 @@ interface ChatRoom1on1 {
   name: string;
   type: string;
   created_at: string;
-  // Which student owns this room (derived from participants)
   student_user_id?: string;
   student_name?: string;
 }
+
+const ROLE_COLOR: Record<string, string> = {
+  admin: DS.orange,
+  user: DS.blue,
+  mentor: '#4ade80',
+  student: DS.teal,
+};
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
 export default function ManageUsersPage() {
   const [users, setUsers] = useState<User[]>([]);
+  const [search, setSearch] = useState('');
   const [inviteCode, setInviteCode] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState<string>('');
@@ -131,7 +130,6 @@ export default function ManageUsersPage() {
       if (error) {
         console.error('Error fetching 1on1 rooms:', error.message);
       } else {
-        // For each room, try to find the student participant
         const enrichedRooms: ChatRoom1on1[] = [];
         for (const room of rooms ?? []) {
           const { data: participants } = await supabase
@@ -207,13 +205,11 @@ export default function ManageUsersPage() {
 
   const handleMembershipToggle = (userId: string, currentValue: boolean) => {
     if (currentValue) {
-      // Turning OFF: immediately deactivate
       deactivateMembership(userId);
     } else {
-      // Turning ON: show the start date + duration picker
       setPendingMembershipUserId(userId);
       setPendingDuration('');
-      setPendingStartDate(new Date().toISOString().split('T')[0]); // default to today
+      setPendingStartDate(new Date().toISOString().split('T')[0]);
     }
   };
 
@@ -243,7 +239,6 @@ export default function ManageUsersPage() {
         ),
       );
       setMessage('1-on-1 membership activated.');
-      // Refresh rooms if a student was activated (trigger may have created a room)
       const targetUser = users.find((u) => u.user_id === userId);
       if (targetUser?.platform_role === 'student') {
         setTimeout(() => fetchOneOnOneRooms(), 1000);
@@ -303,8 +298,6 @@ export default function ManageUsersPage() {
 
   const startEditingMembership = (userId: string) => {
     setEditingMembershipUserId(userId);
-    // Try to figure out a reasonable start date from the end date
-    // Default to today if no end date
     setEditingStartDate(new Date().toISOString().split('T')[0]);
     setEditingDuration('');
   };
@@ -349,7 +342,6 @@ export default function ManageUsersPage() {
   // ── Toggle buyers group access ───────────────────────────────────────────
 
   const handleBuyersGroupToggle = async (userId: string, currentStatus: boolean) => {
-    // Optimistic update
     setUsers((prev) =>
       prev.map((u) =>
         u.user_id === userId ? { ...u, buyersgroup: !currentStatus } : u,
@@ -366,7 +358,6 @@ export default function ManageUsersPage() {
     if (error) {
       console.error('Error updating buyersgroup:', error.message);
       setMessage(`Failed to update buyers group access: ${error.message}`);
-      // Revert optimistic update
       setUsers((prev) =>
         prev.map((u) =>
           u.user_id === userId ? { ...u, buyersgroup: currentStatus } : u,
@@ -491,432 +482,416 @@ export default function ManageUsersPage() {
 
   if (!isAuthenticated || user?.role !== 'admin') return null;
 
+  // ── Filtered users ──────────────────────────────────────────────────────
+
+  const filteredUsers = users.filter((u) => {
+    const q = search.toLowerCase();
+    if (!q) return true;
+    const name = `${u.firstname || ''} ${u.lastname || ''}`.toLowerCase();
+    return name.includes(q) || u.email.toLowerCase().includes(q) || u.role.toLowerCase().includes(q);
+  });
 
   return (
-    <div className="min-h-screen p-6 w-full">
-      <div className="mx-auto">
-        <h1 className="text-3xl font-bold text-white mb-6">Manage Users</h1>
+    <PageShell>
+      <PageHeader
+        title="MANAGE USERS"
+        subtitle={`${users.length} registered users`}
+        right={
+          <DsButton onClick={generateInviteCode} accent={DS.orange}>
+            <Plus className="w-3.5 h-3.5" /> Generate Invite Code
+          </DsButton>
+        }
+      />
 
-        {/* Global feedback */}
-        {message && (
-          <div className="mb-4">
-            <p
-              className={`text-sm ${
-                message.includes('successfully') || message.includes('updated') || message.includes('activated') || message.includes('deactivated')
-                  ? 'text-emerald-400'
-                  : 'text-rose-400'
-              }`}
-            >
-              {message}
-            </p>
-          </div>
-        )}
+      {/* Global feedback */}
+      {message && (
+        <p
+          className={`text-sm font-mono ${
+            message.includes('successfully') || message.includes('updated') || message.includes('activated') || message.includes('deactivated')
+              ? 'text-emerald-400'
+              : 'text-rose-400'
+          }`}
+        >
+          {message}
+        </p>
+      )}
 
-        {/* Invite Code Section */}
-        <GlassCard className="p-6 mb-8">
-          <div className="mb-4">
-            <h3 className="font-semibold text-white">Invite Users</h3>
+      {/* Invite Code Display */}
+      {inviteCode && (
+        <DsCard accent="#4ade80" className="p-5">
+          <div className="flex items-center gap-3">
+            <Check className="w-5 h-5 text-emerald-400 shrink-0" />
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-400/80 mb-1">New Invite Code</p>
+              <p className="font-mono text-lg text-white">{inviteCode}</p>
+              <p className="text-xs text-neutral-500 mt-0.5">Share this code with the user to allow signup.</p>
+            </div>
           </div>
-          <Button
-            onClick={generateInviteCode}
-            className="bg-amber-500/10 text-amber-400 font-medium border border-amber-500/20 shadow-[0_0_15px_rgba(245,158,11,0.05)] hover:bg-amber-500/20 hover:shadow-[0_0_20px_rgba(245,158,11,0.1)] hover:border-amber-500/30 transition-all duration-300 mb-4"
-          >
-            <Plus className="mr-2 h-4 w-4" />
-            Generate Invite Code
-          </Button>
-          {inviteCode && (
-            <Alert className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 w-fit backdrop-blur-md">
-              <Check className="h-4 w-4 text-emerald-400" />
-              <AlertTitle className="text-emerald-300">New Invite Code</AlertTitle>
-              <AlertDescription>
-                <span className="font-mono text-lg text-white">{inviteCode}</span>
-                <p className="mt-1 text-emerald-400/80">
-                  Share this code with the user to allow signup.
-                </p>
-              </AlertDescription>
-            </Alert>
-          )}
-        </GlassCard>
+        </DsCard>
+      )}
 
-        {/* Users Table */}
-        <GlassCard className="mb-8">
-          <div className="p-6 pb-2">
-            <h3 className="font-semibold text-white">All Users</h3>
-            <p className="text-sm text-neutral-500 mt-1">
-              Manage platform roles and 1-on-1 memberships.
-            </p>
-          </div>
-          <div className="p-6 pt-0 overflow-x-auto">
-            {users.length === 0 ? (
-              <p className="text-neutral-500 text-center">No users found.</p>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow className="border-b border-white/[0.05] hover:bg-transparent">
-                    <TableHead className="text-neutral-400">Name</TableHead>
-                    <TableHead className="text-neutral-400">Email</TableHead>
-                    <TableHead className="text-neutral-400">Role</TableHead>
-                    <TableHead className="text-neutral-400">Platform Role</TableHead>
-                    <TableHead className="text-neutral-400">1-on-1 Membership</TableHead>
-                    <TableHead className="text-neutral-400">Membership Expiry</TableHead>
-                    <TableHead className="text-neutral-400">Buyers Group Access</TableHead>
-                    <TableHead className="text-neutral-400">Company</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {users.map((u) => (
-                    <TableRow
-                      key={u.user_id}
-                      className="hover:bg-white/[0.02] transition-colors border-b border-white/[0.02]"
+      {/* Search */}
+      <DsInput
+        placeholder="Search by name, email, or role..."
+        value={search}
+        onChange={setSearch}
+        className="max-w-md"
+      />
+
+      {/* Users Table */}
+      <div>
+        <SectionLabel accent={DS.orange}>
+          All Users <DsCountPill count={filteredUsers.length} />
+        </SectionLabel>
+
+        {filteredUsers.length === 0 ? (
+          <DsEmpty
+            icon={<Users className="w-6 h-6" />}
+            title="No Users Found"
+            body="No users match your search criteria."
+          />
+        ) : (
+          <DsTable>
+            <DsThead>
+              <DsTh>Name</DsTh>
+              <DsTh>Email</DsTh>
+              <DsTh>Role</DsTh>
+              <DsTh>Platform Role</DsTh>
+              <DsTh>1-on-1 Membership</DsTh>
+              <DsTh>Membership Expiry</DsTh>
+              <DsTh>Buyers Group</DsTh>
+              <DsTh>Company</DsTh>
+            </DsThead>
+            <tbody>
+              {filteredUsers.map((u) => (
+                <DsTr key={u.user_id}>
+                  {/* Name */}
+                  <DsTd className="font-medium text-white">
+                    {u.firstname || u.lastname
+                      ? `${u.firstname || ''} ${u.lastname || ''}`.trim()
+                      : 'N/A'}
+                  </DsTd>
+
+                  {/* Email */}
+                  <DsTd className="text-neutral-400 text-xs">{u.email}</DsTd>
+
+                  {/* System Role */}
+                  <DsTd>
+                    <DsStatusPill
+                      label={u.role}
+                      color={ROLE_COLOR[u.role.toLowerCase()] || DS.muted}
+                    />
+                  </DsTd>
+
+                  {/* Platform Role dropdown */}
+                  <DsTd>
+                    <Select
+                      value={u.platform_role}
+                      onValueChange={(val) => updatePlatformRole(u.user_id, val)}
+                      disabled={updatingUserId === u.user_id}
                     >
-                      {/* Name */}
-                      <TableCell className="text-neutral-200 font-medium">
-                        {u.firstname || u.lastname
-                          ? `${u.firstname || ''} ${u.lastname || ''}`.trim()
-                          : 'N/A'}
-                      </TableCell>
+                      <SelectTrigger className="w-[130px] h-8 text-xs border-white/[0.08] bg-white/[0.03]">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="border-white/[0.08] bg-[#0a0a0a]/95 backdrop-blur-xl">
+                        <SelectItem value="none" className="rounded-lg hover:bg-white/[0.04]">
+                          <span className="flex items-center gap-1.5">
+                            <span className="w-1.5 h-1.5 rounded-full bg-neutral-500" />
+                            None
+                          </span>
+                        </SelectItem>
+                        <SelectItem value="student" className="rounded-lg hover:bg-white/[0.04]">
+                          <span className="flex items-center gap-1.5">
+                            <span className="w-1.5 h-1.5 rounded-full bg-blue-400" />
+                            Student
+                          </span>
+                        </SelectItem>
+                        <SelectItem value="mentor" className="rounded-lg hover:bg-white/[0.04]">
+                          <span className="flex items-center gap-1.5">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                            Mentor
+                          </span>
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </DsTd>
 
-                      {/* Email */}
-                      <TableCell className="text-neutral-400 text-sm">{u.email}</TableCell>
-
-                      {/* System Role */}
-                      <TableCell>
-                        <StatusPill text={u.role} type={u.role} />
-                      </TableCell>
-
-                      {/* Platform Role dropdown */}
-                      <TableCell>
-                        <Select
-                          value={u.platform_role}
-                          onValueChange={(val) => updatePlatformRole(u.user_id, val)}
+                  {/* 1-on-1 Membership Toggle + Duration */}
+                  <DsTd>
+                    <div className="flex flex-col gap-2">
+                      <div className="flex items-center gap-2">
+                        <Switch
+                          id={`membership-${u.user_id}`}
+                          checked={u.has_1on1_membership}
+                          onCheckedChange={() => handleMembershipToggle(u.user_id, u.has_1on1_membership)}
                           disabled={updatingUserId === u.user_id}
-                        >
-                          <SelectTrigger className="w-[130px] h-8 text-xs border-white/[0.08] bg-white/[0.03]">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent className="border-white/[0.08] bg-[#0a0a0a]/95 backdrop-blur-xl">
-                            <SelectItem value="none" className="rounded-lg hover:bg-white/[0.04]">
-                              <span className="flex items-center gap-1.5">
-                                <span className="w-1.5 h-1.5 rounded-full bg-neutral-500" />
-                                None
-                              </span>
-                            </SelectItem>
-                            <SelectItem value="student" className="rounded-lg hover:bg-white/[0.04]">
-                              <span className="flex items-center gap-1.5">
-                                <span className="w-1.5 h-1.5 rounded-full bg-blue-400" />
-                                Student
-                              </span>
-                            </SelectItem>
-                            <SelectItem value="mentor" className="rounded-lg hover:bg-white/[0.04]">
-                              <span className="flex items-center gap-1.5">
-                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                                Mentor
-                              </span>
-                            </SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </TableCell>
-
-                      {/* 1-on-1 Membership Toggle + Duration */}
-                      <TableCell>
-                        <div className="flex flex-col gap-2">
-                          <div className="flex items-center gap-2">
-                            <Switch
-                              id={`membership-${u.user_id}`}
-                              checked={u.has_1on1_membership}
-                              onCheckedChange={() => handleMembershipToggle(u.user_id, u.has_1on1_membership)}
-                              disabled={updatingUserId === u.user_id}
-                              className="data-[state=checked]:bg-amber-500"
+                          className="data-[state=checked]:bg-[#FF6B35]"
+                        />
+                        {updatingUserId === u.user_id && (
+                          <Loader2 className="w-3.5 h-3.5 text-[#FF6B35] animate-spin" />
+                        )}
+                      </div>
+                      {/* Start date + duration picker -- shown when toggling ON */}
+                      {pendingMembershipUserId === u.user_id && (
+                        <div className="flex flex-col gap-1.5 animate-in fade-in slide-in-from-top-1 duration-200">
+                          <div className="flex items-center gap-1.5">
+                            <label className="text-[10px] text-neutral-500 whitespace-nowrap">Start:</label>
+                            <Input
+                              type="date"
+                              value={pendingStartDate}
+                              onChange={(e) => setPendingStartDate(e.target.value)}
+                              className="h-7 w-[130px] text-[11px] border-[#FF6B35]/20 bg-[#FF6B35]/5 text-[#FF6B35] [color-scheme:dark]"
                             />
-                            {updatingUserId === u.user_id && (
-                              <Loader2 className="w-3.5 h-3.5 text-amber-400 animate-spin" />
-                            )}
                           </div>
-                          {/* Start date + duration picker — shown when toggling ON */}
-                          {pendingMembershipUserId === u.user_id && (
-                            <div className="flex flex-col gap-1.5 animate-in fade-in slide-in-from-top-1 duration-200">
-                              <div className="flex items-center gap-1.5">
-                                <label className="text-[10px] text-neutral-500 whitespace-nowrap">Start:</label>
-                                <Input
-                                  type="date"
-                                  value={pendingStartDate}
-                                  onChange={(e) => setPendingStartDate(e.target.value)}
-                                  className="h-7 w-[130px] text-[11px] border-amber-500/20 bg-amber-500/5 text-amber-300 [color-scheme:dark]"
-                                />
-                              </div>
-                              <div className="flex items-center gap-1.5">
-                                <label className="text-[10px] text-neutral-500 whitespace-nowrap">Duration:</label>
-                                <Select
-                                  value={pendingDuration}
-                                  onValueChange={handleDurationSelect}
-                                >
-                                  <SelectTrigger className="w-[120px] h-7 text-[11px] border-amber-500/20 bg-amber-500/5 text-amber-300">
-                                    <SelectValue placeholder="Duration…" />
-                                  </SelectTrigger>
-                                  <SelectContent className="border-white/[0.08] bg-[#0a0a0a]/95 backdrop-blur-xl">
-                                    <SelectItem value="3" className="rounded-lg hover:bg-white/[0.04]">
-                                      3 Months
-                                    </SelectItem>
-                                    <SelectItem value="6" className="rounded-lg hover:bg-white/[0.04]">
-                                      6 Months
-                                    </SelectItem>
-                                    <SelectItem value="12" className="rounded-lg hover:bg-white/[0.04]">
-                                      1 Year
-                                    </SelectItem>
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                              {pendingDuration && pendingStartDate && (
-                                <p className="text-[10px] text-neutral-500">
-                                  End date:{' '}
-                                  <span className="text-amber-300/80">
-                                    {new Date(
-                                      calculateEndDate(parseInt(pendingDuration, 10), pendingStartDate)
-                                    ).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                                  </span>
-                                </p>
-                              )}
-                              <div className="flex items-center gap-1.5">
-                                <Button
-                                  size="sm"
-                                  onClick={confirmActivation}
-                                  disabled={!pendingDuration || !pendingStartDate}
-                                  className="h-6 px-3 text-[11px] bg-amber-500/20 text-amber-300 border border-amber-500/30 hover:bg-amber-500/30 disabled:opacity-40"
-                                >
-                                  <Check className="w-3 h-3 mr-1" />
-                                  Activate
-                                </Button>
-                                <button
-                                  onClick={cancelPendingMembership}
-                                  className="text-neutral-500 hover:text-neutral-300 text-xs transition-colors"
-                                >
-                                  ✕
-                                </button>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      </TableCell>
-
-                      {/* Membership Expiry */}
-                      <TableCell>
-                        {(() => {
-                          const expiry = formatMembershipExpiry(u.membership_end_date, u.has_1on1_membership);
-                          if (!u.has_1on1_membership) {
-                            return <span className="text-neutral-600 text-xs">—</span>;
-                          }
-
-                          {/* Editing existing membership */}
-                          if (editingMembershipUserId === u.user_id) {
-                            return (
-                              <div className="flex flex-col gap-1.5 animate-in fade-in slide-in-from-top-1 duration-200">
-                                <div className="flex items-center gap-1.5">
-                                  <label className="text-[10px] text-neutral-500 whitespace-nowrap">Start:</label>
-                                  <Input
-                                    type="date"
-                                    value={editingStartDate}
-                                    onChange={(e) => setEditingStartDate(e.target.value)}
-                                    className="h-7 w-[130px] text-[11px] border-amber-500/20 bg-amber-500/5 text-amber-300 [color-scheme:dark]"
-                                  />
-                                </div>
-                                <div className="flex items-center gap-1.5">
-                                  <label className="text-[10px] text-neutral-500 whitespace-nowrap">Duration:</label>
-                                  <Select
-                                    value={editingDuration}
-                                    onValueChange={(val) => setEditingDuration(val)}
-                                  >
-                                    <SelectTrigger className="w-[120px] h-7 text-[11px] border-amber-500/20 bg-amber-500/5 text-amber-300">
-                                      <SelectValue placeholder="Duration…" />
-                                    </SelectTrigger>
-                                    <SelectContent className="border-white/[0.08] bg-[#0a0a0a]/95 backdrop-blur-xl">
-                                      <SelectItem value="3" className="rounded-lg hover:bg-white/[0.04]">
-                                        3 Months
-                                      </SelectItem>
-                                      <SelectItem value="6" className="rounded-lg hover:bg-white/[0.04]">
-                                        6 Months
-                                      </SelectItem>
-                                      <SelectItem value="12" className="rounded-lg hover:bg-white/[0.04]">
-                                        1 Year
-                                      </SelectItem>
-                                    </SelectContent>
-                                  </Select>
-                                </div>
-                                {editingDuration && editingStartDate && (
-                                  <p className="text-[10px] text-neutral-500">
-                                    New end date:{' '}
-                                    <span className="text-amber-300/80">
-                                      {new Date(
-                                        calculateEndDate(parseInt(editingDuration, 10), editingStartDate)
-                                      ).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                                    </span>
-                                  </p>
-                                )}
-                                <div className="flex items-center gap-1.5">
-                                  <Button
-                                    size="sm"
-                                    onClick={confirmEditMembership}
-                                    disabled={!editingDuration || !editingStartDate}
-                                    className="h-6 px-3 text-[11px] bg-amber-500/20 text-amber-300 border border-amber-500/30 hover:bg-amber-500/30 disabled:opacity-40"
-                                  >
-                                    <Check className="w-3 h-3 mr-1" />
-                                    Save
-                                  </Button>
-                                  <button
-                                    onClick={cancelEditingMembership}
-                                    className="text-neutral-500 hover:text-neutral-300 text-xs transition-colors"
-                                  >
-                                    ✕
-                                  </button>
-                                </div>
-                              </div>
-                            );
-                          }
-
-                          if (!expiry) {
-                            return (
-                              <div className="flex items-center gap-1.5">
-                                <span className="text-neutral-500 text-xs">No date set</span>
-                                <button
-                                  onClick={() => startEditingMembership(u.user_id)}
-                                  className="text-amber-400/60 hover:text-amber-400 transition-colors"
-                                  title="Set membership dates"
-                                >
-                                  <Pencil className="w-3 h-3" />
-                                </button>
-                              </div>
-                            );
-                          }
-                          return (
-                            <div className="flex items-center gap-1.5">
-                              <CalendarClock className={`w-3.5 h-3.5 shrink-0 ${expiry.isExpired ? 'text-rose-400' : 'text-emerald-400'}`} />
-                              <span
-                                className={`text-xs font-medium ${
-                                  expiry.isExpired
-                                    ? 'text-rose-400'
-                                    : 'text-neutral-300'
-                                }`}
-                              >
-                                {expiry.isExpired ? 'Expired' : `Expires ${expiry.formatted}`}
+                          <div className="flex items-center gap-1.5">
+                            <label className="text-[10px] text-neutral-500 whitespace-nowrap">Duration:</label>
+                            <Select
+                              value={pendingDuration}
+                              onValueChange={handleDurationSelect}
+                            >
+                              <SelectTrigger className="w-[120px] h-7 text-[11px] border-[#FF6B35]/20 bg-[#FF6B35]/5 text-[#FF6B35]">
+                                <SelectValue placeholder="Duration..." />
+                              </SelectTrigger>
+                              <SelectContent className="border-white/[0.08] bg-[#0a0a0a]/95 backdrop-blur-xl">
+                                <SelectItem value="3" className="rounded-lg hover:bg-white/[0.04]">3 Months</SelectItem>
+                                <SelectItem value="6" className="rounded-lg hover:bg-white/[0.04]">6 Months</SelectItem>
+                                <SelectItem value="12" className="rounded-lg hover:bg-white/[0.04]">1 Year</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          {pendingDuration && pendingStartDate && (
+                            <p className="text-[10px] text-neutral-500">
+                              End date:{' '}
+                              <span className="text-[#FF6B35]/80">
+                                {new Date(
+                                  calculateEndDate(parseInt(pendingDuration, 10), pendingStartDate)
+                                ).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                               </span>
-                              <button
-                                onClick={() => startEditingMembership(u.user_id)}
-                                className="text-amber-400/60 hover:text-amber-400 transition-colors"
-                                title="Edit membership dates"
+                            </p>
+                          )}
+                          <div className="flex items-center gap-1.5">
+                            <DsButton
+                              variant="secondary"
+                              onClick={confirmActivation}
+                              disabled={!pendingDuration || !pendingStartDate}
+                              className="h-6 px-3 text-[11px]"
+                            >
+                              <Check className="w-3 h-3" /> Activate
+                            </DsButton>
+                            <button
+                              onClick={cancelPendingMembership}
+                              className="text-neutral-500 hover:text-neutral-300 text-xs transition-colors"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </DsTd>
+
+                  {/* Membership Expiry */}
+                  <DsTd>
+                    {(() => {
+                      const expiry = formatMembershipExpiry(u.membership_end_date, u.has_1on1_membership);
+                      if (!u.has_1on1_membership) {
+                        return <span className="text-neutral-600 text-xs">--</span>;
+                      }
+
+                      if (editingMembershipUserId === u.user_id) {
+                        return (
+                          <div className="flex flex-col gap-1.5 animate-in fade-in slide-in-from-top-1 duration-200">
+                            <div className="flex items-center gap-1.5">
+                              <label className="text-[10px] text-neutral-500 whitespace-nowrap">Start:</label>
+                              <Input
+                                type="date"
+                                value={editingStartDate}
+                                onChange={(e) => setEditingStartDate(e.target.value)}
+                                className="h-7 w-[130px] text-[11px] border-[#FF6B35]/20 bg-[#FF6B35]/5 text-[#FF6B35] [color-scheme:dark]"
+                              />
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <label className="text-[10px] text-neutral-500 whitespace-nowrap">Duration:</label>
+                              <Select
+                                value={editingDuration}
+                                onValueChange={(val) => setEditingDuration(val)}
                               >
-                                <Pencil className="w-3 h-3" />
+                                <SelectTrigger className="w-[120px] h-7 text-[11px] border-[#FF6B35]/20 bg-[#FF6B35]/5 text-[#FF6B35]">
+                                  <SelectValue placeholder="Duration..." />
+                                </SelectTrigger>
+                                <SelectContent className="border-white/[0.08] bg-[#0a0a0a]/95 backdrop-blur-xl">
+                                  <SelectItem value="3" className="rounded-lg hover:bg-white/[0.04]">3 Months</SelectItem>
+                                  <SelectItem value="6" className="rounded-lg hover:bg-white/[0.04]">6 Months</SelectItem>
+                                  <SelectItem value="12" className="rounded-lg hover:bg-white/[0.04]">1 Year</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            {editingDuration && editingStartDate && (
+                              <p className="text-[10px] text-neutral-500">
+                                New end date:{' '}
+                                <span className="text-[#FF6B35]/80">
+                                  {new Date(
+                                    calculateEndDate(parseInt(editingDuration, 10), editingStartDate)
+                                  ).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                </span>
+                              </p>
+                            )}
+                            <div className="flex items-center gap-1.5">
+                              <DsButton
+                                variant="secondary"
+                                onClick={confirmEditMembership}
+                                disabled={!editingDuration || !editingStartDate}
+                                className="h-6 px-3 text-[11px]"
+                              >
+                                <Check className="w-3 h-3" /> Save
+                              </DsButton>
+                              <button
+                                onClick={cancelEditingMembership}
+                                className="text-neutral-500 hover:text-neutral-300 text-xs transition-colors"
+                              >
+                                Cancel
                               </button>
                             </div>
-                          );
-                        })()}
-                      </TableCell>
+                          </div>
+                        );
+                      }
 
-                      {/* Buyers Group Access Toggle */}
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <Switch
-                            id={`buyersgroup-${u.user_id}`}
-                            checked={u.buyersgroup}
-                            onCheckedChange={() => handleBuyersGroupToggle(u.user_id, u.buyersgroup)}
-                            disabled={updatingUserId === u.user_id}
-                            className="data-[state=checked]:bg-amber-500"
-                          />
-                          {updatingUserId === u.user_id && (
-                            <Loader2 className="w-3.5 h-3.5 text-amber-400 animate-spin" />
-                          )}
+                      if (!expiry) {
+                        return (
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-neutral-500 text-xs">No date set</span>
+                            <button
+                              onClick={() => startEditingMembership(u.user_id)}
+                              className="text-[#FF6B35]/60 hover:text-[#FF6B35] transition-colors"
+                              title="Set membership dates"
+                            >
+                              <Pencil className="w-3 h-3" />
+                            </button>
+                          </div>
+                        );
+                      }
+                      return (
+                        <div className="flex items-center gap-1.5">
+                          <CalendarClock className={`w-3.5 h-3.5 shrink-0 ${expiry.isExpired ? 'text-rose-400' : 'text-emerald-400'}`} />
+                          <span
+                            className={`text-xs font-medium ${
+                              expiry.isExpired
+                                ? 'text-rose-400'
+                                : 'text-neutral-300'
+                            }`}
+                          >
+                            {expiry.isExpired ? 'Expired' : `Expires ${expiry.formatted}`}
+                          </span>
+                          <button
+                            onClick={() => startEditingMembership(u.user_id)}
+                            className="text-[#FF6B35]/60 hover:text-[#FF6B35] transition-colors"
+                            title="Edit membership dates"
+                          >
+                            <Pencil className="w-3 h-3" />
+                          </button>
                         </div>
-                      </TableCell>
+                      );
+                    })()}
+                  </DsTd>
 
-                      {/* Company */}
-                      <TableCell className="text-neutral-400 text-sm">
-                        {u.company_id ? (
-                          <CompanyProfileDrawer companyId={u.company_id} isAdmin={true}>
-                            {u.company?.name || `Company #${u.company_id}`}
-                          </CompanyProfileDrawer>
-                        ) : (
-                          u.company?.name || 'N/A'
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
-          </div>
-        </GlassCard>
-
-        {/* 1-on-1 Chat Rooms Section */}
-        <GlassCard>
-          <div className="p-6 pb-2">
-            <h3 className="font-semibold text-white flex items-center gap-2">
-              <Users className="w-4 h-4 text-amber-400" />
-              1-on-1 Chat Rooms
-            </h3>
-            <p className="text-sm text-neutral-500 mt-1">
-              Manage mentor assignments in student 1-on-1 rooms.
-            </p>
-          </div>
-          <div className="p-6 pt-0">
-            {loadingRooms ? (
-              <div className="flex items-center justify-center py-8">
-                <LoadingSpinner size="sm" />
-              </div>
-            ) : oneOnOneRooms.length === 0 ? (
-              <p className="text-neutral-500 text-center py-6">
-                No 1-on-1 rooms have been created yet.
-              </p>
-            ) : (
-              <div className="grid gap-3">
-                {oneOnOneRooms.map((room) => (
-                  <div
-                    key={room.id}
-                    className="flex items-center gap-4 px-4 py-3 rounded-xl bg-white/[0.02] border border-white/[0.04] hover:bg-white/[0.03] transition-colors"
-                  >
-                    {/* Room icon */}
-                    <div className="w-9 h-9 rounded-lg bg-amber-500/10 flex items-center justify-center shrink-0">
-                      <Users className="w-4 h-4 text-amber-400" />
+                  {/* Buyers Group Access Toggle */}
+                  <DsTd>
+                    <div className="flex items-center gap-2">
+                      <Switch
+                        id={`buyersgroup-${u.user_id}`}
+                        checked={u.buyersgroup}
+                        onCheckedChange={() => handleBuyersGroupToggle(u.user_id, u.buyersgroup)}
+                        disabled={updatingUserId === u.user_id}
+                        className="data-[state=checked]:bg-[#FF6B35]"
+                      />
+                      {updatingUserId === u.user_id && (
+                        <Loader2 className="w-3.5 h-3.5 text-[#FF6B35] animate-spin" />
+                      )}
                     </div>
+                  </DsTd>
 
-                    {/* Room info */}
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-neutral-200 truncate">{room.name}</p>
-                      <p className="text-[11px] text-neutral-500">
-                        Student: {room.student_name ?? 'N/A'} · Created{' '}
-                        {new Date(room.created_at).toLocaleDateString()}
-                      </p>
-                    </div>
-
-                    {/* Manage button */}
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setManagingRoom(room)}
-                      className="text-amber-400/70 hover:text-amber-400 hover:bg-amber-500/10 transition-all duration-200 text-xs"
-                    >
-                      <Settings2 className="w-3.5 h-3.5 mr-1.5" />
-                      Manage
-                    </Button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </GlassCard>
-
-        {/* ── Modal for managing chat participants ──────────────────────── */}
-        {managingRoom && (
-          <ManageChatMentorsModal
-            open={!!managingRoom}
-            onOpenChange={(open) => {
-              if (!open) {
-                setManagingRoom(null);
-                fetchOneOnOneRooms(); // Refresh room data after closing
-              }
-            }}
-            chatRoomId={managingRoom.id}
-            chatRoomName={managingRoom.name}
-          />
+                  {/* Company */}
+                  <DsTd className="text-neutral-400 text-xs">
+                    {u.company_id ? (
+                      <CompanyProfileDrawer companyId={u.company_id} isAdmin={true}>
+                        {u.company?.name || `Company #${u.company_id}`}
+                      </CompanyProfileDrawer>
+                    ) : (
+                      u.company?.name || 'N/A'
+                    )}
+                  </DsTd>
+                </DsTr>
+              ))}
+            </tbody>
+          </DsTable>
         )}
       </div>
-    </div>
+
+      {/* 1-on-1 Chat Rooms Section */}
+      <div>
+        <SectionLabel accent={DS.teal}>
+          <Users className="w-3.5 h-3.5" /> 1-on-1 Chat Rooms <DsCountPill count={oneOnOneRooms.length} accent={DS.teal} />
+        </SectionLabel>
+
+        <DsCard className="p-5">
+          {loadingRooms ? (
+            <div className="flex items-center justify-center py-8">
+              <LoadingSpinner size="sm" />
+            </div>
+          ) : oneOnOneRooms.length === 0 ? (
+            <DsEmpty
+              icon={<Users className="w-6 h-6" />}
+              title="No Rooms"
+              body="No 1-on-1 rooms have been created yet."
+            />
+          ) : (
+            <div className="grid gap-3">
+              {oneOnOneRooms.map((room) => (
+                <div
+                  key={room.id}
+                  className="flex items-center gap-4 px-4 py-3 rounded-xl bg-white/[0.02] border border-white/[0.04] hover:bg-white/[0.03] transition-colors"
+                >
+                  <div
+                    className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0"
+                    style={{ backgroundColor: `${DS.teal}1a` }}
+                  >
+                    <Users className="w-4 h-4" style={{ color: DS.teal }} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-neutral-200 truncate">{room.name}</p>
+                    <p className="text-[11px] text-neutral-500">
+                      Student: {room.student_name ?? 'N/A'} &middot; Created{' '}
+                      {new Date(room.created_at).toLocaleDateString()}
+                    </p>
+                  </div>
+                  <DsButton
+                    variant="ghost"
+                    onClick={() => setManagingRoom(room)}
+                    className="text-xs"
+                  >
+                    <Settings2 className="w-3.5 h-3.5" /> Manage
+                  </DsButton>
+                </div>
+              ))}
+            </div>
+          )}
+        </DsCard>
+      </div>
+
+      {/* Modal for managing chat participants */}
+      {managingRoom && (
+        <ManageChatMentorsModal
+          open={!!managingRoom}
+          onOpenChange={(open) => {
+            if (!open) {
+              setManagingRoom(null);
+              fetchOneOnOneRooms();
+            }
+          }}
+          chatRoomId={managingRoom.id}
+          chatRoomName={managingRoom.name}
+        />
+      )}
+    </PageShell>
   );
 }

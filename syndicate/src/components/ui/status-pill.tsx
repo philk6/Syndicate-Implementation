@@ -15,7 +15,7 @@ export const StatusPill = ({ text, type }: { text: string; type: string }) => {
     };
 
     return (
-        <span className={`px-3 py-1 rounded-full text-xs font-medium border ${styles[type?.toLowerCase()] || styles.open} backdrop-blur-md whitespace-nowrap`}>
+        <span className={`px-3 py-1 rounded-full text-xs font-medium border ${styles[type?.toLowerCase()] || styles.open} whitespace-nowrap`}>
             {text}
         </span>
     );

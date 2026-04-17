@@ -18,8 +18,9 @@ import {
 } from '@/components/ui/sidebar';
 import { NavUser } from '@/components/nav-user';
 import { useRouter, usePathname } from 'next/navigation';
-import { ShoppingCart, History, Settings, Users, LayoutDashboard, CreditCard, MessageCircle, Crosshair } from 'lucide-react';
+import { ShoppingCart, History, Settings, Users, LayoutDashboard, CreditCard, MessageCircle, Crosshair, Package, Warehouse } from 'lucide-react';
 import SidebarLink from '@/components/SidebarLink';
+import { usePrepUnreadCount } from '@/hooks/usePrepUnreadCount';
 import {
   Dialog,
   DialogContent,
@@ -215,6 +216,11 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   // Check if user has buyers group permission
   const hasBuyersGroupAccess = user?.buyersgroup === true || user?.role === 'admin';
 
+  // Prep Portal visibility
+  const has1on1 = (user as { has_1on1_membership?: boolean })?.has_1on1_membership === true;
+  const hasPrepAccess = has1on1 || user?.role === 'admin';
+  const prepUnread = usePrepUnreadCount(hasPrepAccess ? user?.user_id ?? null : null);
+
   if (!isAuthenticated) return null;
 
   return (
@@ -257,12 +263,23 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           if (item.title === 'Admin Panel' && user?.role !== 'admin') {
             return null;
           }
+
+          // Inject Prep Portal / Prep Ops entries dynamically
+          type NavItem = { title: string; url: string; icon: React.ComponentType<{ className?: string }> };
+          let items: NavItem[] = [...item.items];
+          if (item.title === 'Operations' && hasPrepAccess) {
+            items = [...items, { title: 'Prep Portal', url: '/prep', icon: Package }];
+          }
+          if (item.title === 'Admin Panel') {
+            items = [...items, { title: 'Prep Ops', url: '/admin/prep', icon: Warehouse }];
+          }
+
           return (
             <SidebarGroup key={item.title}>
               <SidebarGroupLabel>{item.title}</SidebarGroupLabel>
               <SidebarGroupContent>
                 <SidebarMenu>
-                  {item.items.map((subItem) => {
+                  {items.map((subItem) => {
                     const isRestricted = BUYERS_GROUP_RESTRICTED_PATHS.includes(subItem.url);
                     const isBlocked = isRestricted && !hasBuyersGroupAccess;
 
@@ -289,12 +306,21 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                       );
                     }
 
+                    const isPrepPortal = subItem.url === '/prep';
                     return (
                       <SidebarMenuItem key={subItem.title}>
                         <SidebarMenuButton asChild isActive={pathname.startsWith(subItem.url)}>
                           <SidebarLink href={subItem.url}>
                             {subItem.icon && <subItem.icon className="mr-2 h-4 w-4" />}
                             <span>{subItem.title}</span>
+                            {isPrepPortal && prepUnread > 0 && (
+                              <span
+                                className="ml-auto inline-flex items-center justify-center rounded-full text-[9px] font-black h-4 min-w-[1rem] px-1"
+                                style={{ backgroundColor: '#EF4444', color: 'white', boxShadow: '0 0 6px rgba(239,68,68,0.6)' }}
+                              >
+                                {prepUnread > 99 ? '99+' : prepUnread}
+                              </span>
+                            )}
                           </SidebarLink>
                         </SidebarMenuButton>
                       </SidebarMenuItem>

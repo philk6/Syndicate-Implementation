@@ -5,16 +5,21 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@lib/auth';
 import { supabase } from '@lib/supabase/client';
-import { GlassCard } from '@/components/ui/glass-card';
-import { StatusPill } from '@/components/ui/status-pill';
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
+  PageShell,
+  PageHeader,
+  SectionLabel,
+  DsCard,
+  MetricCard,
+  DsStatusPill,
+  DsTable,
+  DsThead,
+  DsTh,
+  DsTr,
+  DsTd,
+  DsEmpty,
+  DS,
+} from '@/components/ui/ds';
 import {
   AlertDialog,
   AlertDialogContent,
@@ -44,6 +49,9 @@ import {
 } from '@/components/ui/select';
 import { debounce } from 'lodash';
 import { PageLoadingSpinner } from '@/components/ui/loading-spinner';
+import { WeeklyCheckIn } from '@/components/WeeklyCheckIn';
+import { getMissionControlData, type MissionControlData } from '@/lib/missionControl';
+import { ShoppingCart, DollarSign, TrendingUp } from 'lucide-react';
 
 interface Order {
   order_id: number;
@@ -73,13 +81,25 @@ interface AggregateAllocationResult {
 const chartConfig = {
   profit: {
     label: 'Profit',
-    color: '#f59e0b',
+    color: DS.orange,
   },
   invested_amount: {
     label: 'Invested Amount',
-    color: '#71717a',
+    color: DS.muted,
   },
 } satisfies ChartConfig;
+
+/** Map status description to a DS color */
+function statusColor(description: string): string {
+  const key = description?.toLowerCase() ?? '';
+  if (key.includes('open') || key.includes('done') || key.includes('active')) return DS.teal;
+  if (key.includes('closed') || key.includes('late')) return DS.red;
+  if (key.includes('new') || key.includes('verified')) return DS.blue;
+  if (key.includes('progress') || key.includes('pending') || key.includes('warehouse')) return DS.gold;
+  if (key.includes('amazon')) return '#818cf8';
+  if (key.includes('walmart')) return '#22d3ee';
+  return DS.muted;
+}
 
 export default function UserDashboardPage() {
   const [metrics, setMetrics] = useState<DashboardMetrics>({ totalOrders: 0, totalInvestment: 0, averageRoi: null });
@@ -90,6 +110,7 @@ export default function UserDashboardPage() {
   const [isCompanyPopupOpen, setIsCompanyPopupOpen] = useState(false);
   const [firstName, setFirstName] = useState<string>('');
   const [openOrderCount, setOpenOrderCount] = useState<number>(0);
+  const [missionData, setMissionData] = useState<MissionControlData | null>(null);
   const { isAuthenticated, loading: authLoading, user } = useAuth();
   const router = useRouter();
 
@@ -282,12 +303,43 @@ export default function UserDashboardPage() {
     fetchDashboardData();
   }, [isAuthenticated, authLoading, router, user?.user_id, timeFrame, fetchChartData]);
 
+  // Load mission data for active-phase detection on the weekly check-in widget
+  useEffect(() => {
+    if (!user?.user_id) return;
+    let cancel = false;
+    (async () => {
+      try {
+        const mc = await getMissionControlData(user.user_id);
+        if (!cancel) setMissionData(mc);
+      } catch (err) {
+        console.warn('Failed to load mission data for dashboard:', err);
+      }
+    })();
+    return () => { cancel = true; };
+  }, [user?.user_id]);
+
+  const activePhase = (() => {
+    if (!missionData) return null;
+    const phases = [...missionData.phases].sort((a, b) => a.sort_order - b.sort_order);
+    for (const phase of phases) {
+      if (phase.always_available) continue;
+      const missions = missionData.missions.filter((m) => m.phase_id === phase.id);
+      if (missions.length === 0) return phase;
+      const allDone = missions.every(
+        (m) => m.tasks.length > 0 && m.tasks.every((t) => t.progress?.status === 'approved'),
+      );
+      if (!allDone) return phase;
+    }
+    // All non-always-available phases complete → use phase 5 (ELEVATE)
+    return phases.find((p) => p.always_available) ?? phases[phases.length - 1] ?? null;
+  })();
+
   const handleRedirectToAccount = () => {
     setIsCompanyPopupOpen(false);
     router.push('/account');
   };
 
-  // Create a debounced version of the timeFrame setter 
+  // Create a debounced version of the timeFrame setter
   const handleTimeFrameChange = debounce((value: string) => {
     setTimeFrame(value as '7d' | '30d' | '3m' | '1y');
   }, 300);
@@ -299,202 +351,253 @@ export default function UserDashboardPage() {
   if (!isAuthenticated) return null;
 
   return (
-    <div className="min-h-screen p-6 w-full">
-      <div className="max-w-7xl mx-auto">
-        <h1 className="text-3xl font-bold text-white mb-1">
-          Welcome Back, {firstName || 'User'}!
-        </h1>
-        <p className="text-lg text-neutral-400 mb-6">
-          Today there are{' '}
-          <Link href="/orders" className="text-amber-400 font-semibold hover:text-amber-400 hover:underline underline-offset-4 decoration-amber-500/40 transition-colors cursor-pointer">
-            {openOrderCount} open order{openOrderCount !== 1 ? 's' : ''}!
+    <PageShell>
+      {/* Page Header */}
+      <PageHeader
+        label="The Amazon Syndicate"
+        title="DASHBOARD"
+        subtitle={`Welcome back, ${firstName || 'User'}! Today there are ${openOrderCount} open order${openOrderCount !== 1 ? 's' : ''}.`}
+        accent={DS.orange}
+        right={
+          <Link
+            href="/orders"
+            className="text-[11px] font-bold font-mono uppercase tracking-widest px-4 py-2 rounded-xl border transition-all hover:shadow-[0_0_14px_rgba(255,107,53,0.3)]"
+            style={{
+              backgroundColor: `${DS.orange}1a`,
+              borderColor: `${DS.orange}55`,
+              color: DS.orange,
+            }}
+          >
+            View Orders
           </Link>
-        </p>
+        }
+      />
 
-        {/* Metric Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <GlassCard className="p-6">
-            <div className="mb-2">
-              <h3 className="font-semibold text-neutral-400">Your Orders</h3>
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-white">{metrics.totalOrders}</p>
-            </div>
-          </GlassCard>
-          <GlassCard className="p-6">
-            <div className="mb-2">
-              <h3 className="font-semibold text-neutral-400">Total Investment</h3>
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-white">${metrics.totalInvestment.toLocaleString()}</p>
-            </div>
-          </GlassCard>
-          <GlassCard className="p-6">
-            <div className="mb-2">
-              <h3 className="font-semibold text-neutral-400">Average ROI</h3>
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-white">
-                {metrics.averageRoi != null ? metrics.averageRoi.toFixed(2) : 'N/A'}
-              </p>
-            </div>
-          </GlassCard>
-        </div>
+      {/* Weekly Check-In */}
+      {user?.user_id && activePhase && (
+        <WeeklyCheckIn
+          userId={user.user_id}
+          companyId={(user as { company_id?: number | null })?.company_id ?? null}
+          phaseId={activePhase.id}
+          phaseColor={activePhase.color}
+          phaseName={activePhase.name}
+        />
+      )}
 
-        {/* Area Chart: Profit and Investment Over Time */}
-        <GlassCard className="mb-8">
-          <div className="flex items-center gap-2 space-y-0 border-b py-5 px-6 sm:flex-row border-white/[0.05]">
-            <div className="grid flex-1 gap-1 text-center sm:text-left">
-              <h3 className="font-semibold text-white">Profit and Investment Over Time</h3>
-              <p className="text-sm text-neutral-500">
-                Showing total profit and invested amount for the selected time range
-              </p>
-            </div>
-            <Select
-              value={timeFrame}
-              onValueChange={handleTimeFrameChange}
-            >
-              <SelectTrigger className="w-[160px] rounded-lg sm:ml-auto border-white/[0.05] bg-white/[0.02]" aria-label="Select time range">
-                <SelectValue placeholder="Last 30 days" />
-              </SelectTrigger>
-              <SelectContent className="rounded-xl border-white/[0.05] bg-[#0a0a0a]/90 backdrop-blur-xl">
-                <SelectItem value="7d" className="rounded-lg hover:bg-white/[0.02]">Last 7 days</SelectItem>
-                <SelectItem value="30d" className="rounded-lg hover:bg-white/[0.02]">Last 30 days</SelectItem>
-                <SelectItem value="3m" className="rounded-lg hover:bg-white/[0.02]">Last 3 months</SelectItem>
-                <SelectItem value="1y" className="rounded-lg hover:bg-white/[0.02]">Last 1 year</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="px-2 pt-4 pb-6 sm:px-6 sm:pt-6">
-            <ChartContainer config={chartConfig} className="aspect-auto h-[250px] w-full">
-              <AreaChart data={chartData}>
-                <defs>
-                  <linearGradient id="fillProfit" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#f59e0b" stopOpacity={0.8} />
-                    <stop offset="100%" stopColor="#b45309" stopOpacity={0.2} />
-                  </linearGradient>
-                  <linearGradient id="fillInvested" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#52525b" stopOpacity={0.6} />
-                    <stop offset="100%" stopColor="#27272a" stopOpacity={0.1} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid vertical={false} stroke="rgba(255,255,255,0.05)" />
-                <XAxis
-                  dataKey="date"
-                  tickLine={false}
-                  axisLine={false}
-                  tickMargin={8}
-                  minTickGap={32}
-                  tickFormatter={(value) => {
-                    const date = new Date(value);
-                    return date.toLocaleDateString('en-US', {
-                      month: 'short',
-                      day: 'numeric',
-                    });
-                  }}
-                />
-                <YAxis stroke="#d1d5db" />
-                <ChartTooltip
-                  cursor={false}
-                  content={
-                    <ChartTooltipContent
-                      labelFormatter={(value) => {
-                        return new Date(value).toLocaleDateString('en-US', {
-                          month: 'short',
-                          day: 'numeric',
-                        });
-                      }}
-                      indicator="dot"
-                    />
-                  }
-                />
-                <Area
-                  dataKey="profit"
-                  type="natural"
-                  fill="url(#fillProfit)"
-                  stroke="#f59e0b"
-                  stackId="a"
-                />
-                <Area
-                  dataKey="invested_amount"
-                  type="natural"
-                  fill="url(#fillInvested)"
-                  stroke="#71717a"
-                  stackId="a"
-                />
-                <ChartLegend content={<ChartLegendContent />} />
-              </AreaChart>
-            </ChartContainer>
-            {chartData.length === 0 && (
-              <p className="text-gray-400 text-center mt-4">No data available for the selected time range.</p>
-            )}
-          </div>
-        </GlassCard>
-
-        {/* Recent Orders Table */}
-        <GlassCard>
-          <div className="p-6 pb-2">
-            <h3 className="font-semibold text-white">Your Recent Orders</h3>
-          </div>
-          <div className="p-6 pt-0 overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow className="border-b border-white/[0.05] hover:bg-transparent">
-                  <TableHead className="text-neutral-400">Order ID</TableHead>
-                  <TableHead className="text-neutral-400">Status</TableHead>
-                  <TableHead className="text-neutral-400">Deadline</TableHead>
-                  <TableHead className="text-neutral-400">Total Amount</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {recentOrders.length === 0 ? (
-                  <TableRow className="border-b border-white/[0.02]">
-                    <TableCell colSpan={4} className="text-neutral-500 text-center">
-                      No recent orders found.
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  recentOrders.map((order) => (
-                    <TableRow key={order.order_id} className="hover:bg-white/[0.02] transition-colors border-b border-white/[0.02]">
-                      <TableCell className="text-neutral-200">{order.order_id}</TableCell>
-                      <TableCell className="text-neutral-200">
-                        <StatusPill text={order.order_statuses.description} type={order.order_statuses.description} />
-                      </TableCell>
-                      <TableCell className="text-neutral-200">{new Date(order.deadline).toLocaleString()}</TableCell>
-                      <TableCell className="text-neutral-200">${(order.total_amount || 0).toLocaleString()}</TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </div>
-        </GlassCard>
-
-        {/* Company Check Popup */}
-        <AlertDialog open={isCompanyPopupOpen} onOpenChange={setIsCompanyPopupOpen}>
-          <AlertDialogContent className="bg-[#0a0a0a]/90 backdrop-blur-xl text-neutral-200 border border-white/[0.05] shadow-[0_8px_32px_0_rgba(0,0,0,0.3)]">
-            <AlertDialogHeader>
-              <AlertDialogTitle className="text-white">Add Company Information</AlertDialogTitle>
-              <AlertDialogDescription className="text-neutral-400">
-                Your account is not linked to a company. Please add your company details to continue.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel className="bg-white/[0.02] text-neutral-300 border-transparent hover:bg-white/[0.05] hover:text-white">
-                Cancel
-              </AlertDialogCancel>
-              <AlertDialogAction asChild>
-                <Button
-                  onClick={handleRedirectToAccount}
-                  className="bg-amber-500/10 text-amber-400 font-medium border border-amber-500/20 shadow-[0_0_15px_rgba(245,158,11,0.05)] hover:bg-amber-500/20 hover:shadow-[0_0_20px_rgba(245,158,11,0.1)] hover:border-amber-500/30 transition-all duration-300"
-                >
-                  Go to Account
-                </Button>
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
+      {/* Metric Cards */}
+      <SectionLabel accent={DS.orange}>Key Metrics</SectionLabel>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <MetricCard
+          label="Total Orders"
+          value={metrics.totalOrders}
+          accent={DS.orange}
+          icon={<ShoppingCart size={18} />}
+        />
+        <MetricCard
+          label="Total Investment"
+          value={`$${metrics.totalInvestment.toLocaleString()}`}
+          accent={DS.teal}
+          icon={<DollarSign size={18} />}
+        />
+        <MetricCard
+          label="Average ROI"
+          value={metrics.averageRoi != null ? `${metrics.averageRoi.toFixed(2)}%` : 'N/A'}
+          accent={DS.gold}
+          icon={<TrendingUp size={18} />}
+        />
       </div>
-    </div>
+
+      {/* Area Chart: Profit and Investment Over Time */}
+      <SectionLabel accent={DS.orange}>Performance</SectionLabel>
+      <DsCard>
+        <div className="flex items-center gap-2 space-y-0 border-b py-5 px-6 sm:flex-row" style={{ borderColor: DS.cardBorder }}>
+          <div className="grid flex-1 gap-1 text-center sm:text-left">
+            <h3 className="font-semibold text-white font-mono text-sm uppercase tracking-wider">
+              Profit & Investment Over Time
+            </h3>
+            <p className="text-xs font-sans" style={{ color: DS.textDim }}>
+              Showing total profit and invested amount for the selected time range
+            </p>
+          </div>
+          <Select
+            value={timeFrame}
+            onValueChange={handleTimeFrameChange}
+          >
+            <SelectTrigger
+              className="w-[160px] rounded-lg sm:ml-auto text-xs font-mono"
+              style={{
+                borderColor: DS.cardBorder,
+                backgroundColor: DS.inputBg,
+                color: DS.textDim,
+              }}
+              aria-label="Select time range"
+            >
+              <SelectValue placeholder="Last 30 days" />
+            </SelectTrigger>
+            <SelectContent
+              className="rounded-xl border backdrop-blur-xl"
+              style={{
+                borderColor: DS.cardBorder,
+                backgroundColor: 'rgba(10,10,15,0.95)',
+              }}
+            >
+              <SelectItem value="7d" className="rounded-lg text-xs font-mono hover:bg-white/[0.02]">Last 7 days</SelectItem>
+              <SelectItem value="30d" className="rounded-lg text-xs font-mono hover:bg-white/[0.02]">Last 30 days</SelectItem>
+              <SelectItem value="3m" className="rounded-lg text-xs font-mono hover:bg-white/[0.02]">Last 3 months</SelectItem>
+              <SelectItem value="1y" className="rounded-lg text-xs font-mono hover:bg-white/[0.02]">Last 1 year</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="px-2 pt-4 pb-6 sm:px-6 sm:pt-6">
+          <ChartContainer config={chartConfig} className="aspect-auto h-[250px] w-full">
+            <AreaChart data={chartData}>
+              <defs>
+                <linearGradient id="fillProfit" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor={DS.orange} stopOpacity={0.8} />
+                  <stop offset="100%" stopColor={DS.orange} stopOpacity={0.1} />
+                </linearGradient>
+                <linearGradient id="fillInvested" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor={DS.muted} stopOpacity={0.5} />
+                  <stop offset="100%" stopColor={DS.muted} stopOpacity={0.05} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid vertical={false} stroke="rgba(255,255,255,0.05)" />
+              <XAxis
+                dataKey="date"
+                tickLine={false}
+                axisLine={false}
+                tickMargin={8}
+                minTickGap={32}
+                tick={{ fill: DS.textDim, fontSize: 10, fontFamily: 'monospace' }}
+                tickFormatter={(value) => {
+                  const date = new Date(value);
+                  return date.toLocaleDateString('en-US', {
+                    month: 'short',
+                    day: 'numeric',
+                  });
+                }}
+              />
+              <YAxis stroke="rgba(255,255,255,0.1)" tick={{ fill: DS.textDim, fontSize: 10, fontFamily: 'monospace' }} />
+              <ChartTooltip
+                cursor={false}
+                content={
+                  <ChartTooltipContent
+                    labelFormatter={(value) => {
+                      return new Date(value).toLocaleDateString('en-US', {
+                        month: 'short',
+                        day: 'numeric',
+                      });
+                    }}
+                    indicator="dot"
+                  />
+                }
+              />
+              <Area
+                dataKey="profit"
+                type="natural"
+                fill="url(#fillProfit)"
+                stroke={DS.orange}
+                strokeWidth={2}
+                stackId="a"
+              />
+              <Area
+                dataKey="invested_amount"
+                type="natural"
+                fill="url(#fillInvested)"
+                stroke={DS.muted}
+                strokeWidth={2}
+                stackId="a"
+              />
+              <ChartLegend content={<ChartLegendContent />} />
+            </AreaChart>
+          </ChartContainer>
+          {chartData.length === 0 && (
+            <p className="text-center mt-4 text-xs font-mono" style={{ color: DS.textDim }}>
+              No data available for the selected time range.
+            </p>
+          )}
+        </div>
+      </DsCard>
+
+      {/* Recent Orders Table */}
+      <SectionLabel accent={DS.orange}>Recent Orders</SectionLabel>
+      <DsTable>
+        <DsThead>
+          <DsTh>Order ID</DsTh>
+          <DsTh>Status</DsTh>
+          <DsTh>Deadline</DsTh>
+          <DsTh>Total Amount</DsTh>
+        </DsThead>
+        <tbody>
+          {recentOrders.length === 0 ? (
+            <tr>
+              <td colSpan={4}>
+                <DsEmpty
+                  icon={<ShoppingCart size={24} />}
+                  title="No Orders Yet"
+                  body="Your recent orders will appear here once you have some."
+                />
+              </td>
+            </tr>
+          ) : (
+            recentOrders.map((order) => (
+              <DsTr key={order.order_id}>
+                <DsTd className="font-mono tabular-nums">{order.order_id}</DsTd>
+                <DsTd>
+                  <DsStatusPill
+                    label={order.order_statuses.description}
+                    color={statusColor(order.order_statuses.description)}
+                  />
+                </DsTd>
+                <DsTd className="font-mono text-xs tabular-nums">{new Date(order.deadline).toLocaleString()}</DsTd>
+                <DsTd className="font-mono tabular-nums">${(order.total_amount || 0).toLocaleString()}</DsTd>
+              </DsTr>
+            ))
+          )}
+        </tbody>
+      </DsTable>
+
+      {/* Company Check Popup */}
+      <AlertDialog open={isCompanyPopupOpen} onOpenChange={setIsCompanyPopupOpen}>
+        <AlertDialogContent
+          className="backdrop-blur-xl border shadow-[0_8px_32px_0_rgba(0,0,0,0.5)]"
+          style={{
+            backgroundColor: 'rgba(10,10,15,0.95)',
+            borderColor: DS.cardBorder,
+            color: '#e5e5e5',
+          }}
+        >
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-white font-mono uppercase tracking-wider text-sm">
+              Add Company Information
+            </AlertDialogTitle>
+            <AlertDialogDescription className="font-sans text-sm" style={{ color: DS.textDim }}>
+              Your account is not linked to a company. Please add your company details to continue.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              className="text-sm font-mono border-transparent hover:text-white"
+              style={{ backgroundColor: 'rgba(255,255,255,0.03)', color: DS.textDim }}
+            >
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction asChild>
+              <Button
+                onClick={handleRedirectToAccount}
+                className="text-[11px] font-bold font-mono uppercase tracking-widest border transition-all hover:shadow-[0_0_18px_rgba(255,107,53,0.3)]"
+                style={{
+                  backgroundColor: `${DS.orange}1a`,
+                  color: DS.orange,
+                  borderColor: `${DS.orange}55`,
+                }}
+              >
+                Go to Account
+              </Button>
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </PageShell>
   );
 }

@@ -38,10 +38,10 @@ export default function ChatPage() {
 
   if (authLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#0a0a0a' }}>
         <div className="flex flex-col items-center gap-3">
           <div className="w-8 h-8 border-2 border-amber-500/30 border-t-amber-500 rounded-full animate-spin" />
-          <p className="text-sm text-neutral-500">Loading…</p>
+          <p className="text-sm text-neutral-500 font-mono">Loading…</p>
         </div>
       </div>
     );
@@ -50,7 +50,7 @@ export default function ChatPage() {
   if (!isAuthenticated) return null;
 
   return (
-    <div className="flex h-[calc(100vh-0px)] w-full overflow-hidden rounded-2xl bg-white/[0.02] border border-white/[0.06] shadow-[0_8px_32px_0_rgba(0,0,0,0.3)] backdrop-blur-xl">
+    <div className="flex h-[calc(100vh-0px)] w-full overflow-hidden rounded-2xl border border-white/[0.08] shadow-[0_8px_32px_0_rgba(0,0,0,0.4)]" style={{ backgroundColor: '#0d0d12' }}>
       <ChatSidebar
         rooms={rooms}
         activeRoomId={activeRoomId}

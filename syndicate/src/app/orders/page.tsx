@@ -6,18 +6,21 @@ import { useAuth } from '@lib/auth';
 import { supabase } from '@lib/supabase/client';
 import { useNetworkResilience } from '@/hooks/useNetworkResilience';
 import { PostgrestError } from '@supabase/supabase-js';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import { GlassCard } from '@/components/ui/glass-card';
-import { StatusPill } from '@/components/ui/status-pill';
-import { Progress } from '@/components/ui/progress';
 import { PageLoadingSpinner } from '@/components/ui/loading-spinner';
+import {
+  DS,
+  PageShell,
+  PageHeader,
+  DsCountPill,
+  DsTable,
+  DsThead,
+  DsTh,
+  DsTr,
+  DsTd,
+  DsStatusPill,
+  DsEmpty,
+} from '@/components/ui/ds';
+import { PackageOpen } from 'lucide-react';
 
 interface Order {
   order_id: number;
@@ -26,16 +29,56 @@ interface Order {
   label_upload_deadline: string;
   order_statuses: { description: string };
   is_public: boolean;
-  // order_whitelists is no longer needed in the client-side select for filtering,
-  // as RLS handles the join. It's good practice to only select what you need.
+}
+
+/** Map order status text to a DS color */
+function statusColor(status: string): string {
+  switch (status?.toLowerCase()) {
+    case 'open':
+    case 'active':
+    case 'done':
+      return DS.teal;
+    case 'closed':
+    case 'late':
+      return DS.red;
+    case 'pending':
+    case 'progress':
+    case 'warehouse':
+      return DS.gold;
+    case 'new':
+      return DS.blue;
+    default:
+      return DS.orange;
+  }
+}
+
+/** Return hours remaining until a deadline (negative = overdue) */
+function hoursUntil(deadline: string): number {
+  const deadlineDate = new Date(deadline + 'Z');
+  if (isNaN(deadlineDate.getTime())) return Infinity;
+  return (deadlineDate.getTime() - Date.now()) / (1000 * 60 * 60);
+}
+
+/** Return the appropriate color for a countdown value */
+function countdownColor(hours: number): string {
+  if (hours < 0) return DS.red;
+  if (hours < 24) return DS.red;
+  if (hours < 48) return DS.yellow;
+  return '#e5e5e5'; // neutral-200 equivalent
+}
+
+/** Format a countdown string */
+function formatCountdown(hours: number): string {
+  if (hours < 0) return 'OVERDUE';
+  if (hours < 1) return `${Math.round(hours * 60)}m left`;
+  if (hours < 48) return `${Math.round(hours)}h left`;
+  const days = Math.floor(hours / 24);
+  return `${days}d left`;
 }
 
 export default function OrdersPage() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loadingOrders, setLoadingOrders] = useState(true);
-  // userCompanyId is no longer strictly needed in state for the query,
-  // as RLS uses auth.uid() directly, but keeping it might be useful for other client-side logic.
-  // const [userCompanyId, setUserCompanyId] = useState<number | null>(null);
   const { isAuthenticated, loading, user } = useAuth();
   const { withNetworkResilience } = useNetworkResilience();
   const router = useRouter();
@@ -46,9 +89,6 @@ export default function OrdersPage() {
 
     try {
       await withNetworkResilience(async (signal) => {
-        // The RLS policy on the 'orders' table will now filter based on 'is_public'
-        // and 'order_whitelists' for the authenticated user.
-        // So, we don't need complex .or() conditions here.
         let query = supabase
           .from('orders')
           .select(`
@@ -59,8 +99,8 @@ export default function OrdersPage() {
         order_statuses!order_status_id (description),
         is_public
       `)
-          .neq('order_status_id', 3) // Filter out order_status_id = 3 (Draft)
-          .not('order_statuses.description', 'eq', 'Draft') // Filter out 'Draft' status explicitly
+          .neq('order_status_id', 3)
+          .not('order_statuses.description', 'eq', 'Draft')
           .order('order_id', { ascending: false });
 
         if (signal) {
@@ -76,14 +116,13 @@ export default function OrdersPage() {
           console.log('Fetched orders:', data);
           setOrders(data || []);
         }
-      }, { timeout: 10000, retries: 2 });
+      }, { timeout: 30000, retries: 2 });
     } catch (error) {
       console.error('Failed to fetch orders after retries:', error);
-      // Don't clear orders on error, keep showing previous data
     } finally {
       setLoadingOrders(false);
     }
-  }, [withNetworkResilience]); // Include withNetworkResilience as dependency
+  }, [withNetworkResilience]);
 
   useEffect(() => {
     if (loading) return;
@@ -93,102 +132,102 @@ export default function OrdersPage() {
       return;
     }
 
-    // Buyers group access check — admins always have access
+    if (!user?.user_id) return;
+
     const hasBuyersGroupAccess = user?.buyersgroup === true || user?.role === 'admin';
     if (!hasBuyersGroupAccess) {
       router.push('/dashboard');
       return;
     }
 
-    // No need to fetch userCompanyId explicitly for the query here anymore,
-    // as the RLS policy directly uses auth.uid() to determine company_id.
     fetchOrders();
-  }, [isAuthenticated, loading, router, fetchOrders, user?.buyersgroup, user?.role]); // fetchOrders is a dependency
+  }, [isAuthenticated, loading, router, fetchOrders, user?.user_id, user?.buyersgroup, user?.role]);
 
-  // Memoized function to handle order navigation
   const handleOrderClick = useCallback((orderId: number) => {
     router.push(`/orders/${orderId}`);
   }, [router]);
 
-  // Memoized function to calculate progress
-  const calculateProgress = useCallback((deadline: string): number => {
-    const now = new Date();
-    const deadlineDate = new Date(deadline + 'Z'); // Treat as UTC
-    if (isNaN(deadlineDate.getTime())) {
-      return 0;
-    }
-    const diffMs = deadlineDate.getTime() - now.getTime();
-    const daysLeft = diffMs / (1000 * 60 * 60 * 24);
-    if (daysLeft > 5) {
-      return 100;
-    } else if (daysLeft >= 0) {
-      return (daysLeft / 5) * 100;
-    } else {
-      return 0;
-    }
-  }, []);
-
-  // Memoize the render of orders table rows to prevent unnecessary re-renders
   const orderRows = useMemo(() =>
-    orders.map((order) => (
-      <TableRow
-        key={order.order_id}
-        className="hover:bg-white/[0.02] transition-colors focus:ring-white/[0.05] border-b border-white/[0.02] cursor-pointer"
-        onClick={() => handleOrderClick(order.order_id)}
-      >
-        <TableCell className="text-neutral-200">{order.order_id}</TableCell>
-        <TableCell className="text-neutral-200">
-          <StatusPill text={order.order_statuses?.description || 'N/A'} type={order.order_statuses?.description || 'N/A'} />
-        </TableCell>
-        <TableCell className="text-neutral-200">{order.leadtime}</TableCell>
-        <TableCell className="text-neutral-200">
-          {new Date(order.deadline).toLocaleString()}
-          <Progress value={calculateProgress(order.deadline)} />
-        </TableCell>
-        <TableCell className="text-neutral-200">
-          {new Date(order.label_upload_deadline).toLocaleString()}
-          <Progress value={calculateProgress(order.label_upload_deadline)} />
-        </TableCell>
-      </TableRow>
-    )),
-    [orders, handleOrderClick, calculateProgress]);
+    orders.map((order) => {
+      const deadlineHrs = hoursUntil(order.deadline);
+      const labelHrs = hoursUntil(order.label_upload_deadline);
 
-  if (loading || loadingOrders) { // Combined loading states
+      return (
+        <DsTr key={order.order_id} onClick={() => handleOrderClick(order.order_id)}>
+          <DsTd className="font-bold tabular-nums">
+            <span style={{ color: DS.orange }}>#{order.order_id}</span>
+          </DsTd>
+          <DsTd>
+            <DsStatusPill
+              label={order.order_statuses?.description || 'N/A'}
+              color={statusColor(order.order_statuses?.description)}
+            />
+          </DsTd>
+          <DsTd>{order.leadtime}</DsTd>
+          <DsTd>
+            <div className="flex flex-col gap-0.5">
+              <span className="text-neutral-300 text-xs">
+                {new Date(order.deadline).toLocaleString()}
+              </span>
+              <span
+                className="text-[10px] font-bold uppercase tracking-wider"
+                style={{ color: countdownColor(deadlineHrs) }}
+              >
+                {formatCountdown(deadlineHrs)}
+              </span>
+            </div>
+          </DsTd>
+          <DsTd>
+            <div className="flex flex-col gap-0.5">
+              <span className="text-neutral-300 text-xs">
+                {new Date(order.label_upload_deadline).toLocaleString()}
+              </span>
+              <span
+                className="text-[10px] font-bold uppercase tracking-wider"
+                style={{ color: countdownColor(labelHrs) }}
+              >
+                {formatCountdown(labelHrs)}
+              </span>
+            </div>
+          </DsTd>
+        </DsTr>
+      );
+    }),
+    [orders, handleOrderClick]);
+
+  if (loading || loadingOrders) {
     return <PageLoadingSpinner />;
   }
 
-  if (!isAuthenticated) return null; // Should be handled by router.push('/login')
+  if (!isAuthenticated) return null;
 
   return (
-    <div className="min-h-screen p-6 w-full">
-      <div className="mx-auto">
-        <h1 className="text-3xl font-bold text-white mb-6">Orders</h1>
-        <GlassCard>
-          <div className="p-6 pb-2">
-            <h3 className="font-semibold text-white">All Orders</h3>
-          </div>
-          <div className="p-6 pt-0 overflow-x-auto">
-            {orders.length === 0 ? (
-              <p className="text-neutral-500 text-center">No orders found.</p>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow className="border-b border-white/[0.05] hover:bg-transparent">
-                    <TableHead className="text-neutral-400">Order ID</TableHead>
-                    <TableHead className="text-neutral-400">Status</TableHead>
-                    <TableHead className="text-neutral-400">Lead Time (days)</TableHead>
-                    <TableHead className="text-neutral-400">Application Deadline</TableHead>
-                    <TableHead className="text-neutral-400">Label Upload Deadline</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {orderRows}
-                </TableBody>
-              </Table>
-            )}
-          </div>
-        </GlassCard>
-      </div>
-    </div>
+    <PageShell>
+      <PageHeader
+        label="Buyers Group"
+        title="OPEN ORDERS"
+        accent={DS.orange}
+        right={<DsCountPill count={orders.length} accent={DS.orange} />}
+      />
+
+      {orders.length === 0 ? (
+        <DsEmpty
+          icon={<PackageOpen size={28} />}
+          title="No Orders"
+          body="There are no open orders available right now. Check back later."
+        />
+      ) : (
+        <DsTable>
+          <DsThead>
+            <DsTh>Order ID</DsTh>
+            <DsTh>Status</DsTh>
+            <DsTh>Lead Time (days)</DsTh>
+            <DsTh>Application Deadline</DsTh>
+            <DsTh>Label Upload Deadline</DsTh>
+          </DsThead>
+          <tbody>{orderRows}</tbody>
+        </DsTable>
+      )}
+    </PageShell>
   );
 }

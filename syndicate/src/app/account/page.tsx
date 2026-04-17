@@ -5,14 +5,13 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@lib/auth';
 import { supabase } from '@lib/supabase/client';
 import bcrypt from 'bcryptjs';
-import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
-import { GlassCard } from '@/components/ui/glass-card';
-import { Label } from '@/components/ui/label';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Check, Plus } from 'lucide-react';
 import { debounce } from 'lodash';
+import { Check, Plus, Shield, Building2, Mail, Lock, User } from 'lucide-react';
 import { PageLoadingSpinner } from '@/components/ui/loading-spinner';
+import {
+  DS, PageShell, PageHeader, SectionLabel, DsCard, DsButton, DsInput,
+} from '@/components/ui/ds';
+import { getRankProgress } from '@/lib/utils/xp';
 
 interface UserInfo {
   firstname: string;
@@ -114,7 +113,6 @@ export default function AccountPage() {
 
       if (userError) {
         console.error('Error updating user:', userError);
-        // Rollback optimistic update
         setUserInfo(previousUserInfo);
         setMessage('Failed to update account information');
       } else {
@@ -132,7 +130,6 @@ export default function AccountPage() {
       }
     } catch (error) {
       console.error('Unexpected error:', error);
-      // Rollback optimistic update
       setUserInfo(previousUserInfo);
       setMessage('An unexpected error occurred');
     }
@@ -147,7 +144,6 @@ export default function AccountPage() {
     setLoading(true);
     setMessage('');
 
-    // Save previous state for rollback if needed
     const previousCompanyInfo = { ...companyInfo };
 
     try {
@@ -172,7 +168,6 @@ export default function AccountPage() {
 
         if (companyError) {
           console.error('Error updating company:', companyError);
-          // Rollback optimistic update
           setCompanyInfo(previousCompanyInfo);
           if (companyError.code === '23505') {
             setMessage('A company with this email already exists');
@@ -192,7 +187,6 @@ export default function AccountPage() {
 
         if (companyError) {
           console.error('Error creating company:', companyError);
-          // Rollback optimistic update
           setCompanyInfo(previousCompanyInfo);
           if (companyError.code === '23505') {
             setMessage('A company with this email already exists');
@@ -217,7 +211,6 @@ export default function AccountPage() {
       }
     } catch (error) {
       console.error('Unexpected error:', error);
-      // Rollback optimistic update
       setCompanyInfo(previousCompanyInfo);
       setMessage('An unexpected error occurred');
     }
@@ -286,141 +279,195 @@ export default function AccountPage() {
 
   if (!isAuthenticated) return null;
 
+  const avatarInitial = (userInfo?.firstname?.[0] || user?.email?.[0] || '?').toUpperCase();
+  const fullName = [userInfo?.firstname, userInfo?.lastname].filter(Boolean).join(' ') || 'User';
+  const rankInfo = user?.totalXp != null ? getRankProgress(user.totalXp) : null;
+
   return (
-    <div className="min-h-screen p-6 w-full flex items-center justify-center">
-      <div className="w-full max-w-2xl space-y-8">
-        <h1 className="text-3xl font-bold text-white text-center">Account Settings</h1>
-
-        {/* User Info Card */}
-        <GlassCard className="p-6">
-          <div className="mb-6">
-            <h2 className="text-xl font-semibold text-white">Personal Information</h2>
-          </div>
-          <div className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="firstname" className="text-neutral-400">First Name</Label>
-                <Input
-                  id="firstname"
-                  value={userInfo?.firstname || ''}
-                  onChange={(e) => debouncedSetUserInfo('firstname', e.target.value)}
-                  className="bg-white/[0.02] text-neutral-200 border-white/[0.05] focus:border-amber-500/50"
-                />
-              </div>
-              <div>
-                <Label htmlFor="lastname" className="text-neutral-400">Last Name</Label>
-                <Input
-                  id="lastname"
-                  value={userInfo?.lastname || ''}
-                  onChange={(e) => debouncedSetUserInfo('lastname', e.target.value)}
-                  className="bg-white/[0.02] text-neutral-200 border-white/[0.05] focus:border-amber-500/50"
-                />
-              </div>
-            </div>
-            <div>
-              <Label htmlFor="email" className="text-neutral-400">Email</Label>
-              <Input
-                id="email"
-                type="email"
-                value={userInfo?.email || ''}
-                onChange={(e) => debouncedSetUserInfo('email', e.target.value)}
-                className="bg-white/[0.02] text-neutral-200 border-white/[0.05] focus:border-amber-500/50"
-              />
-            </div>
-            <div>
-              <Label htmlFor="password" className="text-neutral-400">New Password (leave blank to keep current)</Label>
-              <Input
-                id="password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="bg-white/[0.02] text-neutral-200 border-white/[0.05] focus:border-amber-500/50"
-              />
-            </div>
-            <Button
-              onClick={handleUserUpdate}
-              disabled={loading}
-              className="w-full bg-amber-500/10 text-amber-400 font-medium border border-amber-500/20 shadow-[0_0_15px_rgba(245,158,11,0.05)] hover:bg-amber-500/20 hover:shadow-[0_0_20px_rgba(245,158,11,0.1)] hover:border-amber-500/30 rounded-xl transition-all duration-300"
-            >
-              Save Personal Info
-            </Button>
-          </div>
-        </GlassCard>
-
-        {/* Company Info Card */}
-        <GlassCard className="p-6">
-          <div className="mb-6">
-            <h2 className="text-xl font-semibold text-white">Company Information</h2>
-          </div>
-          <div className="space-y-4">
-            <div>
-              <Label htmlFor="companyName" className="text-neutral-400">Company Name</Label>
-              <Input
-                id="companyName"
-                value={companyInfo.name}
-                onChange={(e) => setCompanyInfo(prev => ({ ...prev, name: e.target.value }))}
-                className="bg-white/[0.02] text-neutral-200 border-white/[0.05] focus:border-amber-500/50"
-              />
-            </div>
-            <div>
-              <Label htmlFor="companyEmail" className="text-neutral-400">Company Email</Label>
-              <Input
-                id="companyEmail"
-                type="email"
-                value={companyInfo.email}
-                onChange={(e) => setCompanyInfo(prev => ({ ...prev, email: e.target.value }))}
-                className="bg-white/[0.02] text-neutral-200 border-white/[0.05] focus:border-amber-500/50"
-              />
-            </div>
-            <Button
-              onClick={handleCompanyUpdate}
-              disabled={loading}
-              className="w-full bg-amber-500/10 text-amber-400 font-medium border border-amber-500/20 shadow-[0_0_15px_rgba(245,158,11,0.05)] hover:bg-amber-500/20 hover:shadow-[0_0_20px_rgba(245,158,11,0.1)] hover:border-amber-500/30 rounded-xl transition-all duration-300"
-            >
-              {userInfo && userInfo.company_id ? 'Save Company Info' : 'Add Company'}
-            </Button>
-          </div>
-        </GlassCard>
-
-        {/* Invite Code Card */}
-        {userInfo?.company_id && (
-          <GlassCard className="p-6">
-            <div className="mb-6">
-              <h2 className="text-xl font-semibold text-white">Invite to Company</h2>
-            </div>
-            <div className="space-y-4">
-              <Button
-                onClick={generateInviteCode}
-                disabled={loading}
-                className="w-full bg-amber-500/10 text-amber-400 font-medium border border-amber-500/20 shadow-[0_0_15px_rgba(245,158,11,0.05)] hover:bg-amber-500/20 hover:shadow-[0_0_20px_rgba(245,158,11,0.1)] hover:border-amber-500/30 rounded-xl transition-all duration-300"
+    <PageShell>
+      <PageHeader
+        label="Settings"
+        title="ACCOUNT"
+        subtitle={user?.email || ''}
+        right={
+          rankInfo && (
+            <div className="flex items-center gap-3">
+              <div
+                className="px-3 py-1.5 rounded-xl border text-[11px] font-bold font-mono uppercase tracking-widest"
+                style={{
+                  backgroundColor: `${rankInfo.rank.color}1a`,
+                  borderColor: `${rankInfo.rank.color}55`,
+                  color: rankInfo.rank.color,
+                }}
               >
-                <Plus className="mr-2 h-4 w-4" />
-                Generate Invite Code
-              </Button>
-              {inviteCode && (
-                <Alert className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 backdrop-blur-md">
-                  <Check className="h-4 w-4 text-emerald-400" />
-                  <AlertTitle className="text-emerald-300">New Invite Code</AlertTitle>
-                  <AlertDescription>
-                    <span className="font-mono text-lg text-white">{inviteCode}</span>
-                    <p className="mt-1 text-emerald-400/80">Share this code to invite users to your company.</p>
-                  </AlertDescription>
-                </Alert>
-              )}
+                <Shield className="inline w-3 h-3 mr-1 -mt-0.5" />
+                {rankInfo.rank.name}
+              </div>
             </div>
-          </GlassCard>
-        )}
+          )
+        }
+      />
 
-        {/* Message */}
-        {message && (
-          <p
-            className={`text-center text-sm ${message.includes('successfully') ? 'text-emerald-400' : 'text-rose-400'
-              }`}
+      {/* Message toast */}
+      {message && (
+        <div
+          className="rounded-xl border px-4 py-3 text-sm font-mono"
+          style={{
+            backgroundColor: message.includes('successfully') ? `${DS.teal}15` : `${DS.red}15`,
+            borderColor: message.includes('successfully') ? `${DS.teal}44` : `${DS.red}44`,
+            color: message.includes('successfully') ? DS.teal : DS.red,
+          }}
+        >
+          {message}
+        </div>
+      )}
+
+      {/* Profile + Rank header */}
+      <DsCard className="p-6">
+        <div className="flex items-center gap-5">
+          {/* Avatar circle */}
+          <div
+            className="w-16 h-16 rounded-2xl flex items-center justify-center text-2xl font-black shrink-0"
+            style={{ backgroundColor: `${DS.orange}22`, color: DS.orange, border: `2px solid ${DS.orange}55` }}
           >
-            {message}
-          </p>
-        )}
+            {avatarInitial}
+          </div>
+          <div className="flex-1 min-w-0">
+            <h2 className="text-xl font-bold text-white truncate">{fullName}</h2>
+            <p className="text-xs text-neutral-500 font-mono">{user?.email}</p>
+            {rankInfo && (
+              <div className="mt-2 flex items-center gap-3">
+                <span
+                  className="text-[10px] font-bold uppercase tracking-widest"
+                  style={{ color: rankInfo.rank.color }}
+                >
+                  {rankInfo.rank.name}
+                </span>
+                <span className="text-[10px] text-neutral-500 tabular-nums">
+                  {rankInfo.totalXp.toLocaleString()} XP
+                </span>
+                {rankInfo.nextRank && (
+                  <>
+                    <div className="flex-1 max-w-[140px] h-1.5 rounded-full bg-white/[0.06] overflow-hidden">
+                      <div
+                        className="h-full rounded-full transition-all"
+                        style={{
+                          width: `${rankInfo.progressPercent}%`,
+                          backgroundColor: rankInfo.rank.color,
+                          boxShadow: `0 0 8px ${rankInfo.rank.color}88`,
+                        }}
+                      />
+                    </div>
+                    <span className="text-[10px] text-neutral-600 tabular-nums">
+                      {rankInfo.xpToNextRank.toLocaleString()} to {rankInfo.nextRank.name}
+                    </span>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      </DsCard>
+
+      {/* Personal Information */}
+      <div className="space-y-3">
+        <SectionLabel accent={DS.orange}>
+          <User className="w-3 h-3" /> Personal Information
+        </SectionLabel>
+
+        <DsCard className="p-6 space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <DsInput
+              label="First Name"
+              value={userInfo?.firstname || ''}
+              onChange={(v) => debouncedSetUserInfo('firstname', v)}
+            />
+            <DsInput
+              label="Last Name"
+              value={userInfo?.lastname || ''}
+              onChange={(v) => debouncedSetUserInfo('lastname', v)}
+            />
+          </div>
+          <DsInput
+            label="Email"
+            type="email"
+            value={userInfo?.email || ''}
+            onChange={(v) => debouncedSetUserInfo('email', v)}
+          />
+          <DsInput
+            label="New Password (leave blank to keep current)"
+            type="password"
+            value={password}
+            onChange={setPassword}
+            placeholder="Enter new password..."
+          />
+          <DsButton onClick={handleUserUpdate} disabled={loading} className="w-full">
+            Save Personal Info
+          </DsButton>
+        </DsCard>
       </div>
-    </div>
+
+      {/* Company Information */}
+      <div className="space-y-3">
+        <SectionLabel accent={DS.teal}>
+          <Building2 className="w-3 h-3" /> Company Information
+        </SectionLabel>
+
+        <DsCard className="p-6 space-y-4" accent={DS.teal}>
+          <DsInput
+            label="Company Name"
+            value={companyInfo.name}
+            onChange={(v) => setCompanyInfo(prev => ({ ...prev, name: v }))}
+          />
+          <DsInput
+            label="Company Email"
+            type="email"
+            value={companyInfo.email}
+            onChange={(v) => setCompanyInfo(prev => ({ ...prev, email: v }))}
+          />
+          <DsButton onClick={handleCompanyUpdate} disabled={loading} accent={DS.teal} className="w-full">
+            {userInfo && userInfo.company_id ? 'Save Company Info' : 'Add Company'}
+          </DsButton>
+        </DsCard>
+      </div>
+
+      {/* Invite Code */}
+      {userInfo?.company_id && (
+        <div className="space-y-3">
+          <SectionLabel accent={DS.gold}>
+            <Mail className="w-3 h-3" /> Invite to Company
+          </SectionLabel>
+
+          <DsCard className="p-6 space-y-4" accent={DS.gold}>
+            <DsButton onClick={generateInviteCode} disabled={loading} accent={DS.gold} className="w-full">
+              <Plus className="w-3.5 h-3.5" />
+              Generate Invite Code
+            </DsButton>
+            {inviteCode && (
+              <div
+                className="rounded-xl border p-4"
+                style={{ backgroundColor: `${DS.teal}10`, borderColor: `${DS.teal}44` }}
+              >
+                <div className="flex items-center gap-2 mb-2">
+                  <Check className="w-4 h-4" style={{ color: DS.teal }} />
+                  <span className="text-xs font-bold uppercase tracking-widest" style={{ color: DS.teal }}>
+                    New Invite Code
+                  </span>
+                </div>
+                <span
+                  className="block font-mono text-lg font-bold text-white tracking-wider"
+                  style={{ textShadow: `0 0 12px ${DS.gold}55` }}
+                >
+                  {inviteCode}
+                </span>
+                <p className="text-[11px] mt-1" style={{ color: `${DS.teal}aa` }}>
+                  Share this code to invite users to your company.
+                </p>
+              </div>
+            )}
+          </DsCard>
+        </div>
+      )}
+    </PageShell>
   );
 }

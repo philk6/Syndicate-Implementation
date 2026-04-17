@@ -5,14 +5,26 @@ import { useRouter, useParams } from 'next/navigation';
 import { useAuth } from '@lib/auth';
 import { supabase } from '@lib/supabase/client';
 import Link from 'next/link';
-import { GlassCard } from '@/components/ui/glass-card';
-import { StatusPill } from '@/components/ui/status-pill';
-import { Button } from '@/components/ui/button';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Input } from '@/components/ui/input';
-import { AlertOctagon, Check, CircleDollarSign } from 'lucide-react';
+import { AlertOctagon, Check, CircleDollarSign, ArrowLeft, Package, TrendingUp, DollarSign, Clock } from 'lucide-react';
 import { debounce } from 'lodash';
 import { PageLoadingSpinner } from '@/components/ui/loading-spinner';
+import {
+  DS,
+  PageShell,
+  PageHeader,
+  SectionLabel,
+  DsCard,
+  MetricCard,
+  DsTable,
+  DsThead,
+  DsTh,
+  DsTr,
+  DsTd,
+  DsStatusPill,
+  DsButton,
+  DsEmpty,
+  DsInput,
+} from '@/components/ui/ds';
 
 // Define the Order type
 interface Order {
@@ -40,6 +52,27 @@ interface CreditBalance {
   total_balance: number;
   available_balance: number;
   held_balance: number;
+}
+
+/** Map order status text to a DS color */
+function statusColor(status: string): string {
+  switch (status?.toLowerCase()) {
+    case 'open':
+    case 'active':
+    case 'done':
+      return DS.teal;
+    case 'closed':
+    case 'late':
+      return DS.red;
+    case 'pending':
+    case 'progress':
+    case 'warehouse':
+      return DS.gold;
+    case 'new':
+      return DS.blue;
+    default:
+      return DS.orange;
+  }
 }
 
 export default function OrderDetailPage() {
@@ -95,7 +128,6 @@ export default function OrderDetailPage() {
           setCreditBalance(balanceData);
         } else {
           console.error("Error fetching credit balance:", balanceResponse.status);
-          // Set default values if balance fetch fails
           setCreditBalance({
             total_balance: 0,
             available_balance: 0,
@@ -104,7 +136,6 @@ export default function OrderDetailPage() {
         }
       } catch (fetchError) {
         console.error("Failed to fetch credit balance:", fetchError);
-        // Set default values if balance fetch fails
         setCreditBalance({
           total_balance: 0,
           available_balance: 0,
@@ -191,7 +222,6 @@ export default function OrderDetailPage() {
       return;
     }
 
-    // Buyers group access check — admins always have access
     const hasBuyersGroupAccess = user?.buyersgroup === true || user?.role === 'admin';
     if (!hasBuyersGroupAccess) {
       router.push('/dashboard');
@@ -289,7 +319,6 @@ export default function OrderDetailPage() {
     setIsSubmitting(true);
 
     try {
-      // First, save the order_company record with max_investment
       const { error: orderCompanyError } = await supabase
         .from('order_company')
         .upsert({
@@ -304,7 +333,6 @@ export default function OrderDetailPage() {
         return;
       }
 
-      // Then process the credit hold
       const { error: holdError } = await supabase.rpc('process_order_hold', {
         p_company_id: companyId,
         p_order_id: order.order_id,
@@ -317,7 +345,6 @@ export default function OrderDetailPage() {
         return;
       }
 
-      // Update order_company with held_amount
       const { error: updateError } = await supabase
         .from('order_company')
         .update({
@@ -330,7 +357,6 @@ export default function OrderDetailPage() {
         console.error('Error updating held_amount:', updateError);
       }
 
-      // Save product ungated status
       const investmentData = products.map(product => ({
         order_id: order.order_id,
         sequence: product.sequence,
@@ -350,7 +376,7 @@ export default function OrderDetailPage() {
 
       alert('Investment submitted successfully!');
       setHasSubmitted(true);
-      fetchData(); // Refresh data to show updated state
+      fetchData();
     } catch (err: unknown) {
       console.error('Error submitting investment:', err);
       alert(`Failed to submit investment: ${err instanceof Error ? err.message : 'An unknown error occurred'}`);
@@ -359,186 +385,281 @@ export default function OrderDetailPage() {
     }
   }, [companyId, order, hasSubmitted, isOrderClosed, products, ungatedStatus, ungatedMinAmounts, maxInvestment, investmentError, creditBalance, fetchData]);
 
+  // ── Computed values for metrics ───────────────────────────────────────────
+  const avgRoi = useMemo(() => {
+    const roiProducts = products.filter(p => typeof p.roi === 'number' && !p.hide_price_and_quantity);
+    if (roiProducts.length === 0) return null;
+    return roiProducts.reduce((sum, p) => sum + (p.roi ?? 0), 0) / roiProducts.length;
+  }, [products]);
+
+  const totalValue = useMemo(() => {
+    return products
+      .filter(p => !p.hide_price_and_quantity)
+      .reduce((sum, p) => sum + (p.price * p.quantity), 0);
+  }, [products]);
+
+  const hasDescriptionColumn = useMemo(() => products.some(p => p.description), [products]);
+
   if (loading) {
     return <PageLoadingSpinner />;
   }
 
   if (!isAuthenticated) return null;
-  if (!order) return (
-    <div className="min-h-screen p-6 w-full">
-      <div className="mx-auto">
-        <div className="flex items-center mb-6">
-          <Link href="/orders" className="text-amber-500 hover:text-amber-400 mr-4 transition-colors">
-            ← Back to Orders
+
+  if (!order) {
+    return (
+      <PageShell>
+        <PageHeader title="ORDER NOT FOUND" accent={DS.red} />
+        <DsCard className="p-8 text-center">
+          <p className="text-neutral-400 mb-4">
+            The requested order does not exist or you don&apos;t have permission to view it.
+          </p>
+          <Link href="/orders">
+            <DsButton variant="secondary" accent={DS.orange}>
+              <ArrowLeft size={14} />
+              Back to Orders
+            </DsButton>
           </Link>
-          <h1 className="text-3xl font-bold text-white">Order Not Found</h1>
-        </div>
-        <p className="text-neutral-400">The requested order does not exist or you don&apos;t have permission to view it.</p>
-      </div>
-    </div>
-  );
+        </DsCard>
+      </PageShell>
+    );
+  }
+
+  const stColor = statusColor(order.order_statuses?.description);
 
   return (
-    <div className="min-h-screen p-6 w-full">
-      <div className="w-full">
-        {/* Header and Alerts */}
-        <div className="flex items-center mb-6">
-          <Link href="/orders" className="text-amber-500 hover:text-amber-400 transition-colors mr-4">← Back to Orders</Link>
-        </div>
-        <div className="flex items-center mb-6">
-          <h1 className="text-3xl font-bold text-white">Order #{order.order_id}</h1>
-        </div>
+    <PageShell>
+      {/* Navigation */}
+      <Link
+        href="/orders"
+        className="inline-flex items-center gap-1.5 text-xs font-mono uppercase tracking-widest transition-colors"
+        style={{ color: DS.orange }}
+      >
+        <ArrowLeft size={14} />
+        Back to Orders
+      </Link>
 
-        {isOrderClosed && (
-          <Alert className='mb-6 bg-rose-500/10 border-rose-500/20 text-rose-400 backdrop-blur-md w-fit'>
-            <AlertOctagon className="h-4 w-4" />
-            <AlertTitle className="text-rose-300">Closed</AlertTitle>
-            <AlertDescription>This order is closed. No further investments can be submitted.</AlertDescription>
-          </Alert>
-        )}
+      {/* Header */}
+      <PageHeader
+        label={`Order #${order.order_id}`}
+        title={`ORDER #${order.order_id}`}
+        accent={DS.orange}
+        right={
+          <DsStatusPill
+            label={order.order_statuses?.description || 'N/A'}
+            color={stColor}
+          />
+        }
+      />
 
-        {hasSubmitted && !isOrderClosed && (
-          <Alert className='mb-6 bg-emerald-500/10 border-emerald-500/20 text-emerald-400 backdrop-blur-md w-fit'>
-            <Check className="h-4 w-4" />
-            <AlertTitle className="text-emerald-300">Submitted</AlertTitle>
-            <AlertDescription>Your application has been submitted. You have <span className="text-white font-semibold">${initialHeldAmount.toLocaleString()}</span> held for this order.</AlertDescription>
-          </Alert>
-        )}
-
-        {/* Order Details Card */}
-        <div className="grid grid-cols-1 gap-6 mb-8 w-full">
-          <GlassCard className="p-6">
-            <div className="flex flex-wrap gap-8">
-              <div className="flex flex-col">
-                <span className="text-xs font-semibold uppercase tracking-wider text-neutral-500 mb-2">Status</span>
-                <StatusPill text={order.order_statuses?.description || 'N/A'} type={order.order_statuses?.description || 'N/A'} />
-              </div>
-              <div className="flex flex-col">
-                <span className="text-xs font-semibold uppercase tracking-wider text-neutral-500 mb-1">Lead Time</span>
-                <span className="text-white font-medium">{order.leadtime} days</span>
-              </div>
-              <div className="flex flex-col">
-                <span className="text-xs font-semibold uppercase tracking-wider text-neutral-500 mb-1">Deadline</span>
-                <span className="text-white font-medium">{new Date(order.deadline).toLocaleString()}</span>
-              </div>
-              <div className="flex flex-col">
-                <span className="text-xs font-semibold uppercase tracking-wider text-neutral-500 mb-1">Label Upload Deadline</span>
-                <span className="text-white font-medium">{new Date(order.label_upload_deadline).toLocaleString()}</span>
-              </div>
-            </div>
-          </GlassCard>
-        </div>
-
-        {/* Products Table */}
-        <GlassCard className="p-6 overflow-x-auto">
-          {products.length === 0 ? (
-            <p className="text-neutral-500">No products found for this order.</p>
-          ) : (
-            <table className="w-full border-collapse" style={{ tableLayout: 'fixed' }}>
-              <thead>
-                <tr className="border-b border-white/[0.05] hover:bg-transparent">
-                  <th className="text-neutral-400 w-[15%] h-12 px-4 text-left align-middle font-medium">ASIN</th>
-                  <th className="text-neutral-400 w-[15%] h-12 px-4 text-left align-middle font-medium">Ungated?</th>
-                  <th className="text-neutral-400 w-[20%] h-12 px-4 text-left align-middle font-medium">Min Ungated Amount</th>
-                  <th className="text-neutral-400 w-[15%] h-12 px-4 text-left align-middle font-medium">Price</th>
-                  <th className="text-neutral-400 w-[10%] h-12 px-4 text-left align-middle font-medium">Quantity</th>
-                  <th className="text-neutral-400 w-[15%] h-12 px-4 text-left align-middle font-medium">ROI (%)</th>
-                  {products.some(p => p.description) && (
-                    <th className="text-neutral-400 w-[20%] h-12 px-4 text-left align-middle font-medium">Description</th>
-                  )}
-                </tr>
-              </thead>
-              <tbody>
-                {products.map((product) => (
-                  <tr key={product.sequence} className="hover:bg-white/[0.02] transition-colors border-b border-white/[0.02]">
-                    <td className="text-neutral-200 p-4 align-middle">{product.asin}</td>
-                    <td className="text-neutral-200 p-4 align-middle">
-                      <input
-                        type="checkbox"
-                        checked={ungatedStatus[product.sequence] || false}
-                        onChange={(e) => handleUngatedChange(product.sequence, e.target.checked)}
-                        className="w-4 h-4 rounded border-white/[0.1] bg-white/[0.03] text-amber-500 focus:ring-amber-500/50"
-                        disabled={hasSubmitted || isOrderClosed}
-                      />
-                    </td>
-                    <td className="text-neutral-200 p-4 align-middle">
-                      <Input
-                        type="number"
-                        value={ungatedMinAmounts[product.sequence] || ''}
-                        onChange={(e) => handleMinAmountChange(product.sequence, e.target.value)}
-                        className="bg-white/[0.02] border-white/[0.05] rounded px-3 py-2 w-full text-white placeholder:text-neutral-600 focus:border-amber-500/50"
-                        placeholder="Min Amount"
-                        min="0"
-                        disabled={!ungatedStatus[product.sequence] || hasSubmitted || isOrderClosed}
-                      />
-                    </td>
-                    <td className="text-neutral-200 p-4 align-middle">
-                      {product.hide_price_and_quantity ? '-' : <span className="text-white font-medium">${product.price}</span>}
-                    </td>
-                    <td className="text-neutral-200 p-4 align-middle">
-                      {product.hide_price_and_quantity ? '-' : <span className="text-white">{product.quantity}</span>}
-                    </td>
-                    <td className="text-neutral-200 p-4 align-middle">
-                      {typeof product.roi === 'number' && !product.hide_price_and_quantity ? <span className="text-emerald-400">{product.roi.toFixed(2)}%</span> : '-'}
-                    </td>
-                    {products.some(p => p.description) && (
-                      <td className="text-neutral-400 p-4 align-middle text-sm">{product.description}</td>
-                    )}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </GlassCard>
-
-        {/* Investment Section */}
-        <div className="mt-14 flex flex-col items-end">
-          <div className="w-full max-w-xs space-y-4">
-            <GlassCard className="flex justify-between items-center p-4">
-              <div className='flex items-center gap-2'>
-                <CircleDollarSign className='h-5 w-5 text-amber-500' />
-                <span className="text-neutral-400 font-medium">Available Credit:</span>
-              </div>
-              <span className="text-lg font-bold text-white">
-                ${creditBalance ? creditBalance.available_balance.toLocaleString() : '0'}
-              </span>
-            </GlassCard>
-
-            {initialHeldAmount > 0 && (
-              <p className="text-sm text-neutral-500 text-right">
-                You have <span className="text-emerald-400 font-semibold">${initialHeldAmount.toLocaleString()}</span> already held for this order.
-              </p>
-            )}
-
-            <div>
-              <label htmlFor="maxInvestment" className="text-neutral-400 font-medium block mb-2">
-                Maximum Investment ($)
-              </label>
-              <Input
-                type="number"
-                id="maxInvestment"
-                value={maxInvestment || ''}
-                onChange={(e) => handleMaxInvestmentChange(e.target.value)}
-                className={`bg-white/[0.02] border rounded px-3 py-2 w-full text-white placeholder:text-neutral-600 ${investmentError ? 'border-rose-500 focus:border-rose-500' : 'border-white/[0.05] focus:border-amber-500/50'}`}
-                placeholder="Enter amount"
-                step="100"
-                min="0"
-                disabled={hasSubmitted || isOrderClosed || isSubmitting}
-              />
-              {investmentError && <p className="text-rose-500 text-sm mt-1">{investmentError}</p>}
-            </div>
-
-            <Button
-              onClick={handleSubmitInvestment}
-              className="w-full bg-amber-500/10 text-amber-400 font-medium border border-amber-500/20 shadow-[0_0_15px_rgba(245,158,11,0.05)] hover:bg-amber-500/20 hover:shadow-[0_0_20px_rgba(245,158,11,0.1)] hover:border-amber-500/30 rounded-xl transition-all duration-300 h-11"
-              disabled={hasSubmitted || isOrderClosed || !!investmentError || isSubmitting || maxInvestment === null || maxInvestment === 0}
-            >
-              <Check className="mr-2 h-4 w-4" />
-              {isSubmitting ? 'Submitting...' : 'Submit Investment'}
-            </Button>
+      {/* Alerts */}
+      {isOrderClosed && (
+        <DsCard accent={DS.red} glow className="p-4 flex items-center gap-3">
+          <div
+            className="w-8 h-8 rounded-lg border flex items-center justify-center shrink-0"
+            style={{ backgroundColor: `${DS.red}1a`, borderColor: `${DS.red}55`, color: DS.red }}
+          >
+            <AlertOctagon size={16} />
           </div>
+          <div>
+            <p className="text-sm font-bold" style={{ color: DS.red }}>Order Closed</p>
+            <p className="text-xs text-neutral-400">This order is closed. No further investments can be submitted.</p>
+          </div>
+        </DsCard>
+      )}
+
+      {hasSubmitted && !isOrderClosed && (
+        <DsCard accent={DS.teal} glow className="p-4 flex items-center gap-3">
+          <div
+            className="w-8 h-8 rounded-lg border flex items-center justify-center shrink-0"
+            style={{ backgroundColor: `${DS.teal}1a`, borderColor: `${DS.teal}55`, color: DS.teal }}
+          >
+            <Check size={16} />
+          </div>
+          <div>
+            <p className="text-sm font-bold" style={{ color: DS.teal }}>Investment Submitted</p>
+            <p className="text-xs text-neutral-400">
+              Your application has been submitted. You have{' '}
+              <span className="text-white font-semibold">${initialHeldAmount.toLocaleString()}</span>{' '}
+              held for this order.
+            </p>
+          </div>
+        </DsCard>
+      )}
+
+      {/* Order Details Metrics */}
+      <SectionLabel accent={DS.orange}>Order Details</SectionLabel>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <MetricCard
+          label="Lead Time"
+          value={`${order.leadtime}d`}
+          accent={DS.orange}
+          icon={<Clock size={16} />}
+        />
+        <MetricCard
+          label="App Deadline"
+          value={new Date(order.deadline).toLocaleDateString()}
+          sub={new Date(order.deadline).toLocaleTimeString()}
+          accent={DS.gold}
+          icon={<Clock size={16} />}
+        />
+        <MetricCard
+          label="Label Deadline"
+          value={new Date(order.label_upload_deadline).toLocaleDateString()}
+          sub={new Date(order.label_upload_deadline).toLocaleTimeString()}
+          accent={DS.gold}
+          icon={<Clock size={16} />}
+        />
+        <MetricCard
+          label="Products"
+          value={products.length}
+          accent={DS.teal}
+          icon={<Package size={16} />}
+        />
+      </div>
+
+      {/* ROI / Investment Metrics */}
+      {(avgRoi !== null || totalValue > 0) && (
+        <>
+          <SectionLabel accent={DS.teal}>Investment Metrics</SectionLabel>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+            {avgRoi !== null && (
+              <MetricCard
+                label="Avg ROI"
+                value={`${avgRoi.toFixed(1)}%`}
+                accent={DS.teal}
+                icon={<TrendingUp size={16} />}
+              />
+            )}
+            {totalValue > 0 && (
+              <MetricCard
+                label="Total Order Value"
+                value={`$${totalValue.toLocaleString()}`}
+                accent={DS.gold}
+                icon={<DollarSign size={16} />}
+              />
+            )}
+            {creditBalance && (
+              <MetricCard
+                label="Available Credit"
+                value={`$${creditBalance.available_balance.toLocaleString()}`}
+                accent={DS.orange}
+                icon={<CircleDollarSign size={16} />}
+              />
+            )}
+          </div>
+        </>
+      )}
+
+      {/* Products Table */}
+      <SectionLabel accent={DS.orange}>Products</SectionLabel>
+      {products.length === 0 ? (
+        <DsEmpty
+          icon={<Package size={28} />}
+          title="No Products"
+          body="No products found for this order."
+        />
+      ) : (
+        <DsTable>
+          <DsThead>
+            <DsTh>ASIN</DsTh>
+            <DsTh>Ungated?</DsTh>
+            <DsTh>Min Ungated Amt</DsTh>
+            <DsTh>Price</DsTh>
+            <DsTh>Qty</DsTh>
+            <DsTh>ROI (%)</DsTh>
+            {hasDescriptionColumn && <DsTh>Description</DsTh>}
+          </DsThead>
+          <tbody>
+            {products.map((product) => (
+              <DsTr key={product.sequence}>
+                <DsTd className="font-bold">
+                  <span style={{ color: DS.orange }}>{product.asin}</span>
+                </DsTd>
+                <DsTd>
+                  <input
+                    type="checkbox"
+                    checked={ungatedStatus[product.sequence] || false}
+                    onChange={(e) => handleUngatedChange(product.sequence, e.target.checked)}
+                    className="w-4 h-4 rounded border-white/[0.1] bg-white/[0.03] accent-orange-500"
+                    disabled={hasSubmitted || isOrderClosed}
+                  />
+                </DsTd>
+                <DsTd>
+                  <input
+                    type="number"
+                    value={ungatedMinAmounts[product.sequence] || ''}
+                    onChange={(e) => handleMinAmountChange(product.sequence, e.target.value)}
+                    className="w-full text-xs text-white border rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#FF6B3566] placeholder-neutral-600"
+                    style={{ backgroundColor: DS.inputBg, borderColor: 'rgba(255,255,255,0.1)' }}
+                    placeholder="Min Amt"
+                    min="0"
+                    disabled={!ungatedStatus[product.sequence] || hasSubmitted || isOrderClosed}
+                  />
+                </DsTd>
+                <DsTd>
+                  {product.hide_price_and_quantity
+                    ? <span className="text-neutral-600">--</span>
+                    : <span className="text-white font-medium">${product.price}</span>
+                  }
+                </DsTd>
+                <DsTd>
+                  {product.hide_price_and_quantity
+                    ? <span className="text-neutral-600">--</span>
+                    : <span className="text-white">{product.quantity}</span>
+                  }
+                </DsTd>
+                <DsTd>
+                  {typeof product.roi === 'number' && !product.hide_price_and_quantity
+                    ? <span style={{ color: DS.teal }} className="font-bold">{product.roi.toFixed(2)}%</span>
+                    : <span className="text-neutral-600">--</span>
+                  }
+                </DsTd>
+                {hasDescriptionColumn && (
+                  <DsTd className="text-neutral-400 text-[11px]">{product.description}</DsTd>
+                )}
+              </DsTr>
+            ))}
+          </tbody>
+        </DsTable>
+      )}
+
+      {/* Investment Section */}
+      <SectionLabel accent={DS.gold}>Submit Investment</SectionLabel>
+      <div className="flex justify-end">
+        <div className="w-full max-w-sm space-y-4">
+          {initialHeldAmount > 0 && (
+            <DsCard className="p-3 text-right">
+              <span className="text-[10px] uppercase tracking-widest text-neutral-500">Currently Held</span>
+              <p className="text-lg font-black" style={{ color: DS.teal }}>
+                ${initialHeldAmount.toLocaleString()}
+              </p>
+            </DsCard>
+          )}
+
+          <DsInput
+            label="Maximum Investment ($)"
+            type="number"
+            value={maxInvestment?.toString() || ''}
+            onChange={handleMaxInvestmentChange}
+            placeholder="Enter amount"
+          />
+          {investmentError && (
+            <p className="text-xs font-bold" style={{ color: DS.red }}>{investmentError}</p>
+          )}
+
+          <DsButton
+            onClick={handleSubmitInvestment}
+            variant="primary"
+            accent={DS.orange}
+            disabled={hasSubmitted || isOrderClosed || !!investmentError || isSubmitting || maxInvestment === null || maxInvestment === 0}
+            className="w-full"
+          >
+            <Check size={14} />
+            {isSubmitting ? 'Submitting...' : 'Submit Investment'}
+          </DsButton>
         </div>
       </div>
-    </div>
+    </PageShell>
   );
 }

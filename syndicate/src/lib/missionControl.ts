@@ -65,6 +65,17 @@ export interface BonusXpEvent {
   is_repeatable: boolean;
 }
 
+export interface MissionMedia {
+  id: number;
+  mission_id: number;
+  title: string;
+  media_type: 'video' | 'image' | 'document';
+  url: string;
+  thumbnail_url: string | null;
+  sort_order: number;
+  created_at: string;
+}
+
 export interface MissionControlData {
   phases: Phase[];
   ranks: Rank[];
@@ -72,6 +83,7 @@ export interface MissionControlData {
   bonusEvents: BonusXpEvent[];
   badges: UserBadge[];
   totalXp: number;
+  mediaByMission: Record<number, MissionMedia[]>;
 }
 
 // ─── RPC wrappers ─────────────────────────────────────────────────────────────
@@ -147,10 +159,10 @@ export async function getMissionControlData(
   const missionIds = missionRows.map((m: { id: number }) => m.id);
 
   if (missionIds.length === 0) {
-    return { phases, ranks, missions: [], bonusEvents, badges, totalXp };
+    return { phases, ranks, missions: [], bonusEvents, badges, totalXp, mediaByMission: {} };
   }
 
-  const [tasksRes, progressRes] = await Promise.all([
+  const [tasksRes, progressRes, mediaRes] = await Promise.all([
     supabase
       .from('tasks')
       .select('id, mission_id, title, description, order_index, xp_reward, auto_complete')
@@ -160,6 +172,11 @@ export async function getMissionControlData(
       .from('user_task_progress')
       .select('id, task_id, status')
       .eq('user_id', userId),
+    supabase
+      .from('mission_media')
+      .select('*')
+      .in('mission_id', missionIds)
+      .order('sort_order'),
   ]);
 
   const taskRows = tasksRes.data ?? [];
@@ -196,5 +213,42 @@ export async function getMissionControlData(
     tasks: tasksByMission.get(m.id) ?? [],
   }));
 
-  return { phases, ranks, missions, bonusEvents, badges, totalXp };
+  const mediaByMission: Record<number, MissionMedia[]> = {};
+  for (const m of (mediaRes.data ?? []) as MissionMedia[]) {
+    (mediaByMission[m.mission_id] ??= []).push(m);
+  }
+
+  return { phases, ranks, missions, bonusEvents, badges, totalXp, mediaByMission };
 }
+
+// ─── Media CRUD (admin) ───────────────────────────────────────────────────────
+
+export async function createMissionMedia(input: {
+  mission_id: number;
+  title: string;
+  media_type: 'video' | 'image' | 'document';
+  url: string;
+  thumbnail_url?: string | null;
+  sort_order?: number;
+}) {
+  const { data, error } = await supabase
+    .from('mission_media')
+    .insert({
+      mission_id: input.mission_id,
+      title: input.title,
+      media_type: input.media_type,
+      url: input.url,
+      thumbnail_url: input.thumbnail_url ?? null,
+      sort_order: input.sort_order ?? 0,
+    })
+    .select()
+    .single();
+  if (error) throw error;
+  return data as MissionMedia;
+}
+
+export async function deleteMissionMedia(id: number) {
+  const { error } = await supabase.from('mission_media').delete().eq('id', id);
+  if (error) throw error;
+}
+

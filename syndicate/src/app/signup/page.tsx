@@ -43,6 +43,12 @@ export default function SignupPage() {
       email,
       password,
       options: {
+        // PROD-TODO: Re-enable before production launch. Disabling emailRedirectTo
+        // skips the email confirmation redirect — fine for dev where Supabase has
+        // auth.email.enable_confirmations=false. For production:
+        //   1. Flip Supabase dashboard: Authentication → Providers → Email → Confirm email = ON
+        //   2. Set Site URL + additional redirect URLs to prod origin
+        //   3. Uncomment the next line
         // emailRedirectTo: `${window.location.origin}/login`,
       },
     });

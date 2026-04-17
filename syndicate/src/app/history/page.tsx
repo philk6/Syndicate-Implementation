@@ -6,15 +6,19 @@ import { useAuth } from '@lib/auth';
 import { supabase } from '@lib/supabase/client';
 import { PostgrestError } from '@supabase/supabase-js';
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import { StatusPill } from '@/components/ui/status-pill';
-import { GlassCard } from '@/components/ui/glass-card';
+  PageShell,
+  PageHeader,
+  SectionLabel,
+  DsTable,
+  DsThead,
+  DsTh,
+  DsTr,
+  DsTd,
+  DsStatusPill,
+  DsEmpty,
+  DsCountPill,
+  DS,
+} from '@/components/ui/ds';
 import { History, Clock, ArrowRight } from 'lucide-react';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
 
@@ -24,6 +28,16 @@ interface Order {
   deadline: string;
   label_upload_deadline: string;
   order_statuses: { description: string };
+}
+
+/* Map order status text to a DS colour */
+function statusColor(status: string): string {
+  const s = status.toLowerCase();
+  if (s.includes('complete') || s.includes('delivered')) return '#22c55e';
+  if (s.includes('active') || s.includes('open') || s.includes('accepting')) return DS.teal;
+  if (s.includes('cancel') || s.includes('reject')) return DS.red;
+  if (s.includes('pending') || s.includes('review')) return DS.yellow;
+  return DS.orange;
 }
 
 export default function HistoryPage() {
@@ -113,119 +127,123 @@ export default function HistoryPage() {
   const calculateProgress = (deadline: string): number => {
     const now = new Date();
     const deadlineDate = new Date(deadline + 'Z');
-    if (isNaN(deadlineDate.getTime())) {
-      return 0;
-    }
+    if (isNaN(deadlineDate.getTime())) return 0;
     const diffMs = deadlineDate.getTime() - now.getTime();
     const daysLeft = diffMs / (1000 * 60 * 60 * 24);
-    if (daysLeft > 5) {
-      return 100;
-    } else if (daysLeft >= 0) {
-      return (daysLeft / 5) * 100;
-    } else {
-      return 0;
-    }
+    if (daysLeft > 5) return 100;
+    if (daysLeft >= 0) return (daysLeft / 5) * 100;
+    return 0;
   };
+
+  const progressColor = (pct: number) =>
+    pct < 30 ? DS.red : pct < 70 ? DS.yellow : DS.teal;
 
   if (!isAuthenticated) return null;
 
   return (
-    <div className="min-h-screen p-6 w-full relative">
-      <div className="max-w-7xl mx-auto z-10 relative">
-        <div className="flex justify-between items-center mb-8">
-          <h1 className="text-3xl font-bold text-white tracking-tight flex items-center">
-            <History className="mr-3 h-8 w-8 text-amber-500" />
-            Order History
-          </h1>
+    <PageShell>
+      <PageHeader
+        label="Syndicate"
+        title="ORDER HISTORY"
+        subtitle="View and manage your past and active orders"
+        right={
+          orders.length > 0 ? <DsCountPill count={orders.length} accent={DS.orange} /> : undefined
+        }
+      />
+
+      <SectionLabel accent={DS.orange}>Your Orders</SectionLabel>
+
+      {loadingOrders ? (
+        <div className="flex items-center justify-center py-16">
+          <LoadingSpinner size="md" />
         </div>
-
-        <GlassCard className="p-0 overflow-hidden">
-          <div className="p-6 border-b border-white/[0.05]">
-            <h2 className="text-lg font-semibold text-white">Your Orders</h2>
-            <p className="text-neutral-500 text-sm">View and manage your past and active orders</p>
-          </div>
-
-          {loadingOrders ? (
-            <div className="p-12 flex items-center justify-center">
-              <LoadingSpinner size="md" />
-            </div>
-          ) : orders.length === 0 ? (
-            <div className="p-12 text-center text-neutral-500 italic">
-              No orders found in your history.
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow className="hover:bg-transparent border-white/[0.05]">
-                    <TableHead className="text-neutral-400 font-medium py-4 px-6">ID</TableHead>
-                    <TableHead className="text-neutral-400 font-medium py-4 px-6">Status</TableHead>
-                    <TableHead className="text-neutral-400 font-medium py-4 px-6">Lead Time</TableHead>
-                    <TableHead className="text-neutral-400 font-medium py-4 px-6">Application Deadline</TableHead>
-                    <TableHead className="text-neutral-400 font-medium py-4 px-6">Upload Deadline</TableHead>
-                    <TableHead className="text-neutral-400 font-medium py-4 px-6 text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {orders.map((order) => (
-                    <TableRow
-                      key={order.order_id}
-                      className="hover:bg-white/[0.02] transition-colors border-white/[0.02] cursor-pointer group"
-                      onClick={() => handleOrderClick(order.order_id)}
-                    >
-                      <TableCell className="py-4 px-6 font-mono text-sm text-amber-500/80">#{order.order_id}</TableCell>
-                      <TableCell className="py-4 px-6">
-                        <StatusPill
-                          text={order.order_statuses?.description || 'N/A'}
-                          type={order.order_statuses?.description?.toLowerCase() || 'pending'}
+      ) : orders.length === 0 ? (
+        <DsEmpty
+          icon={<History className="w-7 h-7" />}
+          title="No Orders"
+          body="No orders found in your history."
+        />
+      ) : (
+        <DsTable>
+          <DsThead>
+            <DsTh>ID</DsTh>
+            <DsTh>Status</DsTh>
+            <DsTh>Lead Time</DsTh>
+            <DsTh>Application Deadline</DsTh>
+            <DsTh>Upload Deadline</DsTh>
+            <DsTh className="text-right">Actions</DsTh>
+          </DsThead>
+          <tbody>
+            {orders.map((order) => {
+              const status = order.order_statuses?.description || 'N/A';
+              const deadlinePct = calculateProgress(order.deadline);
+              const uploadPct = calculateProgress(order.label_upload_deadline);
+              return (
+                <DsTr
+                  key={order.order_id}
+                  onClick={() => handleOrderClick(order.order_id)}
+                >
+                  <DsTd>
+                    <span className="font-mono font-bold" style={{ color: DS.orange }}>
+                      #{order.order_id}
+                    </span>
+                  </DsTd>
+                  <DsTd>
+                    <DsStatusPill label={status} color={statusColor(status)} />
+                  </DsTd>
+                  <DsTd>
+                    <span className="text-neutral-200 font-medium">{order.leadtime} Days</span>
+                  </DsTd>
+                  <DsTd>
+                    <div className="space-y-1.5">
+                      <div className="text-neutral-400 text-[11px] flex items-center">
+                        <Clock className="h-3 w-3 mr-1.5 text-neutral-500" />
+                        {new Date(order.deadline).toLocaleDateString()}
+                      </div>
+                      <div className="w-24 h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: 'rgba(255,255,255,0.05)' }}>
+                        <div
+                          className="h-full transition-all duration-500 rounded-full"
+                          style={{
+                            width: `${deadlinePct}%`,
+                            backgroundColor: progressColor(deadlinePct),
+                            boxShadow: `0 0 6px ${progressColor(deadlinePct)}66`,
+                          }}
                         />
-                      </TableCell>
-                      <TableCell className="py-4 px-6 text-neutral-300 font-medium">{order.leadtime} Days</TableCell>
-                      <TableCell className="py-4 px-6">
-                        <div className="space-y-2">
-                          <div className="text-neutral-400 text-xs flex items-center">
-                            <Clock className="h-3 w-3 mr-1.5 text-neutral-500" />
-                            {new Date(order.deadline).toLocaleDateString()}
-                          </div>
-                          <div className="w-24 h-1.5 bg-white/[0.05] rounded-full overflow-hidden">
-                            <div
-                              className={`h-full transition-all duration-500 ${calculateProgress(order.deadline) < 30 ? 'bg-rose-500/50' :
-                                  calculateProgress(order.deadline) < 70 ? 'bg-amber-500/50' : 'bg-emerald-500/50'
-                                }`}
-                              style={{ width: `${calculateProgress(order.deadline)}%` }}
-                            />
-                          </div>
-                        </div>
-                      </TableCell>
-                      <TableCell className="py-4 px-6">
-                        <div className="space-y-2">
-                          <div className="text-neutral-400 text-xs flex items-center">
-                            <Clock className="h-3 w-3 mr-1.5 text-neutral-500" />
-                            {new Date(order.label_upload_deadline).toLocaleDateString()}
-                          </div>
-                          <div className="w-24 h-1.5 bg-white/[0.05] rounded-full overflow-hidden">
-                            <div
-                              className={`h-full transition-all duration-500 ${calculateProgress(order.label_upload_deadline) < 30 ? 'bg-rose-500/50' :
-                                  calculateProgress(order.label_upload_deadline) < 70 ? 'bg-amber-500/50' : 'bg-emerald-500/50'
-                                }`}
-                              style={{ width: `${calculateProgress(order.label_upload_deadline)}%` }}
-                            />
-                          </div>
-                        </div>
-                      </TableCell>
-                      <TableCell className="py-4 px-6 text-right">
-                        <div className="inline-flex items-center text-amber-500 font-medium text-sm group-hover:translate-x-1 transition-transform">
-                          Details <ArrowRight className="ml-1.5 h-4 w-4" />
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          )}
-        </GlassCard>
-      </div>
-    </div>
+                      </div>
+                    </div>
+                  </DsTd>
+                  <DsTd>
+                    <div className="space-y-1.5">
+                      <div className="text-neutral-400 text-[11px] flex items-center">
+                        <Clock className="h-3 w-3 mr-1.5 text-neutral-500" />
+                        {new Date(order.label_upload_deadline).toLocaleDateString()}
+                      </div>
+                      <div className="w-24 h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: 'rgba(255,255,255,0.05)' }}>
+                        <div
+                          className="h-full transition-all duration-500 rounded-full"
+                          style={{
+                            width: `${uploadPct}%`,
+                            backgroundColor: progressColor(uploadPct),
+                            boxShadow: `0 0 6px ${progressColor(uploadPct)}66`,
+                          }}
+                        />
+                      </div>
+                    </div>
+                  </DsTd>
+                  <DsTd className="text-right">
+                    <span
+                      className="inline-flex items-center text-[11px] font-bold font-mono uppercase tracking-widest transition-transform group-hover:translate-x-1"
+                      style={{ color: DS.orange }}
+                    >
+                      Details <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
+                    </span>
+                  </DsTd>
+                </DsTr>
+              );
+            })}
+          </tbody>
+        </DsTable>
+      )}
+    </PageShell>
   );
 }

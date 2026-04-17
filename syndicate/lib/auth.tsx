@@ -140,53 +140,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     
     console.log('No cached user, fetching from database...');
     try {
-      // Create a timeout for user details fetch
-      const userDetailsPromise = async () => {
-        console.log('Fetching user details from database for user_id:', userId);
-        let query = supabase
-          .from('users')
-          .select('user_id, email, role, firstname, lastname, company_id, tos_accepted, buyersgroup')
-          .eq('user_id', userId);
-        
-        if (signal) {
-          query = query.abortSignal(signal);
-        }
-        
-        const result = await query.single();
-        console.log('Database query result:', result);
+      const t0 = performance.now();
 
-        // Fetch total XP alongside user data
-        let totalXp = 0;
-        try {
-          const { data: xpRows } = await supabase
-            .from('xp_transactions')
-            .select('amount')
-            .eq('user_id', userId);
-          if (xpRows) {
-            totalXp = xpRows.reduce((sum: number, r: { amount: number }) => sum + r.amount, 0);
-          }
-        } catch {
-          console.warn('Failed to fetch XP, defaulting to 0');
-        }
+      let userQuery = supabase
+        .from('users')
+        .select('user_id, email, role, firstname, lastname, company_id, tos_accepted, buyersgroup')
+        .eq('user_id', userId);
+      if (signal) userQuery = userQuery.abortSignal(signal);
 
-        return { ...result, totalXp };
-      };
+      // Parallel: profile + total XP in one network batch
+      const [userRes, xpRes] = await Promise.all([
+        userQuery.single(),
+        supabase.from('user_total_xp').select('total_xp').eq('user_id', userId).maybeSingle(),
+      ]);
 
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('User details fetch timeout')), 5000)
-      );
+      console.log(`fetchUserDetails: queries resolved in ${(performance.now() - t0).toFixed(0)}ms`, {
+        userOk: !userRes.error,
+        xpOk: !xpRes.error,
+      });
 
-      const fetchResult = await Promise.race([
-        userDetailsPromise(),
-        timeoutPromise
-      ]) as UserDetailsResponse & { totalXp: number };
+      if (signal?.aborted) return;
 
-      const { data: userData, error: userError, totalXp } = fetchResult;
-      
-      if (signal?.aborted) {
-        isFetchingUserDetailsRef.current = false;
-        return;
+      const totalXp = xpRes.data?.total_xp ?? 0;
+      if (xpRes.error) {
+        console.warn('Failed to fetch XP, defaulting to 0:', xpRes.error.message);
       }
+
+      const userData = userRes.data;
+      const userError = userRes.error;
       
       if (userError) {
         console.error('Error fetching user data:', userError);
