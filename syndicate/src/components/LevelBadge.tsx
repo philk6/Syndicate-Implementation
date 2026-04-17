@@ -4,22 +4,21 @@ import { getRankProgress } from '@/lib/utils/xp';
 
 interface LevelBadgeProps {
   totalXp: number;
+  role?: string;
   size?: 'sm' | 'md';
   showProgress?: boolean;
   className?: string;
 }
 
-/**
- * Small pill that displays a user's rank tier, using the rank's theme color.
- * (Named LevelBadge for backward-compatibility with existing imports.)
- */
 export function LevelBadge({
   totalXp,
+  role,
   size = 'sm',
   showProgress = false,
   className = '',
 }: LevelBadgeProps) {
   const { rank, progressPercent, xpIntoRank, xpToNextRank, nextRank } = getRankProgress(totalXp);
+  const isAdmin = role === 'admin';
   const title = nextRank
     ? `${rank.name} · ${totalXp.toLocaleString()} XP · ${xpToNextRank.toLocaleString()} to ${nextRank.name}`
     : `${rank.name} · ${totalXp.toLocaleString()} XP · Max rank`;
@@ -32,18 +31,30 @@ export function LevelBadge({
 
   if (size === 'sm') {
     return (
-      <span
-        className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md text-[10px] font-bold leading-none tracking-wide border select-none ${className}`}
-        style={pillStyle}
-        title={title}
-      >
-        {rank.name}
+      <span className={`inline-flex items-center gap-1 ${className}`}>
+        {isAdmin && (
+          <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-bold leading-none tracking-wide border select-none bg-[#FF6B35]/15 text-[#FF6B35] border-[#FF6B35]/40">
+            Admin
+          </span>
+        )}
+        <span
+          className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md text-[10px] font-bold leading-none tracking-wide border select-none"
+          style={pillStyle}
+          title={title}
+        >
+          {rank.name}
+        </span>
       </span>
     );
   }
 
   return (
-    <div className={`inline-flex flex-col items-start gap-0.5 ${className}`}>
+    <div className={`inline-flex flex-col items-start gap-1 ${className}`}>
+      {isAdmin && (
+        <span className="inline-flex items-center px-2 py-0.5 rounded-lg text-[11px] font-bold leading-none tracking-wide border select-none bg-[#FF6B35]/15 text-[#FF6B35] border-[#FF6B35]/40">
+          Admin
+        </span>
+      )}
       <span
         className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] font-bold leading-none tracking-wide border select-none"
         style={pillStyle}

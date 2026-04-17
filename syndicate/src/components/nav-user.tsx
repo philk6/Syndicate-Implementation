@@ -41,6 +41,7 @@ export function NavUser({
     email: string
     avatar: string
     totalXp?: number
+    role?: string
   }
   onLogout?: () => void
 }) {
@@ -63,7 +64,7 @@ export function NavUser({
               <div className="grid flex-1 text-left text-sm leading-tight">
                 <span className="truncate font-semibold text-white flex items-center gap-1.5">
                   {user.name}
-                  {user.totalXp !== undefined && <LevelBadge totalXp={user.totalXp} size="sm" />}
+                  {user.totalXp !== undefined && <LevelBadge totalXp={user.totalXp} role={user.role} size="sm" />}
                 </span>
                 <span className="truncate text-xs text-neutral-500">{user.email}</span>
               </div>
@@ -85,7 +86,7 @@ export function NavUser({
                 <div className="grid flex-1 text-left text-sm leading-tight">
                   <span className="truncate font-semibold text-white flex items-center gap-1.5">
                     {user.name}
-                    {user.totalXp !== undefined && <LevelBadge totalXp={user.totalXp} size="md" showProgress />}
+                    {user.totalXp !== undefined && <LevelBadge totalXp={user.totalXp} role={user.role} size="md" showProgress />}
                   </span>
                   <span className="truncate text-xs text-neutral-500">{user.email}</span>
                 </div>

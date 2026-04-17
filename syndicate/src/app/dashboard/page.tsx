@@ -289,18 +289,27 @@ export default function UserDashboardPage() {
       }
 
       // Fetch chart data (profit and invested_amount)
-      await fetchChartData(companyId, timeFrame);
+      await fetchChartData(companyId, timeFrame).catch((err) => {
+        console.warn('Chart data fetch failed:', err);
+      });
 
       setLoading(false);
     }
 
-    // Only fetch data if we have a valid user with user_id
+    // Wait for user hydration — but don't spin forever
     if (!user?.user_id) {
-      console.log('Waiting for user data to be available...');
-      return;
+      console.log('Dashboard: Waiting for user data...');
+      const safetyTimer = setTimeout(() => {
+        console.warn('Dashboard: user_id still unavailable after 10s, stopping spinner');
+        setLoading(false);
+      }, 10000);
+      return () => clearTimeout(safetyTimer);
     }
 
-    fetchDashboardData();
+    fetchDashboardData().catch((err) => {
+      console.error('Dashboard fetch failed:', err);
+      setLoading(false);
+    });
   }, [isAuthenticated, authLoading, router, user?.user_id, timeFrame, fetchChartData]);
 
   // Load mission data for active-phase detection on the weekly check-in widget

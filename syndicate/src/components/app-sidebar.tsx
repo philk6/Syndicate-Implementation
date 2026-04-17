@@ -61,7 +61,7 @@ const BUYERS_GROUP_RESTRICTED_PATHS = ['/orders', '/credit-overview'];
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const { isAuthenticated, user, logout, session } = useAuth();
-  const [userData, setUserData] = useState({ name: 'Loading...', email: '', avatar: '/syndicate_logo.jpeg', totalXp: 0 });
+  const [userData, setUserData] = useState({ name: 'Loading...', email: '', avatar: '/syndicate_logo.jpeg', totalXp: 0, role: '' as string | undefined });
   const [userDataLoaded, setUserDataLoaded] = useState(false);
   const [buyersGroupDialogOpen, setBuyersGroupDialogOpen] = useState(false);
   const router = useRouter();
@@ -91,6 +91,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           email: fallbackEmail,
           avatar: '/syndicate_logo.jpeg',
           totalXp: user?.totalXp ?? 0,
+          role: user?.role,
         };
         setUserData(fallbackUserData);
         setUserDataLoaded(true);
@@ -121,6 +122,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           email: sessionEmail,
           avatar: '/syndicate_logo.jpeg',
           totalXp: 0,
+          role: undefined,
         });
         setUserDataLoaded(true);
         return;
@@ -185,6 +187,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           email: user.email || user.user_id || '',
           avatar: '/syndicate_logo.jpeg',
           totalXp: user.totalXp ?? 0,
+          role: user.role,
         };
 
         console.log('Setting user data:', finalUserData);
@@ -200,6 +203,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           email: user.email || user.user_id || '',
           avatar: '/syndicate_logo.jpeg',
           totalXp: user.totalXp ?? 0,
+          role: user.role,
         };
         setUserData(fallbackUserData);
         setUserDataLoaded(true);
