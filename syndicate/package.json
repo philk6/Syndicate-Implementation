@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "echo \"NODE_ENV: $NODE_ENV\" && echo \"SUPABASE_SERVICE_ROLE_KEY_SET: ${SUPABASE_SERVICE_ROLE_KEY:+true}\" && next build",
-    "start": "next start",
+    "start": "next start -p ${PORT:-8080}",
     "lint": "next lint"
   },
   "dependencies": {
