@@ -1,29 +1,42 @@
 import { NextRequest } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+let _admin: SupabaseClient | null = null;
 
-export const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+function getAdmin(): SupabaseClient {
+  if (_admin) return _admin;
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) throw new Error('Missing SUPABASE env vars for admin client');
+  _admin = createClient(url, key);
+  return _admin;
+}
+
+// Lazy proxy so existing imports of `supabaseAdmin` keep working
+export const supabaseAdmin: SupabaseClient = new Proxy({} as SupabaseClient, {
+  get(_target, prop, receiver) {
+    const client = getAdmin();
+    const value = Reflect.get(client, prop, receiver);
+    return typeof value === 'function' ? value.bind(client) : value;
+  },
+});
 
 export async function getAuthUser(request: NextRequest) {
-  // Try to get the token from the Authorization header
   const authHeader = request.headers.get('authorization');
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return { user: null, error: 'No authorization header found' };
   }
 
   const token = authHeader.replace('Bearer ', '');
-  
+
   try {
-    // Verify the JWT token
+    const supabaseAdmin = getAdmin();
     const { data: { user }, error } = await supabaseAdmin.auth.getUser(token);
-    
+
     if (error || !user) {
       return { user: null, error: error?.message || 'Invalid token' };
     }
 
-    // Get the user's role from the database
     const { data: userData, error: userError } = await supabaseAdmin
       .from('users')
       .select('role')
@@ -34,12 +47,12 @@ export async function getAuthUser(request: NextRequest) {
       return { user: null, error: 'User not found in database' };
     }
 
-    return { 
+    return {
       user: {
         ...user,
-        role: userData.role
-      }, 
-      error: null 
+        role: userData.role,
+      },
+      error: null,
     };
   } catch {
     return { user: null, error: 'Failed to verify token' };

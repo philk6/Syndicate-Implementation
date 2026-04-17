@@ -1,3 +1,4 @@
+export const dynamic = 'force-dynamic';
 // /src/app/api/admin/credits/add/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, getAuthUser, requireAdmin } from '@/app/api/auth-utils';

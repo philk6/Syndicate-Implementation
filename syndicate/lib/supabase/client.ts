@@ -1,44 +1,47 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY as string;
+// Lazy-initialized browser client. Defers createClient until first use
+// so the module can be imported during `next build` without env vars.
 
-if (!supabaseUrl) {
-  // URL is critical, throw error if missing even on client
-  throw new Error('Missing Supabase URL environment variable (NEXT_PUBLIC_SUPABASE_URL). Check your .env file and Next.js configuration.');
-}
+let _client: SupabaseClient | null = null;
 
-if (!supabaseAnonKey) {
-  // Warn if anon key is missing on client, as it's needed for basic operations
-  console.warn(
-    'Missing Supabase client-side environment variable (NEXT_PUBLIC_SUPABASE_ANON_KEY). Client-side features may fail. Check your .env file and Next.js configuration.'
-  );
-  // Throw an error here too, as the client is likely unusable without the anon key.
-  throw new Error('Missing Supabase Anon Key environment variable (NEXT_PUBLIC_SUPABASE_ANON_KEY). Check your .env file and Next.js configuration.');
-}
+function getClient(): SupabaseClient {
+  if (_client) return _client;
 
-// Client-side Supabase client with optimized settings
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-  // Database connection settings
-  db: {
-    schema: 'public',
-  },
-  auth: {
-    persistSession: true,
-    autoRefreshToken: true,
-    detectSessionInUrl: true,
-  },
-  // Add global request timeout
-  global: {
-    fetch: (url, options) => {
-      // Add a timeout to all fetch operations
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
-      
-      return fetch(url, {
-        ...options,
-        signal: controller.signal
-      }).finally(() => clearTimeout(timeoutId));
-    }
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  if (!supabaseUrl || !supabaseAnonKey) {
+    throw new Error(
+      'Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY. Check your environment variables.',
+    );
   }
-}); 
+
+  _client = createClient(supabaseUrl, supabaseAnonKey, {
+    db: { schema: 'public' },
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true,
+    },
+    global: {
+      fetch: (url, options) => {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 30000);
+        return fetch(url, { ...options, signal: controller.signal }).finally(() =>
+          clearTimeout(timeoutId),
+        );
+      },
+    },
+  });
+
+  return _client;
+}
+
+export const supabase: SupabaseClient = new Proxy({} as SupabaseClient, {
+  get(_target, prop, receiver) {
+    const client = getClient();
+    const value = Reflect.get(client, prop, receiver);
+    return typeof value === 'function' ? value.bind(client) : value;
+  },
+});

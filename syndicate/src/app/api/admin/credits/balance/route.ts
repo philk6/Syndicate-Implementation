@@ -1,3 +1,4 @@
+export const dynamic = 'force-dynamic';
 // syndicate/src/app/api/credits/balance/route.ts
 
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
