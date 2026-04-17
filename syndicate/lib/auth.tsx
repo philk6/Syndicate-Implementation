@@ -212,10 +212,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       
       // Retry once if this is the first attempt
       if (retryCount === 0) {
-        console.log('Retrying user details fetch...');
-        setTimeout(() => {
-          fetchUserDetails(email, currentSession, signal, retryCount + 1);
-        }, 1000);
+        console.log('Retrying user details fetch in 1s...');
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        await fetchUserDetails(email, currentSession, signal, retryCount + 1);
         return;
       }
       
@@ -267,21 +266,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       }
 
-      // Add timeout to session check with shorter timeout for non-initial loads
-      const timeoutDuration = isInitialLoad ? 5000 : 3000;
-      const sessionCheckPromise = supabase.auth.getSession();
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Session check timeout')), timeoutDuration)
-      );
-      
-      const { data: { session: currentSession }, error } = await Promise.race([
-        sessionCheckPromise,
-        timeoutPromise
-      ]) as SupabaseSessionResponse;
-      
+      const t0 = performance.now();
+      const { data: { session: currentSession }, error } = await supabase.auth.getSession();
+
       if (abortController.signal.aborted) return;
-      
-      console.log('AuthProvider checkAuth: session=', currentSession, 'error=', error);
+
+      console.log(`AuthProvider checkAuth: getSession resolved in ${(performance.now() - t0).toFixed(0)}ms, session=`, !!currentSession, 'error=', error);
       if (error) throw error;
 
       if (currentSession) {
@@ -330,29 +320,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       retryCountRef.current = 0;
     } catch (error) {
       if (abortController.signal.aborted) return;
-      
+
       console.error('Error checking auth:', error);
-      
-      // For timeout errors, don't retry - just clear session and redirect
-      if ((error as Error).message.includes('timeout')) {
-        console.log('AuthProvider: Session check timed out, clearing session');
-        setSession(null);
-        setUser(null);
-        localStorage.removeItem('token');
-      } else {
-        // For other errors, implement retry logic but with fewer attempts
-        if (retryCountRef.current < 1) {
-          retryCountRef.current++;
-          console.log(`Retrying session check (attempt ${retryCountRef.current})`);
-          setTimeout(() => checkAuth(isInitialLoad), 1000);
-          return;
-        } else {
-          console.log('AuthProvider: Max retries reached, clearing session');
-          setSession(null);
-          setUser(null);
-          localStorage.removeItem('token');
-        }
+
+      // Retry once before giving up
+      if (retryCountRef.current < 1) {
+        retryCountRef.current++;
+        console.log(`Retrying session check in 1s (attempt ${retryCountRef.current})...`);
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        await checkAuth(isInitialLoad);
+        return;
       }
+
+      console.log('AuthProvider: Session check failed after retry, clearing session');
+      setSession(null);
+      setUser(null);
+      localStorage.removeItem('token');
     } finally {
       if (isInitialLoad) setLoading(false);
       lastCheckedRef.current = Date.now();
