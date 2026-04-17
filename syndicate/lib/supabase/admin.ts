@@ -1,36 +1,47 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
 // --- Server-side Admin Configuration (for elevated privileges) ---
+// Lazy-initialized: the client is created on first use, not at module load.
+// This prevents the build from failing when SUPABASE_SERVICE_ROLE_KEY is
+// not available in the build environment (it's only needed at runtime).
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+let _adminClient: SupabaseClient | null = null;
 
-if (!supabaseUrl) {
-    // URL is still needed for the admin client
-    throw new Error(
-        'FATAL ERROR: Missing Supabase URL environment variable (NEXT_PUBLIC_SUPABASE_URL) needed for admin client. Check your server environment variables.'
-    );
-}
+function getAdminClient(): SupabaseClient {
+    if (_adminClient) return _adminClient;
 
-if (!supabaseServiceRoleKey) {
-    // Service key is mandatory for the admin client.
-    // No fallback to anon key, as this client is explicitly for admin tasks.
-    // Throw an error to prevent the application from misconfiguring.
-    throw new Error(
-        'FATAL ERROR: Missing Supabase server-side admin environment variable (SUPABASE_SERVICE_ROLE_KEY). Cannot initialize admin client. Check your server environment variables.'
-    );
-}
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-// Server-side Admin client (uses service_role key, bypasses RLS by default)
-// Use this ONLY for server actions/API routes needing admin privileges.
-export const supabaseAdmin = createClient(
-    supabaseUrl,
-    supabaseServiceRoleKey,
-    {
+    if (!supabaseUrl) {
+        throw new Error(
+            'Missing Supabase URL (NEXT_PUBLIC_SUPABASE_URL). Check server environment variables.'
+        );
+    }
+
+    if (!supabaseServiceRoleKey) {
+        throw new Error(
+            'Missing SUPABASE_SERVICE_ROLE_KEY. Check server environment variables.'
+        );
+    }
+
+    _adminClient = createClient(supabaseUrl, supabaseServiceRoleKey, {
         auth: {
             persistSession: false,
             autoRefreshToken: false,
-            detectSessionInUrl: false
-        }
-    }
-); 
+            detectSessionInUrl: false,
+        },
+    });
+
+    return _adminClient;
+}
+
+// Proxy export: code that imports `supabaseAdmin` gets the lazy singleton.
+// Compatible with existing usage: `supabaseAdmin.from(...)` just works.
+export const supabaseAdmin = new Proxy({} as SupabaseClient, {
+    get(_target, prop, receiver) {
+        const client = getAdminClient();
+        const value = Reflect.get(client, prop, receiver);
+        return typeof value === 'function' ? value.bind(client) : value;
+    },
+});

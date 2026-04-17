@@ -698,7 +698,6 @@ export function CompanyProfile({ companyId, isAdmin }: CompanyProfileProps) {
                       style={{
                         backgroundColor: DS.inputBg,
                         borderColor: 'rgba(255,255,255,0.1)',
-                        focusRingColor: `${DS.orange}66`,
                       }}
                       onFocus={e => { e.currentTarget.style.boxShadow = `0 0 0 2px ${DS.orange}44`; }}
                       onBlur={e => { e.currentTarget.style.boxShadow = 'none'; }}
