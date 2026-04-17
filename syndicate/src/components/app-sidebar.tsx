@@ -18,7 +18,7 @@ import {
 } from '@/components/ui/sidebar';
 import { NavUser } from '@/components/nav-user';
 import { useRouter, usePathname } from 'next/navigation';
-import { ShoppingCart, History, Settings, Users, LayoutDashboard, CreditCard, MessageCircle, Crosshair, Package, Warehouse } from 'lucide-react';
+import { ShoppingCart, History, Settings, Users, LayoutDashboard, CreditCard, MessageCircle, Crosshair, Package, Warehouse, Search } from 'lucide-react';
 import SidebarLink from '@/components/SidebarLink';
 import { usePrepUnreadCount } from '@/hooks/usePrepUnreadCount';
 import {
@@ -36,6 +36,7 @@ const data = {
       url: '#',
       items: [
         { title: 'Dashboard', url: '/dashboard', icon: LayoutDashboard },
+        { title: 'Supplier Intel', url: '/supplier-intel', icon: Search },
         { title: 'Open Orders', url: '/orders', icon: ShoppingCart },
         { title: 'History', url: '/history', icon: History },
         { title: 'Credit Overview', url: '/credit-overview', icon: CreditCard },
