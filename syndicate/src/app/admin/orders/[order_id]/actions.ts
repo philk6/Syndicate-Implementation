@@ -76,7 +76,10 @@ export async function calculateOrderAllocation(orderId: number) {
     }
 
     // Call the Python backend endpoint
-    const backendUrl = `${process.env.BACKEND_URL || 'https://fsaa-test.up.railway.app'}/allocate/${orderId}`;
+    if (!process.env.BACKEND_URL) {
+      return { success: false, message: 'BACKEND_URL environment variable is not configured' };
+    }
+    const backendUrl = `${process.env.BACKEND_URL}/allocate/${orderId}`;
     console.log(`Calling backend endpoint: ${backendUrl}`);
     const response = await fetch(backendUrl, {
       method: 'GET',
