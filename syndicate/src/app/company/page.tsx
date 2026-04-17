@@ -5,7 +5,7 @@ import { CompanyProfile } from '@/components/CompanyProfile';
 import { PageLoadingSpinner } from '@/components/ui/loading-spinner';
 import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
-import { PageShell, PageHeader, DsButton, DS } from '@/components/ui/ds';
+import { PageShell, DsButton, DS } from '@/components/ui/ds';
 
 export default function CompanyPage() {
   const { user, loading, isAuthenticated } = useAuth();

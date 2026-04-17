@@ -8,7 +8,7 @@ import { PostgrestError } from '@supabase/supabase-js';
 import { PageLoadingSpinner } from '@/components/ui/loading-spinner';
 import { AdminWeeklyCheckIns } from '@/components/AdminWeeklyCheckIns';
 import {
-  PageShell, PageHeader, SectionLabel, MetricCard, DsCard, DsStatusPill,
+  PageShell, PageHeader, SectionLabel, MetricCard, DsStatusPill,
   DsTable, DsThead, DsTh, DsTr, DsTd, DsEmpty, DsCountPill, DS,
 } from '@/components/ui/ds';
 import { ShoppingCart, DollarSign, TrendingUp } from 'lucide-react';

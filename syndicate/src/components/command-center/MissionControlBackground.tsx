@@ -8,7 +8,7 @@ import { useMemo } from 'react';
  */
 export function MissionControlBackground() {
   const particles = useMemo(() => {
-    return Array.from({ length: 20 }).map((_, i) => ({
+    return Array.from({ length: 20 }).map(() => ({
       left: Math.random() * 100,
       top: Math.random() * 100,
       size: 1 + Math.random() * 2,

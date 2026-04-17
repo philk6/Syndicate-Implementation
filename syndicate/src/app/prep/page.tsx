@@ -12,7 +12,6 @@ import { ShipmentCard } from '@/components/prep/ShipmentCard';
 import { ShipmentDetailDrawer } from '@/components/prep/ShipmentDetailDrawer';
 import { SubmitShipmentModal } from '@/components/prep/SubmitShipmentModal';
 import { PREP_GOLD, INVOICE_STATUS_COLOR, type PrepStatus } from '@/components/prep/prepTheme';
-import { StatusBadge } from '@/components/prep/StatusBadge';
 import {
   getMyShipments, getMyInvoices, getMyNotifications,
   markNotificationRead, markAllNotificationsRead, cancelShipment,

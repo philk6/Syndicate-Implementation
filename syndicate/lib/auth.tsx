@@ -67,23 +67,6 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-interface SupabaseSessionResponse {
-  data: { session: Session | null };
-  error: Error | null;
-}
-
-interface SupabaseError {
-  code?: string;
-  message: string;
-  details?: string;
-  hint?: string;
-}
-
-interface UserDetailsResponse {
-  data: AuthUser | null;
-  error: SupabaseError | null;
-}
-
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [user, setUser] = useState<AuthUser | null>(null);

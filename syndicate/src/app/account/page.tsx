@@ -6,7 +6,7 @@ import { useAuth } from '@lib/auth';
 import { supabase } from '@lib/supabase/client';
 import bcrypt from 'bcryptjs';
 import { debounce } from 'lodash';
-import { Check, Plus, Shield, Building2, Mail, Lock, User } from 'lucide-react';
+import { Check, Plus, Shield, Building2, Mail, User } from 'lucide-react';
 import { PageLoadingSpinner } from '@/components/ui/loading-spinner';
 import {
   DS, PageShell, PageHeader, SectionLabel, DsCard, DsButton, DsInput,

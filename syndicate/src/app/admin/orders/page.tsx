@@ -25,7 +25,7 @@ import { toast, Toaster } from 'sonner';
 import Link from 'next/link';
 import { PageLoadingSpinner } from '@/components/ui/loading-spinner';
 import {
-  PageShell, PageHeader, SectionLabel, DsCard, DsStatusPill,
+  PageShell, PageHeader, SectionLabel, DsStatusPill,
   DsTable, DsThead, DsTh, DsTr, DsTd, DsButton, DsEmpty, DsCountPill, DS,
 } from '@/components/ui/ds';
 

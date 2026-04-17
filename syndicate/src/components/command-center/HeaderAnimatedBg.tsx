@@ -10,9 +10,8 @@ import { useMemo } from 'react';
  */
 export function HeaderAnimatedBg() {
   // Three palette shades layered at random
-  const GOLDS = ['#FFD700', '#B8860B', '#FFA500'];
-
   const hexagons = useMemo(() => {
+    const GOLDS = ['#FFD700', '#B8860B', '#FFA500'];
     return Array.from({ length: 22 }).map((_, i) => {
       const size = 40 + Math.floor(Math.random() * 120); // 40–160px
       const rotate = Math.random() * 360;

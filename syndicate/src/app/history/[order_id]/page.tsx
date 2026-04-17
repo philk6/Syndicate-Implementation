@@ -27,7 +27,6 @@ import {
   FileText,
   Clock,
   TrendingUp,
-  Package,
   DollarSign,
   Calendar,
   Eye,
