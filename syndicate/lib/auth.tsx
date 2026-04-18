@@ -54,6 +54,33 @@ interface AuthUser {
   totalXp: number;
 }
 
+/**
+ * Merge a "minimal" fallback user into the existing user, preserving richer fields.
+ *
+ * Use this on every fallback code path (DB error, exception, no-email session). It
+ * guarantees we NEVER downgrade a known-good admin or zero-out a user's XP during a
+ * transient failure (network blip, abort, stale cache, tab rehydration race).
+ *
+ * Authoritative role changes (admin -> user) must come from the successful DB fetch
+ * path, never from these fallback paths.
+ */
+function mergeUserPreserving(existing: AuthUser | null, minimal: AuthUser): AuthUser {
+  if (!existing) return minimal;
+  return {
+    ...minimal,
+    // Never downgrade an admin via a fallback write
+    role: existing.role === 'admin' ? 'admin' : minimal.role,
+    // Preserve profile fields if we already have them
+    firstname: existing.firstname ?? minimal.firstname,
+    lastname: existing.lastname ?? minimal.lastname,
+    company_id: existing.company_id ?? minimal.company_id,
+    tos_accepted: typeof existing.tos_accepted === 'boolean' ? existing.tos_accepted : minimal.tos_accepted,
+    buyersgroup: typeof existing.buyersgroup === 'boolean' ? existing.buyersgroup : minimal.buyersgroup,
+    // Never drop XP to 0 on a fallback path — keep whatever we had
+    totalXp: existing.totalXp > 0 ? existing.totalXp : minimal.totalXp,
+  };
+}
+
 interface AuthContextType {
   session: Session | null;
   isAuthenticated: boolean;
@@ -84,20 +111,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     setIsAuthenticated(!!session);
-    
-    // Validate user data completeness when session or user changes
-    if (session && user) {
-      console.log('Auth provider validating user data:', user);
-      const isComplete = isUserDataComplete(user);
-      console.log('User data complete?', isComplete);
-      
-      if (!isComplete) {
-        console.warn('Incomplete user data detected:', user);
-        console.warn('Forcing logout due to incomplete data');
-        setTimeout(async () => {
-          await supabase.auth.signOut();
-        }, 100);
-      }
+
+    // Observability only — do NOT force logout on incomplete data.
+    // Forcing logout here historically caused users to be kicked out mid-rehydration
+    // (e.g., during a tab-return refetch race). Auth state is now resilient via
+    // mergeUserPreserving below — incomplete user objects should never reach this point.
+    if (session && user && !isUserDataComplete(user)) {
+      console.warn('[auth] Incomplete user data observed (not forcing logout):', user);
     }
   }, [session, user]);
 
@@ -153,36 +173,46 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const userError = userRes.error;
       
       if (userError) {
-        console.error('Error fetching user data:', userError);
-        console.error('User error details:', { code: userError.code, message: userError.message, details: userError.details });
-        
-        // Check if we already have a user object with role information
-        if (user && user.role && user.role !== 'user') {
-          console.log('Keeping existing user object with role:', user.role);
+        console.error('[auth] Error fetching user data:', userError);
+        console.error('[auth] User error details:', { code: userError.code, message: userError.message, details: userError.details });
+
+        // If we already have a user with a role, preserve it entirely — do not downgrade.
+        if (user && user.role) {
+          console.log('[auth] Keeping existing user (DB fetch errored, role=' + user.role + ')');
           isFetchingUserDetailsRef.current = false;
-          // Don't overwrite existing user data if we already have role info
           return;
         }
-        
-        // Don't force logout immediately, create a minimal user object
-        console.log('User data fetch failed, creating minimal user object');
+
+        // No existing user — must write a minimal one so the session isn't stuck loading.
+        console.log('[auth] DB fetch errored and no existing user — writing minimal user');
         const minimalUser: AuthUser = {
           user_id: currentSession.user.id,
           email: currentSession.user.email || '',
-          role: 'user', // This will be updated if database fetch succeeds later
+          role: 'user',
           tos_accepted: true,
           buyersgroup: false,
-          totalXp: 0
+          totalXp: 0,
         };
-        setUser(minimalUser);
+        setUser(mergeUserPreserving(user, minimalUser));
         localStorage.setItem('token', currentSession.access_token);
         isFetchingUserDetailsRef.current = false;
         return;
       } else {
-        console.log('User data fetched successfully:', userData);
-        const userWithId = { ...userData, email: userData?.email || currentSession.user.email || '', user_id: userData?.user_id || currentSession.user.id, totalXp };
+        console.log('[auth] User data fetched successfully:', userData);
+        // Guard: if DB returned an object without role, don't blow away an existing admin.
+        if (!userData?.role && user?.role === 'admin') {
+          console.warn('[auth] DB returned user without role; keeping existing admin state');
+          isFetchingUserDetailsRef.current = false;
+          return;
+        }
+        const userWithId = {
+          ...userData,
+          email: userData?.email || currentSession.user.email || '',
+          user_id: userData?.user_id || currentSession.user.id,
+          totalXp,
+        };
         userCache.set(userId, userWithId as AuthUser);
-        console.log('Updating user with full database data:', userWithId);
+        console.log('[auth] Updating user with full database data:', userWithId);
         setUser(userWithId as AuthUser);
         localStorage.setItem('token', currentSession.access_token);
       }
@@ -201,17 +231,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return;
       }
       
-      // If retry failed, create minimal user object instead of clearing everything
-      console.log('User details fetch failed after retry, creating minimal user object');
+      // Retry also failed. Preserve existing admin/richer user if we have it;
+      // otherwise write a minimal user so the session isn't stuck.
+      console.log('[auth] User details fetch failed after retry — merging with existing (preserving role/XP)');
       const minimalUser: AuthUser = {
         user_id: currentSession.user.id,
         email: currentSession.user.email || '',
         role: 'user',
         tos_accepted: true,
         buyersgroup: false,
-        totalXp: 0
+        totalXp: 0,
       };
-      setUser(minimalUser);
+      setUser(mergeUserPreserving(user, minimalUser));
       localStorage.setItem('token', currentSession.access_token);
     } finally {
       isFetchingUserDetailsRef.current = false;
@@ -271,23 +302,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           
           // Try to fetch full user details first
           if (currentSession.user.email && !isFetchingUserDetailsRef.current) {
-            console.log('checkAuth: Fetching full user details for:', currentSession.user.email);
+            console.log('[auth] checkAuth: Fetching full user details for:', currentSession.user.email);
             await fetchUserDetails(currentSession.user.email, currentSession);
           } else if (!isFetchingUserDetailsRef.current) {
-            // Immediately create a minimal user object from session data, but don't overwrite admin
-            if (!user || user.role !== 'admin') {
+            // No email on session (rare — phone auth). Write minimal user ONLY if we
+            // have nothing yet; otherwise preserve whatever we already have.
+            if (!user) {
               const minimalUser: AuthUser = {
                 user_id: currentSession.user.id,
                 email: currentSession.user.email || '',
-                role: 'user', // Default role, will be updated if database fetch succeeds
-                tos_accepted: true, // Default to true, will be updated if database fetch succeeds
+                role: 'user',
+                tos_accepted: true,
                 buyersgroup: false,
-                totalXp: 0
+                totalXp: 0,
               };
-              console.log('checkAuth: Setting minimal user from session (not admin, not fetching):', minimalUser);
+              console.log('[auth] checkAuth: No existing user, writing minimal:', minimalUser);
               setUser(minimalUser);
             } else {
-              console.log('checkAuth: Keeping existing admin user from session check (not fetching)');
+              console.log('[auth] checkAuth: Preserving existing user (no email, not fetching)');
             }
           }
           localStorage.setItem('token', currentSession.access_token);
@@ -370,19 +402,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           if (newSession.user.email) {
             await fetchUserDetails(newSession.user.email, newSession);
           } else if (!isFetchingUserDetailsRef.current) {
-            if (!user || user.role !== 'admin') {
+            if (!user) {
               const minimalUser: AuthUser = {
                 user_id: newSession.user.id,
                 email: newSession.user.email || '',
                 role: 'user',
                 tos_accepted: true,
                 buyersgroup: false,
-                totalXp: 0
+                totalXp: 0,
               };
-              console.log('SIGNED_IN: Setting minimal user object (no email, not fetching, not admin):', minimalUser);
+              console.log('[auth] SIGNED_IN: No existing user, writing minimal:', minimalUser);
               setUser(minimalUser);
             } else {
-              console.log('SIGNED_IN: Keeping existing admin user (no email, not fetching)');
+              console.log('[auth] SIGNED_IN: Preserving existing user (no email, not fetching)');
             }
           }
           localStorage.setItem('token', newSession.access_token);
@@ -601,4 +633,18 @@ export function useAuth(): AuthContextType {
     throw new Error('useAuth must be used within an AuthProvider');
   }
   return context;
+}
+
+/**
+ * Three-state admin check: 'loading' | true | false.
+ *
+ * Prefer this over `user?.role === 'admin'` in components. Returns 'loading'
+ * during initial auth hydration so components can render a skeleton instead of
+ * flashing the non-admin view. Returns a boolean once auth is settled.
+ */
+export function useIsAdmin(): 'loading' | boolean {
+  const { user, loading, isAuthenticated } = useAuth();
+  if (loading) return 'loading';
+  if (!isAuthenticated || !user) return false;
+  return user.role === 'admin';
 }

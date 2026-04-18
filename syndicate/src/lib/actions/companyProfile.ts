@@ -16,6 +16,19 @@ async function verifyAdmin(userId: string) {
   }
 }
 
+/**
+ * Detects Supabase/PostgREST "table does not exist" errors.
+ * Fires when a migration hasn't been applied yet (e.g., company_goals,
+ * company_pos, company_notes from 20260403100438_add_company_profile.sql).
+ * Read paths degrade to empty lists rather than 500 the page.
+ */
+function isMissingTableError(error: { code?: string; message?: string } | null | undefined): boolean {
+  if (!error) return false;
+  if (error.code === 'PGRST205' || error.code === '42P01') return true;
+  const msg = error.message?.toLowerCase() ?? '';
+  return msg.includes('schema cache') || msg.includes('does not exist');
+}
+
 // -------------------------------------------------------------
 // Users & Company Info
 // -------------------------------------------------------------
@@ -50,7 +63,13 @@ export async function fetchCompanyGoals(companyId: number) {
     .select('*')
     .eq('company_id', companyId)
     .order('created_at', { ascending: false });
-  if (error) throw new Error(error.message);
+  if (error) {
+    if (isMissingTableError(error)) {
+      console.warn('[companyProfile] company_goals table not found — returning empty. Apply migration 20260403100438_add_company_profile.sql.');
+      return [];
+    }
+    throw new Error(error.message);
+  }
   return data;
 }
 
@@ -96,7 +115,13 @@ export async function fetchCompanyPOs(companyId: number) {
     .select('*, users(firstname, lastname)')
     .eq('company_id', companyId)
     .order('created_at', { ascending: false });
-  if (error) throw new Error(error.message);
+  if (error) {
+    if (isMissingTableError(error)) {
+      console.warn('[companyProfile] company_pos table not found — returning empty. Apply migration 20260403100438_add_company_profile.sql.');
+      return [];
+    }
+    throw new Error(error.message);
+  }
   return data;
 }
 
@@ -153,7 +178,13 @@ export async function fetchCompanyNotes(companyId: number, userId: string) {
   }
   
   const { data, error } = await query;
-  if (error) throw new Error(error.message);
+  if (error) {
+    if (isMissingTableError(error)) {
+      console.warn('[companyProfile] company_notes table not found — returning empty. Apply migration 20260403100438_add_company_profile.sql.');
+      return [];
+    }
+    throw new Error(error.message);
+  }
   return data;
 }
 
