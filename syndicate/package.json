@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "echo \"NODE_ENV: $NODE_ENV\" && echo \"SUPABASE_SERVICE_ROLE_KEY_SET: ${SUPABASE_SERVICE_ROLE_KEY:+true}\" && next build && npm run postbuild",
     "postbuild": "cp -r public .next/standalone/public 2>/dev/null || true; cp -r .next/static .next/standalone/.next/static 2>/dev/null || true",
-    "start": "HOSTNAME=0.0.0.0 PORT=${PORT:-8080} node .next/standalone/server.js",
+    "start": "HOSTNAME=0.0.0.0 node .next/standalone/server.js",
     "lint": "next lint"
   },
   "dependencies": {
