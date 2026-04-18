@@ -44,10 +44,18 @@ const isPasswordResetURL = () => {
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
-  const [user, setUser] = useState<AuthUser | null>(null);
+  const [user, setUserState] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [isTabActive, setIsTabActive] = useState(true);
   const router = useRouter();
+
+  // Single wrapped setter — logs every user state transition with the role
+  // being written and a reason tag, so the console trace makes it obvious
+  // where a bad role is coming from.
+  const setUser = useCallback((next: AuthUser | null, reason: string) => {
+    console.log('[auth] setUser:', { reason, role: next?.role ?? null, user_id: next?.user_id ?? null });
+    setUserState(next);
+  }, []);
 
   // Refs holding the latest state so stable callbacks can read it
   // without taking state in their dependency arrays.
@@ -61,17 +69,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Fetch the public.users row for the current session. Stable across renders.
   // Dedupes concurrent calls via inFlightUserFetchRef.
   const fetchUserDetails = useCallback(async (currentSession: Session): Promise<void> => {
-    if (inFlightUserFetchRef.current) return inFlightUserFetchRef.current;
+    if (inFlightUserFetchRef.current) {
+      console.log('[auth] fetchUserDetails: in-flight, returning existing promise');
+      return inFlightUserFetchRef.current;
+    }
 
     const userId = currentSession.user.id;
 
     const cached = userCache.get(userId);
     if (cached) {
-      setUser(cached);
+      console.log('[auth] fetchUserDetails: cache hit, role =', cached.role);
+      setUser(cached, 'cache-hit');
       return;
     }
 
-    console.log('[auth] fetchUserDetails: querying user_id =', userId);
+    console.log('[auth] fetchUserDetails: querying user_id =', userId, 'email =', currentSession.user.email);
 
     const fetchPromise = (async () => {
       try {
@@ -89,27 +101,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         ]);
 
         if (userRes.error) {
-          console.error('[auth] fetchUserDetails: DB error', {
+          console.error('[auth] fetchUserDetails: DB error — LEAVING user as-is (no role downgrade)', {
             code: userRes.error.code,
             message: userRes.error.message,
             details: userRes.error.details,
             hint: userRes.error.hint,
             queried_user_id: userId,
+            had_prior_user: !!userRef.current,
+            prior_role: userRef.current?.role,
           });
-          // Preserve whatever user we already have rather than clobbering with a minimal row.
-          // This keeps admin state across transient RLS/network errors.
-          if (userRef.current) return;
-          // No prior user — write a minimal fallback so the app can boot.
-          setUser({
-            user_id: userId,
-            email: currentSession.user.email,
-            role: 'user',
-            tos_accepted: true,
-            buyersgroup: false,
-            totalXp: 0,
-          });
+          // Do NOT write a minimal fallback with role='user'. Transient errors
+          // (cold-start, network blip, middleware cookie hiccup) would otherwise
+          // demote an admin to user and cache the wrong role for 5 minutes.
+          // Leaving user as null keeps `loading` in useIsAdmin and components
+          // render a loading state until the next successful fetch.
           return;
         }
+
+        console.log('[auth] fetchUserDetails: raw response', {
+          data: userRes.data,
+          xp: xpRes.data,
+        });
 
         const fullUser: AuthUser = {
           ...userRes.data,
@@ -119,9 +131,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         };
         console.log('[auth] fetchUserDetails: success, role =', fullUser.role);
         userCache.set(userId, fullUser);
-        setUser(fullUser);
+        setUser(fullUser, 'db-fetch-success');
       } catch (e) {
-        console.error('[auth] fetchUserDetails: exception', e);
+        console.error('[auth] fetchUserDetails: exception — LEAVING user as-is', e);
         // Keep existing user; never downgrade on a thrown error.
       } finally {
         inFlightUserFetchRef.current = null;
@@ -130,47 +142,55 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     inFlightUserFetchRef.current = fetchPromise;
     return fetchPromise;
-  }, []);
+  }, [setUser]);
 
   // Apply a new session (or null) to state. Stable across renders.
-  const applySession = useCallback(async (nextSession: Session | null): Promise<void> => {
+  const applySession = useCallback(async (nextSession: Session | null, reason: string): Promise<void> => {
+    console.log('[auth] applySession:', { reason, hasSession: !!nextSession, user_email: nextSession?.user.email });
     if (!nextSession) {
       setSession(null);
-      setUser(null);
+      setUser(null, 'apply-session-null');
       userCache.clear();
       return;
     }
 
     setSession(nextSession);
     await fetchUserDetails(nextSession);
-  }, [fetchUserDetails]);
+  }, [fetchUserDetails, setUser]);
 
   // Public checkAuth — reads the current Supabase session and syncs state.
-  // Stable; safe to pass into effects without triggering re-runs.
   const checkAuth = useCallback(async (): Promise<void> => {
     try {
+      console.log('[auth] checkAuth: calling getSession');
       const { data: { session: current }, error } = await supabase.auth.getSession();
       if (error) throw error;
-      await applySession(current);
+      await applySession(current, 'checkAuth');
     } catch (e) {
       console.error('[auth] checkAuth failed:', e);
     }
   }, [applySession]);
 
   // Single mount effect: initial session check + one subscription to auth events.
-  // Empty deps: runs exactly once, regardless of state churn downstream.
   useEffect(() => {
+    console.log('[auth] AuthProvider mount effect running');
     let cancelled = false;
 
     (async () => {
       if (isPasswordResetURL()) {
+        console.log('[auth] mount: on password reset URL, skipping initial check');
         setLoading(false);
         return;
       }
       try {
+        console.log('[auth] mount: initial getSession');
         const { data: { session: current } } = await supabase.auth.getSession();
         if (cancelled) return;
-        if (current) await applySession(current);
+        console.log('[auth] mount: initial session:', {
+          hasSession: !!current,
+          user_id: current?.user.id,
+          user_email: current?.user.email,
+        });
+        if (current) await applySession(current, 'mount-initial');
       } catch (e) {
         console.error('[auth] Initial session check failed:', e);
       } finally {
@@ -178,33 +198,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     })();
 
-    // Supabase propagates auth events across tabs via localStorage, so a single
-    // subscription here keeps every tab in sync (SIGNED_IN, SIGNED_OUT,
-    // TOKEN_REFRESHED, USER_UPDATED, PASSWORD_RECOVERY).
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, newSession) => {
       if (cancelled) return;
+      console.log('[auth] onAuthStateChange:', {
+        event,
+        hasSession: !!newSession,
+        user_email: newSession?.user.email,
+        user_id: newSession?.user.id,
+      });
 
       if (isPasswordResetURL()) {
-        if (event === 'SIGNED_OUT') return; // ignore post-password-update signout
+        if (event === 'SIGNED_OUT') return;
         if (newSession && (event === 'PASSWORD_RECOVERY' || event === 'USER_UPDATED' || event === 'SIGNED_IN')) {
           setSession(newSession);
-          setUser(null);
+          setUser(null, 'password-reset-page');
           return;
         }
       }
 
       if (event === 'SIGNED_OUT') {
-        await applySession(null);
+        await applySession(null, 'signed-out-event');
         router.push('/login');
         return;
       }
 
       if (newSession) {
-        await applySession(newSession);
+        await applySession(newSession, `event-${event}`);
       }
     });
 
     return () => {
+      console.log('[auth] AuthProvider unmount');
       cancelled = true;
       subscription.unsubscribe();
     };
@@ -212,22 +236,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   // Visibility handler: only re-check if the session is actually near expiry.
-  // Does NOT depend on checkAuth — avoids rebinding listeners on state churn.
   useEffect(() => {
     const onVisibilityChange = () => {
       const visible = document.visibilityState === 'visible';
       setIsTabActive(visible);
-      if (!visible) return;
+      if (!visible) {
+        console.log('[auth] visibility: tab hidden');
+        return;
+      }
 
       const current = sessionRef.current;
-      if (!current?.expires_at) return;
+      if (!current?.expires_at) {
+        console.log('[auth] visibility: tab visible, no session to check');
+        return;
+      }
 
       const now = Math.floor(Date.now() / 1000);
-      // Only refetch if session expires within 60s. Supabase auto-refresh
-      // handles anything further out, and cross-tab sync via onAuthStateChange
-      // already keeps other state coherent.
-      if (now >= current.expires_at - 60) {
+      const secondsUntilExpiry = current.expires_at - now;
+      if (secondsUntilExpiry <= 60) {
+        console.log('[auth] visibility: tab visible, session expires in', secondsUntilExpiry, 'sec → calling checkAuth');
         checkAuth();
+      } else {
+        console.log('[auth] visibility: tab visible, session healthy (expires in', secondsUntilExpiry, 'sec) → skipping check');
       }
     };
 
