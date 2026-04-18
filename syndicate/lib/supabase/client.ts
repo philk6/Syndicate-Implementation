@@ -24,15 +24,6 @@ function getClient(): SupabaseClient {
       autoRefreshToken: true,
       detectSessionInUrl: true,
     },
-    global: {
-      fetch: (url, options) => {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 30000);
-        return fetch(url, { ...options, signal: controller.signal }).finally(() =>
-          clearTimeout(timeoutId),
-        );
-      },
-    },
   });
 
   return _client;
