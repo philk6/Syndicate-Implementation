@@ -40,10 +40,8 @@ export function ClientLayoutWithConditionalSidebar({ children }: { children: Rea
     return <main className="flex-1 w-full">{children}</main>;
   }
 
-  // For all other pages, render with sidebar
-  // Use key={pathname} to force the entire layout to re-render when route changes
   return (
-    <SidebarProvider key={pathname}>
+    <SidebarProvider>
       <AppSidebar />
       <SidebarInset>
         <header className="flex h-14 shrink-0 items-center gap-2 border-b border-white/[0.05] px-4">

@@ -130,7 +130,11 @@ export default function AdminDashboardPage() {
     }
 
     fetchDashboardData();
-  }, [isAuthenticated, authLoading, router, user]);
+    // Deps: primitive values only. Excluding `router` (unstable ref) and the
+    // full `user` object (ref changes on every AuthProvider update) prevents
+    // this effect from re-running on unrelated auth state churn.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthenticated, authLoading, user?.role]);
 
   if (loading) {
     return <PageLoadingSpinner />;

@@ -99,10 +99,9 @@ export default function TosDialog({ isOpen, onClose }: TosDialogProps) {
         throw error;
       }
 
-      // Invalidate user cache to ensure fresh data is fetched
-      if (user.email) {
-        userCache.delete(user.email);
-      }
+      // Invalidate user cache to ensure fresh data is fetched.
+      // Cache is keyed by user_id (see lib/auth.tsx).
+      userCache.delete(user.id);
 
       // Close the dialog and notify parent
       onClose();

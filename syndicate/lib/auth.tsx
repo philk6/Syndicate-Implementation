@@ -71,6 +71,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
 
+    console.log('[auth] fetchUserDetails: querying user_id =', userId);
+
     const fetchPromise = (async () => {
       try {
         const [userRes, xpRes] = await Promise.all([
@@ -87,7 +89,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         ]);
 
         if (userRes.error) {
-          console.error('[auth] Error fetching user row:', userRes.error);
+          console.error('[auth] fetchUserDetails: DB error', {
+            code: userRes.error.code,
+            message: userRes.error.message,
+            details: userRes.error.details,
+            hint: userRes.error.hint,
+            queried_user_id: userId,
+          });
           // Preserve whatever user we already have rather than clobbering with a minimal row.
           // This keeps admin state across transient RLS/network errors.
           if (userRef.current) return;
@@ -109,10 +117,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           email: userRes.data.email ?? currentSession.user.email,
           totalXp: xpRes.data?.total_xp ?? 0,
         };
+        console.log('[auth] fetchUserDetails: success, role =', fullUser.role);
         userCache.set(userId, fullUser);
         setUser(fullUser);
       } catch (e) {
-        console.error('[auth] Exception fetching user row:', e);
+        console.error('[auth] fetchUserDetails: exception', e);
         // Keep existing user; never downgrade on a thrown error.
       } finally {
         inFlightUserFetchRef.current = null;
@@ -232,10 +241,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     router.push('/orders');
   };
 
-  const logout = async () => {
+  const logout = useCallback(async () => {
     if (userRef.current?.user_id) userCache.delete(userRef.current.user_id);
     await supabase.auth.signOut();
-  };
+  }, []);
 
   const isAuthenticated = !!session;
 
