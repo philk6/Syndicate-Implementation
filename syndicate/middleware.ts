@@ -65,45 +65,35 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  // Check admin access for /admin routes
-  if (pathname.startsWith('/admin')) {
-    console.log('Middleware: Checking admin access for user:', session.user.id);
-    
+  const isAdminPath = pathname.startsWith('/admin');
+  const needsDbCheck = isAdminPath || !isTosExemptPath;
+
+  if (needsDbCheck) {
+    // Single DB query covers both role (admin paths) and tos_accepted (non-admin paths).
     const { data: userData, error: userError } = await supabase
       .from('users')
-      .select('role')
+      .select('role, tos_accepted')
       .eq('user_id', session.user.id)
       .single();
 
-    console.log('Middleware: User role check result:', { 
-      userData, 
-      userError: userError?.message, 
-      userId: session.user.id 
-    });
-
-    if (userError || !userData || userData.role !== 'admin') {
-      console.warn('Admin access denied:', { 
-        user: session.user.id, 
-        error: userError?.message, 
-        role: userData?.role 
-      });
-      const url = req.nextUrl.clone();
-      url.pathname = '/unauthorized';
-      return NextResponse.redirect(url);
+    if (isAdminPath) {
+      if (userError || !userData || userData.role !== 'admin') {
+        console.warn('Middleware: Admin access denied:', {
+          user: session.user.id,
+          error: userError?.message,
+          role: userData?.role,
+        });
+        const url = req.nextUrl.clone();
+        url.pathname = '/unauthorized';
+        return NextResponse.redirect(url);
+      }
+      console.log('Middleware: Admin access granted for user:', session.user.id);
+      // Admin paths skip ToS check — return immediately
+      return res;
     }
-    
-    console.log('Middleware: Admin access granted for user:', session.user.id);
-  }
 
-  // For non-exempt paths, check ToS acceptance
-  if (!isTosExemptPath && !pathname.startsWith('/admin')) {
-    const { data: userData, error: userError } = await supabase
-      .from('users')
-      .select('tos_accepted')
-      .eq('user_id', session.user.id)
-      .single();
-
-    if (userError || !userData?.tos_accepted) {
+    // Non-admin, non-exempt paths: enforce ToS acceptance
+    if (!userData?.tos_accepted) {
       console.log('Middleware: User has not accepted ToS, redirecting to dashboard');
       const url = req.nextUrl.clone();
       url.pathname = '/dashboard';
@@ -111,7 +101,6 @@ export async function middleware(req: NextRequest) {
     }
   }
 
-  // IMPORTANT: Return the response object with the supabase cookie modifications
   return res;
 }
 

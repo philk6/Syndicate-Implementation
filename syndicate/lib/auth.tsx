@@ -7,8 +7,18 @@ import { LRUCache } from 'lru-cache';
 
 export const userCache = new LRUCache<string, AuthUser>({
   max: 100,
-  ttl: 1000 * 60 * 5, // 5 minutes
+  ttl: 1000 * 60 * 30, // 30 minutes — reduces cache-miss windows where role can flash
 });
+
+// Persists the user's role across page loads and tab switches so a cold LRU miss
+// can never cause an admin→recruit flash while the DB fetch is in flight.
+const ROLE_STORAGE_KEY = 'syndicate_user_role';
+const persistRole = (role: AuthUser['role']) => {
+  try { localStorage.setItem(ROLE_STORAGE_KEY, role); } catch { /* ignore SSR */ }
+};
+const clearPersistedRole = () => {
+  try { localStorage.removeItem(ROLE_STORAGE_KEY); } catch { /* ignore SSR */ }
+};
 
 interface AuthUser {
   user_id: string;
@@ -80,6 +90,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (cached) {
       console.log('[auth] fetchUserDetails: cache hit, role =', cached.role);
       setUser(cached, 'cache-hit');
+      persistRole(cached.role); // keep localStorage in sync with cache
       return;
     }
 
@@ -132,6 +143,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         console.log('[auth] fetchUserDetails: success, role =', fullUser.role);
         userCache.set(userId, fullUser);
         setUser(fullUser, 'db-fetch-success');
+        persistRole(fullUser.role); // persist so tab switches never cause admin→recruit flash
       } catch (e) {
         console.error('[auth] fetchUserDetails: exception — LEAVING user as-is', e);
         // Keep existing user; never downgrade on a thrown error.
@@ -151,6 +163,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSession(null);
       setUser(null, 'apply-session-null');
       userCache.clear();
+      clearPersistedRole();
       return;
     }
 
