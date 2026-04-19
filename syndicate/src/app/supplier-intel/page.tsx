@@ -115,6 +115,7 @@ export default function SupplierIntelPage() {
           className="w-full h-full border-0"
           style={{ display: iframeError ? 'none' : 'block' }}
           allow="clipboard-read; clipboard-write"
+          loading="lazy"
           title="Supplier Intel"
         />
       </div>
