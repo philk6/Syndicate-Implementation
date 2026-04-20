@@ -1,7 +1,7 @@
 export const dynamic = 'force-dynamic';
 // syndicate/src/app/api/credits/balance/route.ts
 
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
+import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 
@@ -9,7 +9,12 @@ import { NextResponse } from 'next/server';
  * API route for a logged-in user to fetch their own company's credit balance.
  */
 export async function GET() {
-  const supabase = createRouteHandlerClient({ cookies });
+  const cookieStore = await cookies();
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    { cookies: { getAll: () => cookieStore.getAll(), setAll: () => {} } },
+  );
 
   // 1. Authenticate the user's session.
   const { data: { session } } = await supabase.auth.getSession();
