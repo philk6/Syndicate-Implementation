@@ -72,6 +72,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const sessionRef = useRef<Session | null>(null);
   const userRef = useRef<AuthUser | null>(null);
   const inFlightUserFetchRef = useRef<Promise<void> | null>(null);
+  // Tracks the last user_id we applied a session for. Used to skip
+  // re-fetching the profile on TOKEN_REFRESHED events where identity
+  // hasn't actually changed.
+  const lastUserIdRef = useRef<string | null>(null);
 
   useEffect(() => { sessionRef.current = session; }, [session]);
   useEffect(() => { userRef.current = user; }, [user]);
@@ -96,6 +100,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     console.log('[auth] fetchUserDetails: querying user_id =', userId, 'email =', currentSession.user.email);
 
+    // Per-query 8s hard timeout. Belt-and-suspenders with the 15s global
+    // fetch timeout in the Supabase client — this one aborts the PostgREST
+    // request earlier so the UI can fall back to the cached role sooner.
+    const queryController = new AbortController();
+    const queryTimeout = setTimeout(() => {
+      console.warn('[auth] fetchUserDetails: 8s timeout — aborting query');
+      queryController.abort();
+    }, 8000);
+
     const fetchPromise = (async () => {
       try {
         const [userRes, xpRes] = await Promise.all([
@@ -103,11 +116,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             .from('users')
             .select('user_id, email, role, firstname, lastname, company_id, tos_accepted, buyersgroup')
             .eq('user_id', userId)
+            .abortSignal(queryController.signal)
             .single(),
           supabase
             .from('user_total_xp')
             .select('total_xp')
             .eq('user_id', userId)
+            .abortSignal(queryController.signal)
             .maybeSingle(),
         ]);
 
@@ -146,8 +161,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         persistRole(fullUser.role); // persist so tab switches never cause admin→recruit flash
       } catch (e) {
         console.error('[auth] fetchUserDetails: exception — LEAVING user as-is', e);
-        // Keep existing user; never downgrade on a thrown error.
+        // Keep existing user; never downgrade on a thrown error (timeout, abort, network).
       } finally {
+        clearTimeout(queryTimeout);
         inFlightUserFetchRef.current = null;
       }
     })();
@@ -203,7 +219,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           user_id: current?.user.id,
           user_email: current?.user.email,
         });
-        if (current) await applySession(current, 'mount-initial');
+        if (current) {
+          lastUserIdRef.current = current.user.id;
+          await applySession(current, 'mount-initial');
+        }
       } catch (e) {
         console.error('[auth] Initial session check failed:', e);
       } finally {
@@ -229,11 +248,45 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       }
 
+      // Token refreshes happen automatically (every hour, on focus, on network
+      // resume). They never change identity. Update the session ref silently
+      // but do NOT refetch the profile — that's what was hanging production.
+      if (event === 'TOKEN_REFRESHED') {
+        if (newSession) {
+          setSession(newSession);
+          sessionRef.current = newSession;
+        }
+        return;
+      }
+
+      // USER_UPDATED and PASSWORD_RECOVERY (outside reset-URL flow) do not
+      // change identity either. Update session, skip profile refetch.
+      if (event === 'USER_UPDATED' || event === 'PASSWORD_RECOVERY') {
+        if (newSession) {
+          setSession(newSession);
+          sessionRef.current = newSession;
+        }
+        return;
+      }
+
       if (event === 'SIGNED_OUT') {
+        lastUserIdRef.current = null;
         await applySession(null, 'signed-out-event');
         router.push('/login');
         return;
       }
+
+      // INITIAL_SESSION / SIGNED_IN: only refetch profile if user_id actually changed
+      const newUserId = newSession?.user?.id ?? null;
+      if (newUserId && newUserId === lastUserIdRef.current) {
+        console.log('[auth] onAuthStateChange: same user_id — updating session only, skipping profile refetch');
+        if (newSession) {
+          setSession(newSession);
+          sessionRef.current = newSession;
+        }
+        return;
+      }
+      lastUserIdRef.current = newUserId;
 
       if (newSession) {
         await applySession(newSession, `event-${event}`);
@@ -248,35 +301,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Visibility handler: only re-check if the session is actually near expiry.
+  // Visibility handler: ONLY updates the isTabActive flag for UI purposes.
+  // We DO NOT call checkAuth/getSession/fetchUserDetails here. Supabase's
+  // autoRefreshToken already handles token rotation on focus internally;
+  // duplicating that work was one of the sources of the production hang.
   useEffect(() => {
     const onVisibilityChange = () => {
-      const visible = document.visibilityState === 'visible';
-      setIsTabActive(visible);
-      if (!visible) {
-        console.log('[auth] visibility: tab hidden');
-        return;
-      }
-
-      const current = sessionRef.current;
-      if (!current?.expires_at) {
-        console.log('[auth] visibility: tab visible, no session to check');
-        return;
-      }
-
-      const now = Math.floor(Date.now() / 1000);
-      const secondsUntilExpiry = current.expires_at - now;
-      if (secondsUntilExpiry <= 60) {
-        console.log('[auth] visibility: tab visible, session expires in', secondsUntilExpiry, 'sec → calling checkAuth');
-        checkAuth();
-      } else {
-        console.log('[auth] visibility: tab visible, session healthy (expires in', secondsUntilExpiry, 'sec) → skipping check');
-      }
+      setIsTabActive(document.visibilityState === 'visible');
     };
-
     document.addEventListener('visibilitychange', onVisibilityChange);
     return () => document.removeEventListener('visibilitychange', onVisibilityChange);
-  }, [checkAuth]);
+  }, []);
+
+  // STUCK-LOADING safety net: if the loading flag stays true for >12 seconds
+  // (e.g. initial getSession hung and the 15s fetch timeout hasn't fired yet),
+  // force-release it so the app renders. Components that gate on `user` will
+  // render whatever last-known state exists (or redirect to /login).
+  useEffect(() => {
+    if (!loading) return;
+    const t = setTimeout(() => {
+      console.error('[auth] STUCK-LOADING safety net firing — releasing loading');
+      setLoading(false);
+    }, 12000);
+    return () => clearTimeout(t);
+  }, [loading]);
 
   const login = (token: string) => {
     localStorage.setItem('token', token);
