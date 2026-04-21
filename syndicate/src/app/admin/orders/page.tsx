@@ -37,17 +37,6 @@ interface Order {
   order_statuses: { description: string } | null;
 }
 
-interface ExcelRow {
-  'Status': string;
-  'Deadline': string;
-  'Label Upload Deadline': string;
-  'Lead Time (days)': number;
-  'ASIN': string;
-  'Price': number;
-  'Quantity': number;
-  'Description'?: string;
-  [key: string]: string | number | undefined;
-}
 
 const STATUS_COLOR: Record<string, string> = {
   open: '#4ade80',
@@ -168,76 +157,215 @@ export default function AdminOrdersPage() {
       return;
     }
     setUploadMessage('');
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-      const data = new Uint8Array(e.target?.result as ArrayBuffer);
-      const workbook = read(data, { type: 'array', dateNF: 'yyyy-mm-dd' });
+
+    try {
+      const buffer = await selectedFile.arrayBuffer();
+      const workbook = read(new Uint8Array(buffer), { type: 'array', dateNF: 'yyyy-mm-dd' });
       const sheet = workbook.Sheets['Order'];
       if (!sheet) {
         setUploadMessage('Sheet "Order" not found in the file');
         return;
       }
-      const rows: ExcelRow[] = utils.sheet_to_json(sheet, { raw: false, dateNF: 'yyyy-mm-dd' });
-      if (rows.length === 0) {
+
+      // raw:false returns ISO strings for dates; raw:true returns Date objects.
+      // We'll accept either in coerceDate.
+      const rawRows = utils.sheet_to_json<Record<string, unknown>>(sheet, { raw: true });
+      if (rawRows.length === 0) {
         setUploadMessage('No data found in the file');
         return;
       }
-      const firstRow = rows[0];
-      const status = statuses.find(s => s.description === firstRow['Status']);
+
+      // Case-insensitive / whitespace-tolerant header lookup
+      const getCell = (row: Record<string, unknown>, target: string): unknown => {
+        const normalizedTarget = target.toLowerCase().replace(/\s+/g, ' ').trim();
+        for (const key of Object.keys(row)) {
+          if (key.toLowerCase().replace(/\s+/g, ' ').trim() === normalizedTarget) return row[key];
+        }
+        return undefined;
+      };
+
+      // Synonym map → canonical description (what we store in order_statuses)
+      const STATUS_ALIASES: Record<string, string> = {
+        draft:     'Draft',
+        open:      'Draft',
+        pending:   'Draft',
+        new:       'Draft',
+        active:    'Active',
+        closed:    'Closed',
+        fulfilled: 'Fulfilled',
+        complete:  'Fulfilled',
+        completed: 'Fulfilled',
+        cancelled: 'Cancelled',
+        canceled:  'Cancelled',
+      };
+
+      const coerceDate = (v: unknown): Date | null => {
+        if (v == null || v === '') return null;
+        if (v instanceof Date) return isNaN(v.getTime()) ? null : v;
+        if (typeof v === 'number') {
+          // Excel serial date (days since 1899-12-30)
+          const d = new Date(Math.round((v - 25569) * 86400 * 1000));
+          return isNaN(d.getTime()) ? null : d;
+        }
+        if (typeof v === 'string') {
+          const d = new Date(v);
+          return isNaN(d.getTime()) ? null : d;
+        }
+        return null;
+      };
+
+      const ASIN_RE = /^B0[A-Z0-9]{8}$/;
+      const thirtyDaysAgo = new Date(Date.now() - 30 * 86400 * 1000);
+      const errors: string[] = [];
+      const validated: Array<{
+        leadTime: number;
+        deadline: string;
+        labelUploadDeadline: string;
+        statusDescription: string;
+        asin: string;
+        price: number;
+        quantity: number;
+        description: string;
+      }> = [];
+
+      rawRows.forEach((row, i) => {
+        const rowNum = i + 2; // header is row 1 in user-facing numbering
+
+        // Status — default to Draft if missing
+        const rawStatus = getCell(row, 'Status');
+        const statusStr = typeof rawStatus === 'string' ? rawStatus.trim() : '';
+        const statusKey = statusStr.toLowerCase();
+        const statusDescription = statusStr === '' ? 'Draft' : STATUS_ALIASES[statusKey];
+        if (!statusDescription) {
+          errors.push(`Row ${rowNum}: status "${statusStr}" not recognized. Accepted: Draft, Active, Closed, Fulfilled, Cancelled.`);
+        }
+
+        // Lead Time
+        const rawLead = getCell(row, 'Lead Time (days)');
+        const leadTime = parseInt(String(rawLead ?? ''), 10);
+        if (Number.isNaN(leadTime) || leadTime < 0) {
+          errors.push(`Row ${rowNum}: Lead Time (days) "${rawLead}" is not a valid non-negative integer.`);
+        }
+
+        // Deadline
+        const dl = coerceDate(getCell(row, 'Deadline'));
+        if (!dl) errors.push(`Row ${rowNum}: Deadline is missing or invalid.`);
+        else if (dl < thirtyDaysAgo) errors.push(`Row ${rowNum}: Deadline ${dl.toISOString().slice(0, 10)} is more than 30 days in the past.`);
+
+        // Label Upload Deadline
+        const lud = coerceDate(getCell(row, 'Label Upload Deadline'));
+        if (!lud) errors.push(`Row ${rowNum}: Label Upload Deadline is missing or invalid.`);
+        else if (lud < thirtyDaysAgo) errors.push(`Row ${rowNum}: Label Upload Deadline ${lud.toISOString().slice(0, 10)} is more than 30 days in the past.`);
+
+        // ASIN
+        const rawAsin = getCell(row, 'ASIN');
+        const asin = typeof rawAsin === 'string' ? rawAsin.trim().toUpperCase() : '';
+        if (!ASIN_RE.test(asin)) {
+          errors.push(`Row ${rowNum}: ASIN "${rawAsin}" is not a valid Amazon ASIN (expected format: B0XXXXXXXX).`);
+        }
+
+        // Price
+        const rawPrice = getCell(row, 'Price');
+        const price = parseFloat(String(rawPrice ?? ''));
+        if (Number.isNaN(price) || price < 0) {
+          errors.push(`Row ${rowNum}: Price "${rawPrice}" is not a valid non-negative number.`);
+        }
+
+        // Quantity — template ships as string
+        const rawQty = getCell(row, 'Quantity');
+        const quantity = parseInt(String(rawQty ?? ''), 10);
+        if (Number.isNaN(quantity) || quantity < 0) {
+          errors.push(`Row ${rowNum}: Quantity "${rawQty}" is not a valid non-negative integer.`);
+        }
+
+        // Description
+        const rawDesc = getCell(row, 'Description');
+        const description = typeof rawDesc === 'string' ? rawDesc.trim() : '';
+        if (!description) {
+          errors.push(`Row ${rowNum}: Description is empty.`);
+        }
+
+        if (statusDescription && !Number.isNaN(leadTime) && dl && lud && ASIN_RE.test(asin) && !Number.isNaN(price) && !Number.isNaN(quantity) && description) {
+          validated.push({
+            leadTime,
+            deadline: dl.toISOString(),
+            labelUploadDeadline: lud.toISOString(),
+            statusDescription,
+            asin,
+            price: +price.toFixed(2),
+            quantity,
+            description,
+          });
+        }
+      });
+
+      if (errors.length > 0) {
+        setUploadMessage(`${errors.length} error(s) found — no orders created:\n• ${errors.slice(0, 10).join('\n• ')}${errors.length > 10 ? `\n• …and ${errors.length - 10} more` : ''}`);
+        return;
+      }
+
+      // Resolve status description → status ID (uses the first row's status for the header order,
+      // matching the original behavior where all rows share a single order metadata).
+      const headerRow = validated[0];
+      const status = statuses.find(s => s.description === headerRow.statusDescription);
       if (!status) {
-        setUploadMessage(`Invalid status: ${firstRow['Status']}`);
+        setUploadMessage(`Status "${headerRow.statusDescription}" is not yet configured in the database. Ask an admin to seed order_statuses.`);
         return;
       }
-      const deadline = new Date(firstRow['Deadline']).toISOString();
-      const labelUploadDeadline = new Date(firstRow['Label Upload Deadline']).toISOString();
-      if (isNaN(new Date(deadline).getTime()) || isNaN(new Date(labelUploadDeadline).getTime())) {
-        setUploadMessage('Invalid date format in Deadline or Label Upload Deadline');
-        return;
-      }
+
+      // Create order (single row — same semantics as before)
       const { data: orderData, error: orderError } = await supabase
         .from('orders')
         .insert({
-          leadtime: firstRow['Lead Time (days)'],
-          deadline: deadline,
-          label_upload_deadline: labelUploadDeadline,
+          leadtime: headerRow.leadTime,
+          deadline: headerRow.deadline,
+          label_upload_deadline: headerRow.labelUploadDeadline,
           order_status_id: status.order_status_id,
           total_amount: 0,
         })
         .select('order_id')
         .single();
+
       if (orderError || !orderData) {
-        setUploadMessage('Failed to create order: ' + orderError?.message);
+        setUploadMessage('Failed to create order: ' + (orderError?.message ?? 'unknown error'));
         return;
       }
-      const productsToInsert = rows.map((row, index) => ({
+
+      // Insert all products atomically (single insert call)
+      const productsToInsert = validated.map((r, index) => ({
         order_id: orderData.order_id,
         sequence: index + 1,
-        asin: row['ASIN'],
-        price: row['Price'],
-        cost_price: row['Price'],
-        quantity: row['Quantity'],
-        description: row['Description'] || '',
+        asin: r.asin,
+        price: r.price,
+        cost_price: r.price,
+        quantity: r.quantity,
+        description: r.description,
       }));
+
       const { error: productsError } = await supabase
         .from('order_products')
         .insert(productsToInsert);
+
       if (productsError) {
         setUploadMessage('Failed to create product lines: ' + productsError.message);
         await supabase.from('orders').delete().eq('order_id', orderData.order_id);
-      } else {
-        setUploadMessage('Order created successfully!');
-        setOrders(prev => [...prev, {
-          order_id: orderData.order_id,
-          leadtime: firstRow['Lead Time (days)'],
-          deadline: deadline,
-          label_upload_deadline: labelUploadDeadline,
-          order_statuses: { description: status.description },
-        }]);
-        setIsUploadOpen(false);
-        setSelectedFile(null);
+        return;
       }
-    };
-    reader.readAsArrayBuffer(selectedFile);
+
+      setUploadMessage(`Order created successfully with ${validated.length} product line(s).`);
+      setOrders(prev => [...prev, {
+        order_id: orderData.order_id,
+        leadtime: headerRow.leadTime,
+        deadline: headerRow.deadline,
+        label_upload_deadline: headerRow.labelUploadDeadline,
+        order_statuses: { description: status.description },
+      }]);
+      setIsUploadOpen(false);
+      setSelectedFile(null);
+    } catch (err) {
+      console.error('Upload failed:', err);
+      setUploadMessage(`Upload failed: ${err instanceof Error ? err.message : 'unknown error'}`);
+    }
   };
 
   const handleSelectOrder = (orderId: number) => {
@@ -313,9 +441,14 @@ export default function AdminOrdersPage() {
                   <DialogTitle>Upload Order File</DialogTitle>
                 </DialogHeader>
                 <div className="space-y-4">
-                  <p className="text-sm text-neutral-400">
-                    Upload an .xlsx file with columns: Lead Time (days), Deadline, Label Upload Deadline, Status, ASIN, Price, Quantity, Description.
-                  </p>
+                  <div className="space-y-1.5 text-sm text-neutral-400">
+                    <p>
+                      Upload an .xlsx file (sheet name <span className="font-mono text-neutral-300">Order</span>) with columns: <span className="text-neutral-300">Lead Time (days), Deadline, Label Upload Deadline, Status, ASIN, Price, Quantity, Description</span>.
+                    </p>
+                    <p className="text-xs text-neutral-500">
+                      Status must be one of <span className="text-neutral-300">Draft, Active, Closed, Fulfilled, Cancelled</span>. Case-insensitive; leave blank to default to Draft.
+                    </p>
+                  </div>
                   <Input
                     type="file"
                     accept=".xlsx"
@@ -326,11 +459,11 @@ export default function AdminOrdersPage() {
                     Submit
                   </DsButton>
                   {uploadMessage && (
-                    <p
-                      className={`text-sm ${uploadMessage.includes('successfully') ? 'text-emerald-400' : 'text-rose-400'}`}
+                    <pre
+                      className={`text-xs font-sans whitespace-pre-wrap max-h-48 overflow-y-auto ${uploadMessage.includes('successfully') ? 'text-emerald-400' : 'text-rose-400'}`}
                     >
                       {uploadMessage}
-                    </p>
+                    </pre>
                   )}
                 </div>
               </DialogContent>
