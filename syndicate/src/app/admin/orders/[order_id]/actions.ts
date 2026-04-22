@@ -58,12 +58,65 @@ export async function revokeAndRefundAllocationAction(
   }
 }
 
-export async function calculateOrderAllocation(orderId: number) {
+export type CalculateAllocationReason =
+  | 'order_not_found'
+  | 'backend_not_configured'
+  | 'backend_misconfigured'
+  | 'backend_unreachable'
+  | 'allocation_cleanup_failed'
+  | 'allocation_fetch_failed'
+  | 'unexpected_error';
+
+export interface CalculateAllocationResult {
+  success: boolean;
+  message: string;
+  reason?: CalculateAllocationReason;
+  // Included on success; empty on failure.
+  allocations?: Array<{
+    order_id: number;
+    sequence: number;
+    company_id: number;
+    quantity: number;
+    invested_amount: number | null;
+    profit: number | null;
+  }>;
+  company_roi?: Array<{ company_id: number; max_investment: number | null; roi: number | null; needs_review: boolean }>;
+}
+
+export async function calculateOrderAllocation(orderId: number): Promise<CalculateAllocationResult> {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
   const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
   const supabase = createClient(supabaseUrl, supabaseKey);
 
   try {
+    // Pre-flight: does this order actually exist in OUR Supabase? Skip the
+    // round-trip to the Python allocator if not — it would only produce the
+    // same "No order found" error from the other side of the wire.
+    const { data: orderRow, error: orderLookupError } = await supabase
+      .from('orders')
+      .select('order_id')
+      .eq('order_id', orderId)
+      .maybeSingle();
+
+    if (orderLookupError) {
+      console.error('[calculateOrderAllocation] orders pre-flight lookup failed:', {
+        orderId,
+        error: orderLookupError,
+      });
+      return {
+        success: false,
+        reason: 'unexpected_error',
+        message: `Could not verify order #${orderId}: ${orderLookupError.message}`,
+      };
+    }
+    if (!orderRow) {
+      return {
+        success: false,
+        reason: 'order_not_found',
+        message: `Order #${orderId} does not exist. It may have been deleted or the URL is stale.`,
+      };
+    }
+
     // Clear existing allocation results to ensure fresh data
     const { error: deleteError } = await supabase
       .from('allocation_results')
@@ -71,33 +124,89 @@ export async function calculateOrderAllocation(orderId: number) {
       .eq('order_id', orderId);
 
     if (deleteError) {
-      console.error('Delete allocation results error:', deleteError);
-      return { success: false, message: 'Failed to clear existing allocation results' };
+      console.error('[calculateOrderAllocation] allocation_results delete failed:', {
+        orderId,
+        error: deleteError,
+      });
+      return {
+        success: false,
+        reason: 'allocation_cleanup_failed',
+        message: 'Failed to clear existing allocation results',
+      };
     }
 
     // Call the Python backend endpoint
     if (!process.env.BACKEND_URL) {
-      return { success: false, message: 'BACKEND_URL environment variable is not configured' };
+      return {
+        success: false,
+        reason: 'backend_not_configured',
+        message: 'The allocation service URL (BACKEND_URL) is not configured on this deployment.',
+      };
     }
     const backendUrl = `${process.env.BACKEND_URL}/allocate/${orderId}`;
-    console.log(`Calling backend endpoint: ${backendUrl}`);
-    const response = await fetch(backendUrl, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        // Add any necessary authentication headers if required
-      },
-      cache: 'no-store', // Prevent caching of the response
-    });
+    console.log(`[calculateOrderAllocation] calling backend ${backendUrl}`);
+
+    let response: Response;
+    try {
+      response = await fetch(backendUrl, {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' },
+        cache: 'no-store',
+      });
+    } catch (networkErr) {
+      console.error('[calculateOrderAllocation] backend unreachable:', {
+        orderId,
+        backendUrl,
+        error: networkErr instanceof Error ? networkErr.message : String(networkErr),
+      });
+      return {
+        success: false,
+        reason: 'backend_unreachable',
+        message:
+          'The allocation service is unreachable. This is a deployment issue — check that the Python allocator service is running and that BACKEND_URL points to it.',
+      };
+    }
 
     if (!response.ok) {
-      const errorData = await response.json();
-      console.error('Backend allocation error:', errorData);
-      return { success: false, message: `Backend allocation failed: ${errorData.detail || 'Unknown error'}` };
+      const rawBody = await response.text().catch(() => '(unreadable body)');
+      let detail: string | undefined;
+      try {
+        detail = JSON.parse(rawBody)?.detail;
+      } catch {
+        /* not JSON */
+      }
+
+      console.error('[calculateOrderAllocation] backend returned non-2xx:', {
+        orderId,
+        backendUrl,
+        status: response.status,
+        statusText: response.statusText,
+        body: rawBody,
+      });
+
+      // The Syndicate Supabase already confirmed the order exists above, so if
+      // the allocator says "no order found," the allocator is reading from a
+      // different / stale database. Surface that specifically so it isn't
+      // mistaken for a frontend bug.
+      if (detail && /no order found/i.test(detail)) {
+        return {
+          success: false,
+          reason: 'backend_misconfigured',
+          message:
+            `The allocation service reports order #${orderId} doesn't exist, but Syndicate's database shows it does. ` +
+            `The Python allocator is likely connected to a different or stale database — check its SUPABASE_URL / SUPABASE_DB credentials on Railway.`,
+        };
+      }
+
+      return {
+        success: false,
+        reason: 'backend_misconfigured',
+        message: `Allocation service returned ${response.status}: ${detail ?? response.statusText ?? 'no detail'}`,
+      };
     }
 
     const result = await response.json();
-    console.log('Backend allocation result:', result);
+    console.log('[calculateOrderAllocation] backend success:', result);
 
     // Fetch allocation results from the database
     const { data: allocationResults, error: fetchAllocError } = await supabase
@@ -106,8 +215,15 @@ export async function calculateOrderAllocation(orderId: number) {
       .eq('order_id', orderId);
 
     if (fetchAllocError) {
-      console.error('Fetch allocation results error:', fetchAllocError);
-      return { success: false, message: 'Failed to fetch allocation results' };
+      console.error('[calculateOrderAllocation] allocation_results fetch failed:', {
+        orderId,
+        error: fetchAllocError,
+      });
+      return {
+        success: false,
+        reason: 'allocation_fetch_failed',
+        message: 'Failed to fetch allocation results',
+      };
     }
 
     // Fetch company ROI from order_company
@@ -117,22 +233,30 @@ export async function calculateOrderAllocation(orderId: number) {
       .eq('order_id', orderId);
 
     if (fetchRoiError) {
-      console.error('Fetch order_company error:', fetchRoiError);
-      return { success: false, message: 'Failed to fetch company ROI data' };
+      console.error('[calculateOrderAllocation] order_company fetch failed:', {
+        orderId,
+        error: fetchRoiError,
+      });
+      return {
+        success: false,
+        reason: 'allocation_fetch_failed',
+        message: 'Failed to fetch company ROI data',
+      };
     }
-
-    console.log('Fetched allocation results:', allocationResults);
-    console.log('Fetched company ROI data:', companyRoiData);
 
     return {
       success: true,
       message: 'Allocation calculated successfully',
-      allocations: allocationResults,
-      company_roi: companyRoiData,
+      allocations: (allocationResults ?? []) as CalculateAllocationResult['allocations'],
+      company_roi: (companyRoiData ?? []) as CalculateAllocationResult['company_roi'],
     };
   } catch (error) {
-    console.error('Error in calculateOrderAllocation:', error);
-    return { success: false, message: `An unexpected error occurred: ${(error as Error).message}` };
+    console.error('[calculateOrderAllocation] unexpected error:', error);
+    return {
+      success: false,
+      reason: 'unexpected_error',
+      message: `An unexpected error occurred: ${(error as Error).message}`,
+    };
   }
 }
 

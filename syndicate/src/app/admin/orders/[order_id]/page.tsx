@@ -862,23 +862,41 @@ export default function AdminOrderManagementPage() {
     setFeedbackMessage(null);
     startTransition(async () => {
       const result = await calculateOrderAllocation(orderId);
-      setFeedbackMessage({ type: result.success ? 'success' : 'error', text: result.message });
 
-      if (result.success) {
-        // Refetch allocation results after calculation
-        const { data: allocationData } = await supabase
-          .from('allocation_results')
-          .select('*, company(name), order_products(asin, price, cost_price, description)')
-          .eq('order_id', orderId);
-        setAllocationResults(allocationData || []);
-        setEditedAllocations(
-          (allocationData || []).map(a => ({
-            id: a.id,
-            quantity: a.quantity,
-          }))
-        );
-        router.refresh(); // Consider if this is still needed or if state updates are sufficient
+      // Map structured failure reasons to friendlier text. The raw backend
+      // "No order found" string was being shown verbatim — not helpful when the
+      // order visibly exists on the page. The `reason` field added on the
+      // server side lets us explain what's actually happening.
+      if (!result.success) {
+        const message =
+          result.reason === 'order_not_found'
+            ? `This order could not be found. It may have been deleted — try returning to the Orders list.`
+            : result.reason === 'backend_not_configured'
+            ? `The allocation service isn't configured on this deployment. Ask an admin to set BACKEND_URL on Railway.`
+            : result.reason === 'backend_unreachable'
+            ? `The allocation service is unreachable. Confirm the Python allocator is deployed and that BACKEND_URL points to it.`
+            : result.reason === 'backend_misconfigured'
+            ? result.message // already explains the DB-mismatch story from the server
+            : result.message;
+        setFeedbackMessage({ type: 'error', text: message });
+        return;
       }
+
+      setFeedbackMessage({ type: 'success', text: result.message });
+
+      // Refetch allocation results after calculation
+      const { data: allocationData } = await supabase
+        .from('allocation_results')
+        .select('*, company(name), order_products(asin, price, cost_price, description)')
+        .eq('order_id', orderId);
+      setAllocationResults(allocationData || []);
+      setEditedAllocations(
+        (allocationData || []).map(a => ({
+          id: a.id,
+          quantity: a.quantity,
+        }))
+      );
+      router.refresh();
     });
   };
 
