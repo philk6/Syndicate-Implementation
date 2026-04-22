@@ -16,9 +16,12 @@ import {
   DsEmpty,
   DsStatusPill,
   DsButton,
+  DsCard,
+  DsInput,
+  SectionLabel,
 } from '@/components/ui/ds';
 import { PageLoadingSpinner } from '@/components/ui/loading-spinner';
-import { ArrowLeft, Building2 } from 'lucide-react';
+import { ArrowLeft, Building2, Plus, ArrowRight } from 'lucide-react';
 
 interface Supplier {
   id: string;
@@ -60,6 +63,9 @@ export default function SupplierListDetailPage({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const [newSupplier, setNewSupplier] = useState({ companyName: '', website: '' });
+  const [creating, setCreating] = useState(false);
+
   useEffect(() => {
     if (!authLoading && !isAuthenticated) router.push('/login');
   }, [authLoading, isAuthenticated, router]);
@@ -83,6 +89,28 @@ export default function SupplierListDetailPage({
   useEffect(() => {
     if (isAuthenticated) load();
   }, [isAuthenticated, load]);
+
+  const addSupplier = async () => {
+    if (!newSupplier.companyName.trim()) return;
+    setCreating(true);
+    try {
+      const res = await fetch('/api/supplier-intel/suppliers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          listId,
+          companyName: newSupplier.companyName.trim(),
+          website: newSupplier.website.trim() || undefined,
+        }),
+      });
+      if (res.ok) {
+        setNewSupplier({ companyName: '', website: '' });
+        await load();
+      }
+    } finally {
+      setCreating(false);
+    }
+  };
 
   if (authLoading || loading) return <PageLoadingSpinner />;
   if (!isAuthenticated) return null;
@@ -119,11 +147,33 @@ export default function SupplierListDetailPage({
         }
       />
 
+      <DsCard className="p-5" accent={DS.orange}>
+        <SectionLabel accent={DS.orange}>Add Supplier</SectionLabel>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
+          <DsInput
+            label="Company name"
+            value={newSupplier.companyName}
+            onChange={(v) => setNewSupplier({ ...newSupplier, companyName: v })}
+            placeholder="Acme Wholesale Co."
+          />
+          <DsInput
+            label="Website (optional)"
+            value={newSupplier.website}
+            onChange={(v) => setNewSupplier({ ...newSupplier, website: v })}
+            placeholder="https://acme-wholesale.com"
+          />
+          <DsButton onClick={addSupplier} disabled={creating || !newSupplier.companyName.trim()} accent={DS.orange}>
+            <Plus className="w-3.5 h-3.5" />
+            {creating ? 'Adding…' : 'Add Supplier'}
+          </DsButton>
+        </div>
+      </DsCard>
+
       {suppliers.length === 0 ? (
         <DsEmpty
           icon={<Building2 className="w-7 h-7" />}
           title="No suppliers in this list"
-          body="Supplier creation, CSV import, and AI analysis arrive in the next port phase."
+          body="Add one above, run a Discovery search to import candidates, or upload a CSV."
         />
       ) : (
         <DsTable>
@@ -133,24 +183,23 @@ export default function SupplierListDetailPage({
             <DsTh>Status</DsTh>
             <DsTh>Workflow</DsTh>
             <DsTh>Recommendation</DsTh>
-            <DsTh>Added</DsTh>
+            <DsTh className="text-right">Score</DsTh>
+            <DsTh>{''}</DsTh>
           </DsThead>
           <tbody>
             {suppliers.map((s) => {
               const latest = s.analyses?.[0];
               return (
-                <DsTr key={s.id}>
+                <DsTr
+                  key={s.id}
+                  onClick={() => router.push(`/supplier-intel/suppliers/${s.id}`)}
+                >
                   <DsTd className="font-medium text-white">{s.company_name}</DsTd>
                   <DsTd>
                     {s.website ? (
-                      <a
-                        href={s.website}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-[#FF6B35] hover:underline"
-                      >
+                      <span className="text-[#FF6B35]">
                         {s.website.replace(/^https?:\/\//, '')}
-                      </a>
+                      </span>
                     ) : (
                       '—'
                     )}
@@ -173,10 +222,11 @@ export default function SupplierListDetailPage({
                       <span className="text-neutral-500 text-xs">Not analyzed</span>
                     )}
                   </DsTd>
-                  <DsTd>
-                    <span className="text-neutral-400 text-xs tabular-nums">
-                      {new Date(s.created_at).toLocaleDateString()}
-                    </span>
+                  <DsTd className="text-right tabular-nums font-mono text-white">
+                    {latest ? latest.score : '—'}
+                  </DsTd>
+                  <DsTd className="text-right">
+                    <ArrowRight className="w-3.5 h-3.5 text-neutral-500 inline" />
                   </DsTd>
                 </DsTr>
               );

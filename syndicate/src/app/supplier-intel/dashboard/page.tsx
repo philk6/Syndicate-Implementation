@@ -11,10 +11,22 @@ import {
   SectionLabel,
   MetricCard,
   DsButton,
-  DsEmpty,
+  DsCard,
 } from '@/components/ui/ds';
 import { PageLoadingSpinner } from '@/components/ui/loading-spinner';
-import { Package, Target, AlertTriangle, Clock, Plus } from 'lucide-react';
+import {
+  Package,
+  Target,
+  AlertTriangle,
+  Clock,
+  Plus,
+  Compass,
+  Inbox,
+  Shield,
+  Settings,
+  ArrowRight,
+  Folder,
+} from 'lucide-react';
 
 interface DashboardStats {
   totalSuppliers: number;
@@ -24,7 +36,7 @@ interface DashboardStats {
 }
 
 export default function SupplierIntelDashboardPage() {
-  const { isAuthenticated, loading: authLoading } = useAuth();
+  const { user, isAuthenticated, loading: authLoading } = useAuth();
   const router = useRouter();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -55,19 +67,28 @@ export default function SupplierIntelDashboardPage() {
   if (authLoading || loading) return <PageLoadingSpinner />;
   if (!isAuthenticated) return null;
 
+  const isAdmin = user?.role === 'admin';
+
   return (
     <PageShell>
       <PageHeader
         label="Supplier Intel"
         title="Dashboard"
-        subtitle="Mission control for supplier outreach."
+        subtitle="Mission control for supplier discovery, vetting, and outreach."
         accent={DS.orange}
         right={
-          <Link href="/supplier-intel/lists">
-            <DsButton variant="primary" accent={DS.orange}>
-              <Plus className="w-3.5 h-3.5" /> Manage Lists
-            </DsButton>
-          </Link>
+          <div className="flex items-center gap-2 flex-wrap">
+            <Link href="/supplier-intel/discovery">
+              <DsButton variant="secondary" accent={DS.teal}>
+                <Compass className="w-3.5 h-3.5" /> Discover
+              </DsButton>
+            </Link>
+            <Link href="/supplier-intel/lists">
+              <DsButton variant="primary" accent={DS.orange}>
+                <Plus className="w-3.5 h-3.5" /> Manage Lists
+              </DsButton>
+            </Link>
+          </div>
         }
       />
 
@@ -99,27 +120,92 @@ export default function SupplierIntelDashboardPage() {
       </section>
 
       <section>
-        <SectionLabel accent={DS.orange}>Quick Actions</SectionLabel>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <Link
+        <SectionLabel accent={DS.orange}>Navigate</SectionLabel>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <NavTile
             href="/supplier-intel/lists"
-            className="block rounded-2xl border p-5 transition-colors hover:bg-white/[0.02]"
-            style={{ borderColor: `${DS.orange}33`, backgroundColor: DS.cardBg }}
-          >
-            <h3 className="font-mono uppercase tracking-widest text-sm font-bold text-white mb-1">
-              Supplier Lists
-            </h3>
-            <p className="text-xs text-neutral-400">
-              Create lists, add suppliers manually or via CSV, and track their workflow.
-            </p>
-          </Link>
-          <DsEmpty
-            icon={<Target className="w-6 h-6" />}
-            title="Discovery & Analysis"
-            body="Wholesale supplier discovery + AI-powered vetting arrive in the next port phase."
+            icon={<Folder className="w-5 h-5" />}
+            accent={DS.orange}
+            title="Supplier Lists"
+            body="Organize suppliers into named collections. Add manually, via CSV, or from Discovery."
+          />
+          <NavTile
+            href="/supplier-intel/discovery"
+            icon={<Compass className="w-5 h-5" />}
+            accent={DS.teal}
+            title="Discovery"
+            body="Hunt authorized distributors by brand, category, or region."
+          />
+          <NavTile
+            href="/supplier-intel/follow-up"
+            icon={<Inbox className="w-5 h-5" />}
+            accent={DS.yellow}
+            title="Follow-Up Queue"
+            body="Suppliers awaiting your next touch. Tier, priority, and assignment visible."
+          />
+          <NavTile
+            href="/supplier-intel/follow-up/templates"
+            icon={<Target className="w-5 h-5" />}
+            accent={DS.blue}
+            title="Email Templates"
+            body="Reusable outreach copy for the sequence — first-touch, follow-up, break-up."
+          />
+          {isAdmin && (
+            <NavTile
+              href="/supplier-intel/admin"
+              icon={<Shield className="w-5 h-5" />}
+              accent={DS.red}
+              title="Admin Control"
+              body="Rescore all analyses, view pipeline health, audit events."
+            />
+          )}
+          <NavTile
+            href="/supplier-intel/settings"
+            icon={<Settings className="w-5 h-5" />}
+            accent={DS.muted}
+            title="Settings"
+            body="Outreach persona, email signature, follow-up defaults."
           />
         </div>
       </section>
     </PageShell>
+  );
+}
+
+function NavTile({
+  href,
+  icon,
+  accent,
+  title,
+  body,
+}: {
+  href: string;
+  icon: React.ReactNode;
+  accent: string;
+  title: string;
+  body: string;
+}) {
+  return (
+    <Link href={href} className="block">
+      <DsCard className="p-5 group h-full" accent={accent}>
+        <div className="flex items-start gap-3">
+          <div
+            className="w-10 h-10 rounded-xl border flex items-center justify-center shrink-0"
+            style={{ backgroundColor: `${accent}1a`, borderColor: `${accent}55`, color: accent }}
+          >
+            {icon}
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center justify-between gap-2">
+              <h3 className="font-mono uppercase tracking-widest text-sm font-bold text-white">{title}</h3>
+              <ArrowRight
+                className="w-4 h-4 text-neutral-500 group-hover:text-white transition-colors shrink-0"
+              />
+            </div>
+            <p className="text-xs text-neutral-400 mt-1 font-sans leading-relaxed">{body}</p>
+          </div>
+        </div>
+      </DsCard>
+    </Link>
   );
 }
