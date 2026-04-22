@@ -10,14 +10,31 @@ export const userCache = new LRUCache<string, AuthUser>({
   ttl: 1000 * 60 * 30, // 30 minutes — reduces cache-miss windows where role can flash
 });
 
-// Persists the user's role across page loads and tab switches so a cold LRU miss
-// can never cause an admin→recruit flash while the DB fetch is in flight.
-const ROLE_STORAGE_KEY = 'syndicate_user_role';
-const persistRole = (role: AuthUser['role']) => {
-  try { localStorage.setItem(ROLE_STORAGE_KEY, role); } catch { /* ignore SSR */ }
+// Persists the full authenticated user to localStorage so cold starts
+// (Railway deploy, LRU TTL expiry, hard refresh) never leave us rendering
+// with user=null — the UI would fall back to the XP-rank "Recruit" label
+// and show "Loading..." for the name. The persisted state is used only to
+// seed initial render; every fetch still round-trips to the DB.
+const USER_STORAGE_KEY = 'syndicate_user_profile_v1';
+const persistUser = (u: AuthUser) => {
+  try { localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(u)); } catch { /* ignore SSR / storage quota */ }
 };
-const clearPersistedRole = () => {
-  try { localStorage.removeItem(ROLE_STORAGE_KEY); } catch { /* ignore SSR */ }
+const clearPersistedUser = () => {
+  try { localStorage.removeItem(USER_STORAGE_KEY); } catch { /* ignore SSR */ }
+  // Also clear the legacy role-only key (harmless if already absent).
+  try { localStorage.removeItem('syndicate_user_role'); } catch { /* ignore SSR */ }
+};
+const readPersistedUser = (): AuthUser | null => {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = localStorage.getItem(USER_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as AuthUser;
+    if (!parsed || typeof parsed !== 'object' || !parsed.user_id || !parsed.role) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
 };
 
 interface AuthUser {
@@ -54,7 +71,10 @@ const isPasswordResetURL = () => {
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
-  const [user, setUserState] = useState<AuthUser | null>(null);
+  // Hydrate from localStorage synchronously so the first render already has the
+  // user's role — this avoids the "Recruit" flash when the DB fetch is slow.
+  // If no session ultimately materializes, applySession(null) will clear this.
+  const [user, setUserState] = useState<AuthUser | null>(() => readPersistedUser());
   const [loading, setLoading] = useState(true);
   const [isTabActive, setIsTabActive] = useState(true);
   const router = useRouter();
@@ -94,7 +114,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (cached) {
       console.log('[auth] fetchUserDetails: cache hit, role =', cached.role);
       setUser(cached, 'cache-hit');
-      persistRole(cached.role); // keep localStorage in sync with cache
+      persistUser(cached); // keep localStorage in sync with cache
       return;
     }
 
@@ -139,8 +159,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           // Do NOT write a minimal fallback with role='user'. Transient errors
           // (cold-start, network blip, middleware cookie hiccup) would otherwise
           // demote an admin to user and cache the wrong role for 5 minutes.
-          // Leaving user as null keeps `loading` in useIsAdmin and components
-          // render a loading state until the next successful fetch.
+          // Any already-present user (from localStorage hydration or LRU) stays.
           return;
         }
 
@@ -158,7 +177,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         console.log('[auth] fetchUserDetails: success, role =', fullUser.role);
         userCache.set(userId, fullUser);
         setUser(fullUser, 'db-fetch-success');
-        persistRole(fullUser.role); // persist so tab switches never cause admin→recruit flash
+        persistUser(fullUser); // persist full profile so reload / redeploy hydrates instantly
       } catch (e) {
         console.error('[auth] fetchUserDetails: exception — LEAVING user as-is', e);
         // Keep existing user; never downgrade on a thrown error (timeout, abort, network).
@@ -179,7 +198,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSession(null);
       setUser(null, 'apply-session-null');
       userCache.clear();
-      clearPersistedRole();
+      clearPersistedUser();
       return;
     }
 
@@ -221,7 +240,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         });
         if (current) {
           lastUserIdRef.current = current.user.id;
+          // If localStorage hydrated a user for a DIFFERENT account, drop it —
+          // the session wins. applySession's DB fetch will populate the real row.
+          if (userRef.current && userRef.current.user_id !== current.user.id) {
+            console.log('[auth] mount: persisted user belongs to a different session — clearing');
+            clearPersistedUser();
+            setUser(null, 'mount-persisted-user-mismatch');
+          }
           await applySession(current, 'mount-initial');
+        } else {
+          // No session — if we had a persisted user, it's stale; clear it.
+          if (userRef.current) {
+            console.log('[auth] mount: no session but persisted user present — clearing');
+            setUser(null, 'mount-no-session');
+            clearPersistedUser();
+          }
         }
       } catch (e) {
         console.error('[auth] Initial session check failed:', e);
@@ -333,8 +366,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = useCallback(async () => {
+    console.log('[auth] logout: starting');
     if (userRef.current?.user_id) userCache.delete(userRef.current.user_id);
-    await supabase.auth.signOut();
+    // Clear local state FIRST so the UI flips immediately, even before the
+    // network round-trip — the user should not see themselves as still logged
+    // in while a hung signOut call resolves. A successful signOut on the
+    // server will also fire SIGNED_OUT which is a no-op here.
+    clearPersistedUser();
+
+    // 8s hard timeout on the network round-trip. If signOut hangs, we still
+    // redirect — the user must always be able to escape. The Supabase call
+    // itself isn't abort-aware, but window.location.href below replaces the
+    // document so any in-flight promise is discarded on navigation.
+    const timer = setTimeout(() => {
+      console.warn('[auth] logout: 8s timeout — forcing navigation to /login');
+      window.location.href = '/login';
+    }, 8000);
+
+    try {
+      await supabase.auth.signOut();
+      console.log('[auth] logout: signOut resolved');
+    } catch (err) {
+      console.warn('[auth] logout: signOut threw', err);
+    } finally {
+      clearTimeout(timer);
+      // Always leave the app even on success; SIGNED_OUT listener may race
+      // with this and either path lands us on /login.
+      window.location.href = '/login';
+    }
   }, []);
 
   const isAuthenticated = !!session;
