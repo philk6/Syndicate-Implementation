@@ -1,104 +1,146 @@
-# Supplier Intel Port — Session 1 Status
+# Supplier Intel Port — Status
 
 **Branch:** `port-supplier-intel`
 **Parent:** `main`
-**Status:** partially complete — read-only foundation shipped, write surface + analyze pipeline pending
-**Next session:** Phase 4 (write flows) + Phase 5 (cleanup)
+**Status:** Session 1 complete; Session 1.5 (verification) partially complete; Session 2 not started.
+**This doc updates each session** so the next one can pick up with full context.
 
 ---
 
-## What's shipped on this branch
+## Session 1 (shipped) — read-only foundation
 
-### Commit `35269cf` — Timeout probe (diagnostic only)
-- `src/app/api/supplier-intel/timeout-probe/route.ts` — gated by `?key=timeout-probe`, sleeps for 60s and returns elapsed time
-- **Still needs to be tested** on the Railway preview URL to decide sync vs async analyze
-- Delete in Phase 5
+| Commit | Summary |
+|---|---|
+| `35269cf` | Timeout probe route (diagnostic; delete in Phase 5) |
+| `99fdad8` | Schema migration applied: 11 tables, 15 enums, 4 RPCs, RLS, all HTTP 200 |
+| `1223b94` | Deps installed; `src/lib/supplierIntel/*` scaffolded; iframe page replaced with redirect |
+| `a99fa1d` | Read-only pages: dashboard + lists + lists/[listId] + 3 API routes |
+| `005499f` | Status doc (this file's Session 1 version) |
 
-### Commit `99fdad8` — Schema migration
-- `supabase/migrations/20260421120000_add_supplier_intel.sql` — applied to Syndicate's Supabase
-- **11 tables** created (all with `si_` prefix), **15 enums**, **RLS on everything**, **4 RPC functions**
-- `si_analysis_jobs` included unconditionally for optional async fallback
-- All tables verified via REST (HTTP 200)
-
-### Commit `1223b94` — Scaffold + deps
-- Dependencies: `@anthropic-ai/sdk`, `openai`, `cheerio`, `papaparse`, `zod`, `@paralleldrive/cuid2`
-- OpenAI verdict: **kept** — `lib/analyzer.ts` in source imports it (`getOpenAIClient`, reads `OPENAI_API_KEY`)
-- `src/lib/supplierIntel/types.ts` — ported from source verbatim (326 lines)
-- `src/lib/supplierIntel/server.ts` — `getSupabaseServerClient`, `getServiceRoleClient`, `requireAuthenticatedUser`, `requireAdminUser` helpers
-- `src/lib/supplierIntel/schemas.ts` — zod schemas for the `si_supplier_analyses` JSONB blobs (runtime validation replacing Prisma's compile-time types)
-- `src/lib/supplierIntel/db.ts` — typed CRUD + RPC wrappers for all 11 tables
-- `src/app/supplier-intel/page.tsx` — was iframe, now `redirect('/supplier-intel/dashboard')`
-
-### Commit `a99fa1d` — Read-only pages
-- **API routes (all `force-dynamic`, Node runtime, auth-gated):**
-  - `GET /api/supplier-intel/dashboard` — aggregated stats
-  - `GET|POST /api/supplier-intel/lists`
-  - `GET|PUT|DELETE /api/supplier-intel/lists/[listId]`
-- **Pages (all client components, styled with Syndicate's DS):**
-  - `/supplier-intel/dashboard` — 4 MetricCards + quick actions
-  - `/supplier-intel/lists` — create/list/delete lists with supplier counts
-  - `/supplier-intel/lists/[listId]` — list detail + suppliers table
-- Build clean (39 routes compile).
+**OpenAI verdict:** kept — `lib/analyzer.ts` calls `getOpenAIClient()` and reads `OPENAI_API_KEY`.
+**cuid decision:** `@paralleldrive/cuid2` via explicit `createId()` (Prisma's `@default(cuid())` auto-gen is gone with Prisma).
 
 ---
 
-## What's NOT shipped (pending Session 2)
+## Session 1.5 (verification) — what was checked
 
-### Write surface — Phase 4 in the plan doc
+### ✅ Verified from Claude Code environment
 
-| Surface | Source files | Port target | Notes |
-|---|---|---|---|
-| Discovery | `app/(dashboard)/discovery/page.tsx`, `app/api/discovery/*`, `lib/discovery.ts`, `lib/discoveryAngles.ts` | `src/app/supplier-intel/discovery/*`, `src/app/api/supplier-intel/discovery/*` | Uses Claude multi-angle search. Calls `si_insert_discovery_with_candidates` RPC for atomic insert. |
-| Supplier detail + analyze | `app/(dashboard)/suppliers/[supplierId]/page.tsx`, `app/api/analyze/*`, `lib/analyzer.ts`, `lib/scraper.ts`, `lib/scorer.ts`, `lib/signals.ts`, `lib/pipeline.ts` | `src/app/supplier-intel/suppliers/[supplierId]/*`, `src/app/api/supplier-intel/analyze/*` | **Sync-vs-async decision pending** on probe result. Heaviest single path — scrape + Claude call = 30-90s. Validate JSONB writes with `schemas.ts` zod. |
-| Follow-up queue | `app/(dashboard)/follow-up/*`, `app/api/follow-up/*` | `src/app/supplier-intel/follow-up/*`, `src/app/api/supplier-intel/follow-up/*` | Uses `si_log_follow_up_action` RPC for atomic action logging. |
-| Email templates | `app/(dashboard)/follow-up/templates/*`, `app/api/follow-up/templates/*` | `src/app/supplier-intel/follow-up/templates/*`, `src/app/api/supplier-intel/follow-up/templates/*` | Shared across users per RLS design. |
-| Outreach logging | `app/api/suppliers/[supplierId]/outreach/*`, `app/api/suppliers/[supplierId]/workflow-status/*` | `src/app/api/supplier-intel/suppliers/[supplierId]/*` | Uses `si_log_outreach_event` RPC. |
-| Chat assistant | `app/api/chat/*` | `src/app/api/supplier-intel/chat/*` | Claude-backed chat widget. Check for any component that embeds it. |
-| Admin rescore | `app/(dashboard)/admin/*`, `app/api/admin/rescore/*` | `src/app/supplier-intel/admin/*`, `src/app/api/supplier-intel/admin/rescore/*` | Keep admin-gated using `requireAdminUser` (Syndicate's `role === 'admin'`). |
-| Settings | `app/(dashboard)/settings/*` | `src/app/supplier-intel/settings/*` | Per-user prefs (Supplier Intel's user-level settings). Minor. |
+| Check | Result |
+|---|---|
+| Branch `port-supplier-intel` pushed to origin, fully synced | ✅ 0 ahead / 0 behind |
+| `npm run build` | ✅ Clean — 39 routes compile, zero errors |
+| `npx tsc --noEmit` | ✅ Clean — zero type errors |
+| Baseline RLS: anon-key reads on all 10 si_* tables | ✅ All return `[]` — RLS enabled and blocking unauthenticated reads |
+| RLS script written: `scripts/verify-si-rls.ts` (commit `271aa26`) | ✅ Ready to run once test creds available |
 
-### Port-specific carryovers
+### ⏳ Requires user action (cannot run from Claude Code environment)
 
-- **lib files to port:** `lib/analyzer.ts`, `lib/scraper.ts`, `lib/scorer.ts`, `lib/signals.ts`, `lib/pipeline.ts`, `lib/discoveryAngles.ts`, `lib/discovery.ts`, `lib/outreach-sequence.ts`. These are mostly pure TypeScript with minor Prisma touches — find-and-replace Prisma reads/writes with Supabase equivalents.
-- **Suppliers CRUD:** `POST /api/supplier-intel/suppliers` with `papaparse` CSV import calling `si_bulk_insert_suppliers` RPC.
-- **Zod validation for every JSONB write to `si_supplier_analyses`.** Already wired up; just use it.
-- **CSV import path** uses `papaparse` + service-role client (or user client with the bulk RPC).
-
-### Cleanup — Phase 5
-
-- Delete `src/app/api/supplier-intel/timeout-probe/` once sync/async decision is final.
-- `SUPPLIER_INTEL_PORT_POSTMORTEM.md` at repo root describing the port.
-- Sidebar link is already correct (`/supplier-intel` → redirect to `/supplier-intel/dashboard`).
-
-### User-facing TODOs
-
-- **Set `ANTHROPIC_API_KEY` in Railway** (required for analyze/discovery in Phase 4).
-- **Set `OPENAI_API_KEY` in Railway** (confirmed used by `lib/analyzer.ts`).
-- **Run the timeout probe** — determines whether Phase 4's analyze endpoint is sync or async.
-- **Verify RLS** once real data exists: sign in as a second user, confirm you cannot see other user's lists.
+| Check | What you need to do |
+|---|---|
+| **Railway preview URL** | Railway Dashboard → Syndicate service → Settings → enable "PR Environments" / auto-deploy branches. Get the preview URL for `port-supplier-intel` and run the probe and smoke tests on it. |
+| **Env vars on Railway** | Set `ANTHROPIC_API_KEY` and `OPENAI_API_KEY` in the Syndicate service Variables. Not strictly needed until Session 2 ships analyze/chat/discovery, but set them now to avoid forgetting. |
+| **Timeout probe (60s and 90s)** | `curl -i -m 120 "https://<preview-url>/api/supplier-intel/timeout-probe?key=timeout-probe"` — wait 60+ sec. Then repeat with `&ms=90000`. Paste responses; I'll record them in `docs/SUPPLIER_INTEL_PROBE_RESULT.md` and decide sync vs async for Session 2. |
+| **Smoke test read-only pages on preview** | `/supplier-intel` → redirects to dashboard; dashboard loads with zero stats; lists loads with empty state; `/supplier-intel/lists/nonexistent-id` shows "List Not Found" gracefully. |
+| **Full RLS script** | Create two test users in Supabase Auth (Dashboard → Authentication → Users → Add User). Each needs a row in `public.users`. Then:<br>`export SI_TEST_USER_A_EMAIL=... SI_TEST_USER_A_PASSWORD=... SI_TEST_USER_B_EMAIL=... SI_TEST_USER_B_PASSWORD=...`<br>`npx tsx scripts/verify-si-rls.ts` — expected exit 0. Paste the output. |
 
 ---
 
-## How to test what's shipped now
+## Session 2 plan (not yet executed)
 
-Once Railway deploys the `port-supplier-intel` branch (or you merge it to main), while logged in as any Syndicate user:
+**Do not start Session 2 until the verification items above are complete and green.**
 
-1. **Go to `/supplier-intel`** (either click the sidebar link or visit directly) — should land on `/supplier-intel/dashboard`.
-2. **Dashboard** shows 4 metric cards. All will be `0` since no data exists yet. Click "Manage Lists".
-3. **Lists page** — create a list named "Test List". Confirm it appears. Click through to detail.
-4. **List detail** shows an empty state saying supplier creation arrives in the next port phase. This is correct.
-5. **Delete the list** — trash icon next to a list. Confirm, verify it's gone.
-6. **Second-user RLS test** — sign in as a different Syndicate user (if you have one). Confirm the first user's list does NOT appear. This validates RLS.
+### Prerequisites before Session 2
+1. Probe result recorded — determines sync vs async for analyze endpoint
+2. RLS script passes — confirms policies work end-to-end before writes start flowing
+3. Preview URL confirms read-only surface renders correctly
+4. `ANTHROPIC_API_KEY` set on Railway
 
-If any of the above fails, it's a bug in what landed this session — report back with the error.
+### Session 2 scope (~8-12 hours)
+
+Execute in this order, committing between each group so you can bisect:
+
+**Group A — lib port (independent, can parallelize):**
+- Port `lib/analyzer.ts` → `src/lib/supplierIntel/analyzer.ts` (Claude scoring)
+- Port `lib/scraper.ts` → `src/lib/supplierIntel/scraper.ts` (cheerio scraping)
+- Port `lib/scorer.ts` → `src/lib/supplierIntel/scorer.ts`
+- Port `lib/signals.ts` → `src/lib/supplierIntel/signals.ts`
+- Port `lib/pipeline.ts` → `src/lib/supplierIntel/pipeline.ts`
+- Port `lib/discoveryAngles.ts` → `src/lib/supplierIntel/discoveryAngles.ts`
+- Port `lib/discovery.ts` → `src/lib/supplierIntel/discovery.ts`
+- Port `lib/outreach-sequence.ts` → `src/lib/supplierIntel/outreachSequence.ts`
+- These are mostly pure TS; only surgical changes are dropping Prisma imports in favor of the data-access layer.
+
+**Group B — analyze endpoint (depends on Group A):**
+- `POST /api/supplier-intel/analyze/[supplierId]` — sync if probe OK, async if probe fails
+- `POST /api/supplier-intel/analyze/debug`
+- Worker route if async (processes `si_analysis_jobs` queue)
+- `GET /api/supplier-intel/analyze/[supplierId]/status` if async
+- Supplier detail page `/supplier-intel/suppliers/[supplierId]` — "Analyze" button wires up here
+- Zod validation on every JSONB write using `schemas.ts`
+
+**Group C — discovery (depends on Group A):**
+- `POST /api/supplier-intel/discovery` — uses `si_insert_discovery_with_candidates` RPC
+- `GET|DELETE /api/supplier-intel/discovery/[searchId]`
+- `POST /api/supplier-intel/discovery/[searchId]/add` — moves candidate into a list
+- `/supplier-intel/discovery` page (the UI with brand/category/location inputs + results)
+
+**Group D — follow-up (depends only on schema, can parallelize with B/C):**
+- `GET|PATCH /api/supplier-intel/follow-up/queue`
+- `POST /api/supplier-intel/follow-up/action` — uses `si_log_follow_up_action` RPC
+- `GET|POST /api/supplier-intel/follow-up/templates`
+- `/supplier-intel/follow-up` + `/supplier-intel/follow-up/templates` pages
+
+**Group E — suppliers write + outreach (depends on A for CSV parsing):**
+- `POST /api/supplier-intel/suppliers` — manual + CSV via `papaparse` + `si_bulk_insert_suppliers` RPC
+- `PUT /api/supplier-intel/suppliers/[supplierId]`
+- `POST /api/supplier-intel/suppliers/[supplierId]/outreach` — uses `si_log_outreach_event` RPC
+- `POST /api/supplier-intel/suppliers/[supplierId]/workflow-status`
+
+**Group F — chat + admin + settings (leaves):**
+- `POST /api/supplier-intel/chat` (Claude chat widget)
+- `/supplier-intel/admin` + `POST /api/supplier-intel/admin/rescore` (admin-gated via `requireAdminUser`)
+- `/supplier-intel/settings`
+
+**Group G — cleanup (last):**
+- Delete timeout-probe route
+- Verify sidebar link still works
+- Add `SUPPLIER_INTEL_PORT_POSTMORTEM.md`
+- Re-run RLS script (no regressions from write flows)
+
+### Dependency graph
+
+```
+Group A (lib port, independent)
+  ├── Group B (analyze) ─┐
+  ├── Group C (discovery)┤
+  └── Group E (suppliers/outreach)
+Group D (follow-up) — needs schema only, independent of A-C-E
+Group F (chat/admin/settings) — mostly independent
+Group G (cleanup) — runs last
+```
+
+A efficient Session 2 executes A first (~3-4h), then B+C+D in parallel via agents (~4-5h), then E+F together (~2-3h), then G (~1h). **Total: 10-13 hours** — fits in one long session but tight; budget for two.
 
 ---
 
-## Estimated remaining work for Phase 4
+## Outstanding risks (from earlier sessions)
 
-From the plan doc (`docs/SUPPLIER_INTEL_PORT_PLAN.md`): 10-18 hours for Prisma → Supabase query rewrites, plus 3-6 hours for end-to-end testing. So **13-24 hours of focused work remains.** Best split across two more sessions:
+1. **Analyze endpoint sync-vs-async** — depends on the probe.
+2. **JSONB shape drift on si_supplier_analyses** — mitigated by zod in `schemas.ts`. Every write path must call `.parse()` before insert.
+3. **`$transaction` RPC correctness** — the 4 RPC functions in the schema migration have specific semantics; bugs there manifest as subtle data issues, not failures. Smoke-test each RPC call during Session 2.
+4. **Dashboard stats scale** — current implementation fetches up to 500 analyses and dedupes client-side for latest-per-supplier. Fine for pre-launch; write a proper RPC or view if supplier volumes grow.
+5. **Syndicate DS styling on Session 2 pages** — use `ds.tsx` primitives to match the rest of the app. Session 1's read-only pages set the pattern.
 
-- **Session 2:** Port discovery + suppliers detail + analyze (sync or async per probe). ~8-12h.
-- **Session 3:** Port follow-up + templates + admin + chat + cleanup + postmortem. ~5-12h.
+---
 
-The schema and scaffolding decisions are locked in this session; Session 2/3 is pure code translation.
+## Commit log (all sessions, for grepability)
+
+```
+005499f  docs(supplier-intel): add Session 1 status / handoff doc
+271aa26  test(supplier-intel): RLS verification script
+a99fa1d  feat(supplier-intel): port read-only pages (dashboard, lists)
+1223b94  feat(supplier-intel): scaffold routes, install deps, Next.js 15 compat
+99fdad8  feat(supplier-intel): add si_ schema, RPC functions, and RLS
+35269cf  feat(probe): add timeout probe for Railway sync-request validation
+```
