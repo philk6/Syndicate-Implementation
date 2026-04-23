@@ -4,13 +4,18 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 let _client: SupabaseClient | undefined;
 
 /**
- * Global fetch wrapper that imposes a 15-second hard timeout on every
+ * Global fetch wrapper that imposes a 10-second hard timeout on every
  * request made by the Supabase client. Prevents silent hangs caused by
  * stalled TCP connections, region mismatches, or paused projects.
+ *
+ * 10s is chosen deliberately: real queries on our schema respond in
+ * 100-800ms end to end, so anything taking >10s is broken, not slow.
+ * Failing fast lets page-level loading flags flip to error state within
+ * one browser-interaction window rather than spinning for ~minute-plus.
  */
 function timeoutFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 15000);
+  const timer = setTimeout(() => controller.abort(), 10000);
 
   // If the caller passed their own signal, chain them so either can abort.
   const callerSignal = init?.signal;

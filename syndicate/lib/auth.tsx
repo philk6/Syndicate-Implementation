@@ -100,8 +100,71 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => { sessionRef.current = session; }, [session]);
   useEffect(() => { userRef.current = user; }, [user]);
 
+  // One-shot profile query. Returns true on success, false on any failure
+  // (error, abort, or exception). Does not mutate user state on failure — the
+  // caller decides whether to retry, fall back, or leave state as-is.
+  const fetchProfileOnce = useCallback(async (
+    currentSession: Session,
+  ): Promise<boolean> => {
+    const userId = currentSession.user.id;
+    const queryController = new AbortController();
+    // 6s per attempt — aligns with the Supabase browser client's new 10s hard
+    // timeout and leaves headroom for a second attempt + a render cycle.
+    const queryTimeout = setTimeout(() => {
+      console.warn('[auth] fetchProfileOnce: 6s timeout — aborting query');
+      queryController.abort();
+    }, 6000);
+
+    try {
+      const [userRes, xpRes] = await Promise.all([
+        supabase
+          .from('users')
+          .select('user_id, email, role, firstname, lastname, company_id, tos_accepted, buyersgroup')
+          .eq('user_id', userId)
+          .abortSignal(queryController.signal)
+          .single(),
+        supabase
+          .from('user_total_xp')
+          .select('total_xp')
+          .eq('user_id', userId)
+          .abortSignal(queryController.signal)
+          .maybeSingle(),
+      ]);
+
+      if (userRes.error) {
+        console.error('[auth] fetchProfileOnce: DB error', {
+          code: userRes.error.code,
+          message: userRes.error.message,
+          details: userRes.error.details,
+          queried_user_id: userId,
+        });
+        return false;
+      }
+
+      const fullUser: AuthUser = {
+        ...userRes.data,
+        user_id: userRes.data.user_id ?? userId,
+        email: userRes.data.email ?? currentSession.user.email,
+        totalXp: xpRes.data?.total_xp ?? 0,
+      };
+      userCache.set(userId, fullUser);
+      setUser(fullUser, 'db-fetch-success');
+      persistUser(fullUser);
+      return true;
+    } catch (e) {
+      console.error('[auth] fetchProfileOnce: exception', e);
+      return false;
+    } finally {
+      clearTimeout(queryTimeout);
+    }
+  }, [setUser]);
+
   // Fetch the public.users row for the current session. Stable across renders.
-  // Dedupes concurrent calls via inFlightUserFetchRef.
+  // Dedupes concurrent calls via inFlightUserFetchRef. Retries once (after a
+  // short backoff) on first failure so a single cold-start network blip
+  // doesn't leave user=null for the whole session — that cascade was the
+  // root cause of "all pages spin forever" because every page gates its own
+  // data fetch on user?.user_id.
   const fetchUserDetails = useCallback(async (currentSession: Session): Promise<void> => {
     if (inFlightUserFetchRef.current) {
       console.log('[auth] fetchUserDetails: in-flight, returning existing promise');
@@ -114,82 +177,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (cached) {
       console.log('[auth] fetchUserDetails: cache hit, role =', cached.role);
       setUser(cached, 'cache-hit');
-      persistUser(cached); // keep localStorage in sync with cache
+      persistUser(cached);
       return;
     }
 
-    console.log('[auth] fetchUserDetails: querying user_id =', userId, 'email =', currentSession.user.email);
-
-    // Per-query 8s hard timeout. Belt-and-suspenders with the 15s global
-    // fetch timeout in the Supabase client — this one aborts the PostgREST
-    // request earlier so the UI can fall back to the cached role sooner.
-    const queryController = new AbortController();
-    const queryTimeout = setTimeout(() => {
-      console.warn('[auth] fetchUserDetails: 8s timeout — aborting query');
-      queryController.abort();
-    }, 8000);
+    console.log('[auth] fetchUserDetails: querying user_id =', userId);
 
     const fetchPromise = (async () => {
       try {
-        const [userRes, xpRes] = await Promise.all([
-          supabase
-            .from('users')
-            .select('user_id, email, role, firstname, lastname, company_id, tos_accepted, buyersgroup')
-            .eq('user_id', userId)
-            .abortSignal(queryController.signal)
-            .single(),
-          supabase
-            .from('user_total_xp')
-            .select('total_xp')
-            .eq('user_id', userId)
-            .abortSignal(queryController.signal)
-            .maybeSingle(),
-        ]);
+        const firstOk = await fetchProfileOnce(currentSession);
+        if (firstOk) return;
 
-        if (userRes.error) {
-          console.error('[auth] fetchUserDetails: DB error — LEAVING user as-is (no role downgrade)', {
-            code: userRes.error.code,
-            message: userRes.error.message,
-            details: userRes.error.details,
-            hint: userRes.error.hint,
-            queried_user_id: userId,
-            had_prior_user: !!userRef.current,
-            prior_role: userRef.current?.role,
-          });
-          // Do NOT write a minimal fallback with role='user'. Transient errors
-          // (cold-start, network blip, middleware cookie hiccup) would otherwise
-          // demote an admin to user and cache the wrong role for 5 minutes.
-          // Any already-present user (from localStorage hydration or LRU) stays.
-          return;
+        console.warn('[auth] fetchUserDetails: first attempt failed, retrying once after 2s');
+        await new Promise((r) => setTimeout(r, 2000));
+        const secondOk = await fetchProfileOnce(currentSession);
+        if (!secondOk) {
+          console.error(
+            '[auth] fetchUserDetails: both attempts failed — user stays as-is',
+            { had_prior_user: !!userRef.current, prior_role: userRef.current?.role },
+          );
+          // No demotion to role='user' — transient failures must not flip an
+          // admin to recruit. Any user hydrated from localStorage stays.
         }
-
-        console.log('[auth] fetchUserDetails: raw response', {
-          data: userRes.data,
-          xp: xpRes.data,
-        });
-
-        const fullUser: AuthUser = {
-          ...userRes.data,
-          user_id: userRes.data.user_id ?? userId,
-          email: userRes.data.email ?? currentSession.user.email,
-          totalXp: xpRes.data?.total_xp ?? 0,
-        };
-        console.log('[auth] fetchUserDetails: success, role =', fullUser.role);
-        userCache.set(userId, fullUser);
-        setUser(fullUser, 'db-fetch-success');
-        persistUser(fullUser); // persist full profile so reload / redeploy hydrates instantly
-      } catch (e) {
-        console.error('[auth] fetchUserDetails: exception — LEAVING user as-is', e);
-        // Keep existing user; never downgrade on a thrown error (timeout, abort, network).
       } finally {
-        clearTimeout(queryTimeout);
         inFlightUserFetchRef.current = null;
       }
     })();
 
     inFlightUserFetchRef.current = fetchPromise;
     return fetchPromise;
-  }, [setUser]);
+  }, [fetchProfileOnce, setUser]);
 
   // Apply a new session (or null) to state. Stable across renders.
   const applySession = useCallback(async (nextSession: Session | null, reason: string): Promise<void> => {

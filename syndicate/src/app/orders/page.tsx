@@ -79,6 +79,7 @@ function formatCountdown(hours: number): string {
 export default function OrdersPage() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loadingOrders, setLoadingOrders] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const { isAuthenticated, loading, user } = useAuth();
   const { withNetworkResilience } = useNetworkResilience();
   const router = useRouter();
@@ -86,8 +87,12 @@ export default function OrdersPage() {
   // Memoized function to fetch orders (RLS will handle accessibility)
   const fetchOrders = useCallback(async () => {
     setLoadingOrders(true);
+    setFetchError(null);
 
     try {
+      // Use the wrapper's defaults now (10s / 0 retries). The previous
+      // 30s × 3-retries override meant a broken connection produced a 60-90s
+      // spinner before the page showed any error at all.
       await withNetworkResilience(async (signal) => {
         let query = supabase
           .from('orders')
@@ -112,13 +117,14 @@ export default function OrdersPage() {
         if (error) {
           console.error('Error fetching orders:', error);
           throw error;
-        } else {
-          console.log('Fetched orders:', data);
-          setOrders(data || []);
         }
-      }, { timeout: 30000, retries: 2 });
+        setOrders(data || []);
+      });
     } catch (error) {
-      console.error('Failed to fetch orders after retries:', error);
+      console.error('Failed to fetch orders:', error);
+      setFetchError(
+        error instanceof Error ? error.message : 'Could not load orders.',
+      );
     } finally {
       setLoadingOrders(false);
     }
@@ -210,7 +216,26 @@ export default function OrdersPage() {
         right={<DsCountPill count={orders.length} accent={DS.orange} />}
       />
 
-      {orders.length === 0 ? (
+      {fetchError ? (
+        <div
+          className="rounded-2xl border p-6 space-y-3"
+          style={{ borderColor: `${DS.red}44`, backgroundColor: `${DS.red}08` }}
+        >
+          <div>
+            <p className="text-sm font-mono uppercase tracking-widest text-rose-400">
+              Could not load orders
+            </p>
+            <p className="text-xs text-neutral-400 mt-1 font-sans">{fetchError}</p>
+          </div>
+          <button
+            onClick={() => fetchOrders()}
+            className="text-[11px] font-bold font-mono uppercase tracking-widest px-3 py-1.5 rounded-lg border"
+            style={{ borderColor: `${DS.red}66`, color: DS.red, backgroundColor: `${DS.red}1a` }}
+          >
+            Retry
+          </button>
+        </div>
+      ) : orders.length === 0 ? (
         <DsEmpty
           icon={<PackageOpen size={28} />}
           title="No Orders"
