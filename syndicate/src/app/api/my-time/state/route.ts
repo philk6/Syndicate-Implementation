@@ -7,16 +7,14 @@ export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
 // GET /api/my-time/state
-// Returns everything the /my-time page needs in one round-trip:
-//   - my employee record (or null → user isn't an employee)
-//   - currently-open entry (or null)
-//   - today's entries (Chicago business date)
-//   - this week's entries (current pay period)
-//   - current hourly rate
-//   - active orders for the task-tag dropdown
+// One-shot fetch for the /my-time page — returns the caller's employee row,
+// open entry, today + week entries, current rate, and the correct list of
+// tags for their role:
+//   - warehouse employee → orders (filtered to non-closed statuses)
+//   - VA                 → team_projects (active) scoped to the VA's team
 export async function GET() {
   try {
-    const me = await assertRoleForRoute('admin-or-employee');
+    const me = await assertRoleForRoute('admin-or-employee-or-va');
 
     const service = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -26,24 +24,29 @@ export async function GET() {
 
     const { data: employee } = await service
       .from('employees')
-      .select('id, first_name, last_name, active, employment_start_date')
+      .select('id, first_name, last_name, active, employment_start_date, team_id, va_profile')
       .eq('user_id', me.user_id)
       .maybeSingle();
 
-    // Admins without an employee row get a valid empty state (they may still
-    // want to view the page; the UI shows an explanatory message).
+    // Admins/students without an employee row get a valid empty state; the
+    // UI shows an explanatory message rather than breaking.
     if (!employee) {
       return NextResponse.json({
-        data: { employee: null, openEntry: null, today: [], week: [], rate: null, orders: [] },
+        data: {
+          employee: null, openEntry: null, today: [], week: [],
+          rate: null, orders: [], projects: [], todayReport: null,
+          isVa: false,
+        },
       });
     }
 
+    const isVa = me.role === 'va';
     const [rangeStart, rangeEnd] = payPeriodRange(new Date());
 
-    const [openRes, weekRes, rateRes, ordersRes] = await Promise.all([
+    const [openRes, weekRes, rateRes, ordersRes, projectsRes, todayReportRes] = await Promise.all([
       service
         .from('time_entries')
-        .select('id, started_at, ended_at, task, order_id, note')
+        .select('id, started_at, ended_at, task, order_id, project_id, note')
         .eq('employee_id', employee.id)
         .is('ended_at', null)
         .order('started_at', { ascending: false })
@@ -51,7 +54,7 @@ export async function GET() {
         .maybeSingle(),
       service
         .from('time_entries')
-        .select('id, started_at, ended_at, task, order_id, note')
+        .select('id, started_at, ended_at, task, order_id, project_id, note')
         .eq('employee_id', employee.id)
         .gte('started_at', rangeStart.toISOString())
         .lt('started_at', rangeEnd.toISOString())
@@ -64,29 +67,48 @@ export async function GET() {
         .order('effective_from', { ascending: false })
         .limit(1)
         .maybeSingle(),
+      // Only fetch orders for warehouse employees — VAs don't tag against
+      // them, and the extra round-trip is pure waste for students/admins.
+      isVa
+        ? Promise.resolve({ data: [] as Array<{ order_id: number; order_statuses: unknown }>, error: null })
+        : service
+            .from('orders')
+            .select('order_id, order_status_id, order_statuses(description)')
+            .order('order_id', { ascending: false })
+            .limit(200),
+      // Active team_projects scoped to this employee's team. Warehouse
+      // employees never see projects because their team is the Warehouse
+      // singleton and no projects are created for it.
       service
-        .from('orders')
-        .select('order_id, order_status_id, order_statuses(description)')
-        .order('order_id', { ascending: false })
-        .limit(200),
+        .from('team_projects')
+        .select('id, name, description, active')
+        .eq('team_id', employee.team_id)
+        .eq('active', true)
+        .order('name', { ascending: true }),
+      // Has the VA already submitted today's daily report?
+      (async () => {
+        if (!isVa) return { data: null, error: null };
+        const today = businessDateKey(new Date());
+        return service
+          .from('va_daily_reports')
+          .select('id, accomplishments, stuck_on, tomorrow_plan, submitted_at')
+          .eq('employee_id', employee.id)
+          .eq('report_date', today)
+          .maybeSingle();
+      })(),
     ]);
 
-    // "Today" = Chicago business date for now. We group client-side by
-    // businessDateKey anyway, but the server's filter here is cheap.
     const todayKey = businessDateKey(new Date());
     const week = weekRes.data ?? [];
     const today = week.filter((e) => businessDateKey(new Date(e.started_at as string)) === todayKey);
 
-    // Filter orders to "active-ish": exclude cancelled / closed etc. The
-    // order_statuses.description filter is soft — when the join returns a
-    // description, we keep orders whose status isn't obviously terminal.
     const CLOSED_STATUSES = new Set(['Cancelled', 'Complete', 'Draft', 'Closed']);
     const orders = (ordersRes.data ?? [])
       .map((o) => {
         const s = Array.isArray(o.order_statuses) ? o.order_statuses[0] : o.order_statuses;
         return {
-          order_id: o.order_id as number,
-          status: (s?.description as string | undefined) ?? 'Unknown',
+          order_id: (o as { order_id: number }).order_id,
+          status: ((s as { description?: string } | undefined)?.description) ?? 'Unknown',
         };
       })
       .filter((o) => !CLOSED_STATUSES.has(o.status));
@@ -94,11 +116,14 @@ export async function GET() {
     return NextResponse.json({
       data: {
         employee,
+        isVa,
         openEntry: openRes.data ?? null,
         today,
         week,
         rate: rateRes.data?.hourly_rate ?? null,
         orders,
+        projects: projectsRes.data ?? [],
+        todayReport: todayReportRes.data ?? null,
       },
     });
   } catch (e) {
