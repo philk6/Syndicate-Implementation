@@ -17,7 +17,8 @@ import {
 } from '@/components/ui/sidebar';
 import { NavUser } from '@/components/nav-user';
 import { usePathname } from 'next/navigation';
-import { ShoppingCart, History, Settings, Users, LayoutDashboard, CreditCard, MessageCircle, Crosshair, Package, Warehouse, Search, Clock, UserCog } from 'lucide-react';
+import { ShoppingCart, History, Settings, Users, LayoutDashboard, CreditCard, MessageCircle, Crosshair, Package, Warehouse, Search, Clock, UserCog, Users2 } from 'lucide-react';
+import { VA_PROFILE_VISIBILITY, type VaProfile, type SidebarItemKey } from '@/lib/permissions';
 import SidebarLink from '@/components/SidebarLink';
 import { usePrepUnreadCount } from '@/hooks/usePrepUnreadCount';
 import {
@@ -92,14 +93,29 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     await logout();
   };
 
-  // Check if user has buyers group permission
-  const hasBuyersGroupAccess = user?.buyersgroup === true || user?.role === 'admin';
+  // Check if user has buyers group permission. Students and VAs are NOT in
+  // the buyer's group regardless of the flag's value — Open Orders stays
+  // hidden/blocked for them.
+  const hasBuyersGroupAccess =
+    user?.role === 'admin' || (user?.buyersgroup === true && user?.role !== 'va');
 
   // Prep Portal visibility
   const has1on1 = (user as { has_1on1_membership?: boolean })?.has_1on1_membership === true;
   const isAdmin = user?.role === 'admin';
   const isEmployee = user?.role === 'employee';
-  const hasPrepAccess = has1on1 || isAdmin || isEmployee;
+  const isVa = user?.role === 'va';
+  const isStudent = user?.is_one_on_one_student === true;
+  const vaProfile: VaProfile | null = isVa ? (user?.employee?.va_profile ?? null) : null;
+
+  // Operations VA + Full Access VA see Prep Portal; Research / Customer
+  // Service VAs don't.
+  const vaCanSeeItem = (item: SidebarItemKey): boolean => {
+    if (!vaProfile) return false;
+    return VA_PROFILE_VISIBILITY[vaProfile].includes(item);
+  };
+
+  const hasPrepAccess =
+    has1on1 || isAdmin || isEmployee || (isVa && vaCanSeeItem('prep-portal'));
   const prepUnread = usePrepUnreadCount(hasPrepAccess ? user?.user_id ?? null : null);
 
   if (!isAuthenticated) return null;
@@ -140,8 +156,10 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       </SidebarHeader>
       <SidebarContent>
         {data.navMain.map((item) => {
-          // Admin Panel visible to admins + employees (employees see a reduced set).
-          if (item.title === 'Admin Panel' && !isAdmin && !isEmployee) {
+          // Admin Panel visible to admins + employees + operations/full-access
+          // VAs (who see Prep Ops only). Hidden for other VAs + plain users.
+          const vaSeesAdminPanel = isVa && vaCanSeeItem('prep-ops');
+          if (item.title === 'Admin Panel' && !isAdmin && !isEmployee && !vaSeesAdminPanel) {
             return null;
           }
 
@@ -149,26 +167,55 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           let items: NavItem[] = [...item.items];
 
           if (item.title === 'Operations') {
-            // Prep Portal — admins, employees, and 1-on-1 users see it.
+            // For VAs, start from an empty slate and add back only what the
+            // profile allows. Non-VAs keep the full default set and layer
+            // extras (Prep Portal / My Time / My Team) on top.
+            if (isVa) {
+              const vaItems: NavItem[] = [];
+              for (const it of items) {
+                const key: SidebarItemKey | null =
+                  it.url === '/dashboard'       ? 'dashboard'
+                  : it.url === '/supplier-intel' ? 'supplier-intel'
+                  : it.url === '/history'        ? 'history'
+                  : it.url === '/chat'           ? 'chat'
+                  : it.url === '/command-center' ? 'command-center'
+                  : null;
+                if (key && vaCanSeeItem(key)) vaItems.push(it);
+              }
+              items = vaItems;
+            }
+
+            // Prep Portal — admins, employees, 1-on-1 users, and profile-allowed VAs.
             if (hasPrepAccess) {
               items = [...items, { title: 'Prep Portal', url: '/prep', icon: Package }];
             }
-            // My Time — admins and employees only.
-            if (isAdmin || isEmployee) {
+            // My Team — students and admins.
+            if (isStudent || isAdmin) {
+              items = [...items, { title: 'My Team', url: '/my-team', icon: Users2 }];
+            }
+            // My Time — admins, employees, VAs.
+            if (isAdmin || isEmployee || isVa) {
               items = [...items, { title: 'My Time', url: '/my-time', icon: Clock }];
             }
           }
 
           if (item.title === 'Admin Panel') {
-            if (isEmployee && !isAdmin) {
+            if (isVa) {
+              // VAs never see Manage Orders / Manage Users / Credit Dashboard /
+              // Employees / Teams. Prep Ops only if their profile allows it.
+              items = vaCanSeeItem('prep-ops')
+                ? [{ title: 'Prep Ops', url: '/admin/prep', icon: Warehouse }]
+                : [];
+            } else if (isEmployee && !isAdmin) {
               // Employees see Prep Ops only from the admin section.
               items = [{ title: 'Prep Ops', url: '/admin/prep', icon: Warehouse }];
             } else {
-              // Admins: all existing items + Prep Ops + new Employees section.
+              // Admins: all existing items + Prep Ops + Employees + Teams.
               items = [
                 ...items,
                 { title: 'Prep Ops', url: '/admin/prep', icon: Warehouse },
                 { title: 'Employees', url: '/admin/employees', icon: UserCog },
+                { title: 'Teams', url: '/admin/teams', icon: Users2 },
               ];
             }
           }

@@ -48,25 +48,40 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  // Role-gated paths: /admin/* is admin-only except /admin/prep which is
-  // also visible to employees; /my-time/* is admin or employee only.
+  // Role-gated paths. Keys:
+  //   /admin/*       — admin only (except carve-outs below)
+  //   /admin/prep    — admin + employee + va (VA profile is checked on the page)
+  //   /admin/teams   — admin only (covered by the default /admin rule)
+  //   /my-time/*     — admin + employee + va (clock-in/out is shared)
+  //   /my-team/*     — admin + one-on-one student (students manage their VAs)
+  //   /orders        — buyer's-group only (admin or users.buyersgroup=true)
+  //                    VAs and students are never in the buyer's group.
   const needsRole =
-    pathname.startsWith('/admin') || pathname.startsWith('/my-time');
+    pathname.startsWith('/admin') ||
+    pathname.startsWith('/my-time') ||
+    pathname.startsWith('/my-team') ||
+    pathname === '/orders' || pathname.startsWith('/orders/');
 
   if (needsRole) {
     const { data: userData } = await supabase
       .from('users')
-      .select('role')
+      .select('role, is_one_on_one_student, buyersgroup')
       .eq('user_id', user.id)
       .single();
 
-    const role = userData?.role as 'admin' | 'user' | 'employee' | undefined;
+    const role = userData?.role as 'admin' | 'user' | 'employee' | 'va' | undefined;
+    const isStudent = Boolean(userData?.is_one_on_one_student);
+    const inBuyersGroup = role === 'admin' || (Boolean(userData?.buyersgroup) && role !== 'va');
 
     const allowed = (() => {
       if (!role) return false;
-      if (pathname.startsWith('/my-time')) return role === 'admin' || role === 'employee';
-      if (pathname.startsWith('/admin/prep')) return role === 'admin' || role === 'employee';
-      // /admin/* (default): admin only
+      if (pathname === '/orders' || pathname.startsWith('/orders/')) return inBuyersGroup;
+      if (pathname.startsWith('/my-time')) return role === 'admin' || role === 'employee' || role === 'va';
+      if (pathname.startsWith('/my-team')) return role === 'admin' || isStudent;
+      if (pathname.startsWith('/admin/prep')) {
+        return role === 'admin' || role === 'employee' || role === 'va';
+      }
+      // /admin/* default: admin only
       return role === 'admin';
     })();
 

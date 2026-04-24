@@ -37,6 +37,7 @@ interface User {
   company: { name: string } | null;
   company_id: number | null;
   buyersgroup: boolean;
+  is_one_on_one_student: boolean;
 }
 
 interface ChatRoom1on1 {
@@ -89,6 +90,7 @@ export default function ManageUsersPage() {
       .select(`
         user_id,
         email,
+        is_one_on_one_student,
         firstname,
         lastname,
         role,
@@ -340,6 +342,44 @@ export default function ManageUsersPage() {
     cancelEditingMembership();
   };
 
+  // ── Toggle one-on-one student flag (auto-creates a team on first ON) ────
+
+  const handleStudentFlagToggle = async (userId: string, currentStatus: boolean) => {
+    setUsers((prev) =>
+      prev.map((u) => (u.user_id === userId ? { ...u, is_one_on_one_student: !currentStatus } : u)),
+    );
+    setUpdatingUserId(userId);
+    setMessage('');
+    try {
+      const res = await fetch(`/api/admin/users/${userId}/student-flag`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ is_one_on_one_student: !currentStatus }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        setMessage(`Failed to update student flag: ${json.error ?? 'unknown'}`);
+        setUsers((prev) =>
+          prev.map((u) => (u.user_id === userId ? { ...u, is_one_on_one_student: currentStatus } : u)),
+        );
+      } else {
+        setMessage(
+          !currentStatus
+            ? 'Marked as one-on-one student — team auto-created.'
+            : 'Unmarked. Existing team preserved for records.',
+        );
+      }
+    } catch (err) {
+      console.error('[student-flag] failed', err);
+      setUsers((prev) =>
+        prev.map((u) => (u.user_id === userId ? { ...u, is_one_on_one_student: currentStatus } : u)),
+      );
+      setMessage(`Failed to update student flag: ${err instanceof Error ? err.message : 'network'}`);
+    } finally {
+      setUpdatingUserId(null);
+    }
+  };
+
   // ── Toggle buyers group access ───────────────────────────────────────────
 
   const handleBuyersGroupToggle = async (userId: string, currentStatus: boolean) => {
@@ -568,6 +608,7 @@ export default function ManageUsersPage() {
               <DsTh>1-on-1 Membership</DsTh>
               <DsTh>Membership Expiry</DsTh>
               <DsTh>Buyers Group</DsTh>
+              <DsTh>1-on-1 Student</DsTh>
               <DsTh>Company</DsTh>
             </DsThead>
             <tbody>
@@ -814,6 +855,22 @@ export default function ManageUsersPage() {
                       />
                       {updatingUserId === u.user_id && (
                         <Loader2 className="w-3.5 h-3.5 text-[#FF6B35] animate-spin" />
+                      )}
+                    </div>
+                  </DsTd>
+
+                  {/* One-on-One Student Toggle */}
+                  <DsTd>
+                    <div className="flex items-center gap-2">
+                      <Switch
+                        id={`student-${u.user_id}`}
+                        checked={u.is_one_on_one_student}
+                        onCheckedChange={() => handleStudentFlagToggle(u.user_id, u.is_one_on_one_student)}
+                        disabled={updatingUserId === u.user_id}
+                        className="data-[state=checked]:bg-[#4ECDC4]"
+                      />
+                      {updatingUserId === u.user_id && (
+                        <Loader2 className="w-3.5 h-3.5 text-[#4ECDC4] animate-spin" />
                       )}
                     </div>
                   </DsTd>

@@ -40,13 +40,22 @@ const readPersistedUser = (): AuthUser | null => {
 interface AuthUser {
   user_id: string;
   email: string | undefined;
-  role: 'user' | 'admin' | 'employee';
+  role: 'user' | 'admin' | 'employee' | 'va';
   firstname?: string;
   lastname?: string;
   company_id?: number | null;
   tos_accepted: boolean;
   buyersgroup: boolean;
+  is_one_on_one_student: boolean;
   totalXp: number;
+  // Populated for roles 'employee' / 'va' via a joined fetch. null for
+  // user / admin. Drives sidebar + clock-in behaviour.
+  employee: {
+    id: string;
+    team_id: string;
+    active: boolean;
+    va_profile: 'research' | 'operations' | 'customer_service' | 'full_access' | null;
+  } | null;
 }
 
 interface AuthContextType {
@@ -116,10 +125,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }, 6000);
 
     try {
-      const [userRes, xpRes] = await Promise.all([
+      const [userRes, xpRes, empRes] = await Promise.all([
         supabase
           .from('users')
-          .select('user_id, email, role, firstname, lastname, company_id, tos_accepted, buyersgroup')
+          .select('user_id, email, role, firstname, lastname, company_id, tos_accepted, buyersgroup, is_one_on_one_student')
           .eq('user_id', userId)
           .abortSignal(queryController.signal)
           .single(),
@@ -127,6 +136,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           .from('user_total_xp')
           .select('total_xp')
           .eq('user_id', userId)
+          .abortSignal(queryController.signal)
+          .maybeSingle(),
+        // Active employee/VA record (if any). Non-employees get null here.
+        supabase
+          .from('employees')
+          .select('id, team_id, active, va_profile')
+          .eq('user_id', userId)
+          .eq('active', true)
           .abortSignal(queryController.signal)
           .maybeSingle(),
       ]);
@@ -145,7 +162,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         ...userRes.data,
         user_id: userRes.data.user_id ?? userId,
         email: userRes.data.email ?? currentSession.user.email,
+        is_one_on_one_student: Boolean(userRes.data.is_one_on_one_student),
         totalXp: xpRes.data?.total_xp ?? 0,
+        employee: empRes.data
+          ? {
+              id: empRes.data.id as string,
+              team_id: empRes.data.team_id as string,
+              active: Boolean(empRes.data.active),
+              va_profile: (empRes.data.va_profile as AuthUser['employee'] extends infer E ? E extends { va_profile: infer V } ? V : never : never) ?? null,
+            }
+          : null,
       };
       userCache.set(userId, fullUser);
       setUser(fullUser, 'db-fetch-success');
