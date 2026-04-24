@@ -13,7 +13,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
-import { Check, Plus, Loader2, Users, Settings2, CalendarClock, Pencil } from 'lucide-react';
+import { Check, Plus, Loader2, Users, Settings2, CalendarClock, Pencil, UserPlus } from 'lucide-react';
+import Link from 'next/link';
 import ManageChatMentorsModal from '@/components/ManageChatMentorsModal';
 import { CompanyProfileDrawer } from '@/components/CompanyProfileDrawer';
 import { LoadingSpinner, PageLoadingSpinner } from '@/components/ui/loading-spinner';
@@ -497,9 +498,16 @@ export default function ManageUsersPage() {
         title="MANAGE USERS"
         subtitle={`${users.length} registered users`}
         right={
-          <DsButton onClick={generateInviteCode} accent={DS.orange}>
-            <Plus className="w-3.5 h-3.5" /> Generate Invite Code
-          </DsButton>
+          <div className="flex items-center gap-2 flex-wrap">
+            <Link href="/admin/manage-users/new-employee">
+              <DsButton variant="secondary" accent={DS.teal}>
+                <UserPlus className="w-3.5 h-3.5" /> Create Employee
+              </DsButton>
+            </Link>
+            <DsButton onClick={generateInviteCode} accent={DS.orange}>
+              <Plus className="w-3.5 h-3.5" /> Generate Invite Code
+            </DsButton>
+          </div>
         }
       />
 
