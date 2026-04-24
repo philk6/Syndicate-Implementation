@@ -63,7 +63,7 @@ export default function AdminPrepPage() {
 
   useEffect(() => {
     if (authLoading) return;
-    if (!isAuthenticated || user?.role !== 'admin') { router.push('/login'); return; }
+    if (!isAuthenticated || (user?.role !== 'admin' && user?.role !== 'employee')) { router.push('/login'); return; }
     reload();
   }, [authLoading, isAuthenticated, user, router, reload]);
 
@@ -83,7 +83,7 @@ export default function AdminPrepPage() {
   }, [shipments, statusFilter, search]);
 
   if (authLoading || loading) return <><MissionControlBackground /><PageLoadingSpinner /></>;
-  if (!isAuthenticated || user?.role !== 'admin') return null;
+  if (!isAuthenticated || (user?.role !== 'admin' && user?.role !== 'employee')) return null;
 
   return (
     <>

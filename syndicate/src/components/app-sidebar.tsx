@@ -17,7 +17,7 @@ import {
 } from '@/components/ui/sidebar';
 import { NavUser } from '@/components/nav-user';
 import { usePathname } from 'next/navigation';
-import { ShoppingCart, History, Settings, Users, LayoutDashboard, CreditCard, MessageCircle, Crosshair, Package, Warehouse, Search } from 'lucide-react';
+import { ShoppingCart, History, Settings, Users, LayoutDashboard, CreditCard, MessageCircle, Crosshair, Package, Warehouse, Search, Clock, UserCog } from 'lucide-react';
 import SidebarLink from '@/components/SidebarLink';
 import { usePrepUnreadCount } from '@/hooks/usePrepUnreadCount';
 import {
@@ -97,7 +97,9 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 
   // Prep Portal visibility
   const has1on1 = (user as { has_1on1_membership?: boolean })?.has_1on1_membership === true;
-  const hasPrepAccess = has1on1 || user?.role === 'admin';
+  const isAdmin = user?.role === 'admin';
+  const isEmployee = user?.role === 'employee';
+  const hasPrepAccess = has1on1 || isAdmin || isEmployee;
   const prepUnread = usePrepUnreadCount(hasPrepAccess ? user?.user_id ?? null : null);
 
   if (!isAuthenticated) return null;
@@ -138,19 +140,37 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       </SidebarHeader>
       <SidebarContent>
         {data.navMain.map((item) => {
-          // Only render Admin Panel for admin users
-          if (item.title === 'Admin Panel' && user?.role !== 'admin') {
+          // Admin Panel visible to admins + employees (employees see a reduced set).
+          if (item.title === 'Admin Panel' && !isAdmin && !isEmployee) {
             return null;
           }
 
-          // Inject Prep Portal / Prep Ops entries dynamically
           type NavItem = { title: string; url: string; icon: React.ComponentType<{ className?: string }> };
           let items: NavItem[] = [...item.items];
-          if (item.title === 'Operations' && hasPrepAccess) {
-            items = [...items, { title: 'Prep Portal', url: '/prep', icon: Package }];
+
+          if (item.title === 'Operations') {
+            // Prep Portal — admins, employees, and 1-on-1 users see it.
+            if (hasPrepAccess) {
+              items = [...items, { title: 'Prep Portal', url: '/prep', icon: Package }];
+            }
+            // My Time — admins and employees only.
+            if (isAdmin || isEmployee) {
+              items = [...items, { title: 'My Time', url: '/my-time', icon: Clock }];
+            }
           }
+
           if (item.title === 'Admin Panel') {
-            items = [...items, { title: 'Prep Ops', url: '/admin/prep', icon: Warehouse }];
+            if (isEmployee && !isAdmin) {
+              // Employees see Prep Ops only from the admin section.
+              items = [{ title: 'Prep Ops', url: '/admin/prep', icon: Warehouse }];
+            } else {
+              // Admins: all existing items + Prep Ops + new Employees section.
+              items = [
+                ...items,
+                { title: 'Prep Ops', url: '/admin/prep', icon: Warehouse },
+                { title: 'Employees', url: '/admin/employees', icon: UserCog },
+              ];
+            }
           }
 
           return (

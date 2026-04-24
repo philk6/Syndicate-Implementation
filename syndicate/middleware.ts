@@ -48,17 +48,31 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  // Admin paths: check role
-  if (pathname.startsWith('/admin')) {
+  // Role-gated paths: /admin/* is admin-only except /admin/prep which is
+  // also visible to employees; /my-time/* is admin or employee only.
+  const needsRole =
+    pathname.startsWith('/admin') || pathname.startsWith('/my-time');
+
+  if (needsRole) {
     const { data: userData } = await supabase
       .from('users')
       .select('role')
       .eq('user_id', user.id)
       .single();
 
-    if (!userData || userData.role !== 'admin') {
+    const role = userData?.role as 'admin' | 'user' | 'employee' | undefined;
+
+    const allowed = (() => {
+      if (!role) return false;
+      if (pathname.startsWith('/my-time')) return role === 'admin' || role === 'employee';
+      if (pathname.startsWith('/admin/prep')) return role === 'admin' || role === 'employee';
+      // /admin/* (default): admin only
+      return role === 'admin';
+    })();
+
+    if (!allowed) {
       const url = request.nextUrl.clone();
-      url.pathname = '/unauthorized';
+      url.pathname = '/dashboard';
       return NextResponse.redirect(url);
     }
   }

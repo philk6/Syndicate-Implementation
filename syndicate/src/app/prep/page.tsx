@@ -83,8 +83,11 @@ export default function PrepPortalPage() {
   useEffect(() => {
     if (authLoading) return;
     if (!isAuthenticated) { router.push('/login'); return; }
-    // Gate: must have 1-on-1 membership or be admin
-    const hasAccess = user?.role === 'admin' || (user as { has_1on1_membership?: boolean })?.has_1on1_membership === true;
+    // Gate: admins, employees, and 1-on-1 members can use Prep Portal.
+    const hasAccess =
+      user?.role === 'admin' ||
+      user?.role === 'employee' ||
+      (user as { has_1on1_membership?: boolean })?.has_1on1_membership === true;
     if (!hasAccess) { router.push('/unauthorized'); return; }
     if (!user?.user_id) return;
     reload();

@@ -40,7 +40,7 @@ const readPersistedUser = (): AuthUser | null => {
 interface AuthUser {
   user_id: string;
   email: string | undefined;
-  role: 'user' | 'admin';
+  role: 'user' | 'admin' | 'employee';
   firstname?: string;
   lastname?: string;
   company_id?: number | null;
