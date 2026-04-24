@@ -13,8 +13,11 @@ import {
   VA_PROFILE_LABELS, VA_PROFILE_DESCRIPTIONS, type VaProfile,
 } from '@/lib/permissions';
 import {
-  UserPlus, RefreshCw, Copy, Shield, Power, CircleDollarSign, Archive, ArchiveRestore, Plus, X, Users2, Clock, ClipboardList, Package as PackageIcon, FileText, Activity,
+  UserPlus, RefreshCw, Copy, Shield, Power, CircleDollarSign, Archive, ArchiveRestore, Plus, X, Users2, Clock, ClipboardList, Package as PackageIcon, FileText, Activity, Download, ChevronDown, ChevronRight, AlertCircle,
 } from 'lucide-react';
+import {
+  TASK_LABELS, TASK_TYPES, type TaskType as TaskTypeKey, hoursBetween, formatDuration, formatZonedTime, payPeriodStart, payPeriodEnd,
+} from '@/lib/timeTracking';
 
 type Tab = 'vas' | 'live' | 'hours' | 'by-project' | 'reports';
 
@@ -162,10 +165,10 @@ export function MyTeamPortal({ teamId: explicitTeamId }: { teamId?: string } = {
       </div>
 
       {tab === 'vas'        && <VAsTab state={state} onChange={load} />}
-      {tab === 'live'       && <TabPlaceholder title="Live Status" hint="VAs currently clocked in — wires in Phase 5." />}
-      {tab === 'hours'      && <TabPlaceholder title="Hours Report" hint="Per-VA hours + payroll CSV — wires in Phase 5." />}
-      {tab === 'by-project' && <TabPlaceholder title="Hours by Project" hint="Labor-cost-per-project view — wires in Phase 5." />}
-      {tab === 'reports'    && <TabPlaceholder title="Daily Reports" hint="VA end-of-day report archive — wires in Phase 5." />}
+      {tab === 'live'       && <LiveStatusTab teamId={state.team.id} />}
+      {tab === 'hours'      && <HoursReportTab teamId={state.team.id} />}
+      {tab === 'by-project' && <HoursByProjectTab teamId={state.team.id} />}
+      {tab === 'reports'    && <DailyReportsTab teamId={state.team.id} vas={state.vas} />}
     </PageShell>
   );
 }
@@ -575,14 +578,401 @@ function CredentialRow({ label, value, mono }: { label: string; value: string; m
   );
 }
 
-function TabPlaceholder({ title, hint }: { title: string; hint: string }) {
+function toBusinessDateInput(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const da = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${da}`;
+}
+
+// ─── Live Status ───────────────────────────────────────────────────────────
+
+function LiveStatusTab({ teamId }: { teamId: string }) {
+  const [data, setData] = useState<{
+    live: Array<{ employee_id: string; first_name: string; last_name: string; started_at: string; task: string; order_id: number | null; project_name: string | null; needs_report: boolean }>;
+    needs_report: Array<{ employee_id: string; first_name: string; last_name: string; started_at: string; task: string; order_id: number | null; project_name: string | null; needs_report: boolean }>;
+  } | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [, setTick] = useState(0);
+
+  const load = useCallback(async () => {
+    setError(null);
+    try {
+      const res = await fetch(`/api/my-team/live-status?teamId=${encodeURIComponent(teamId)}`);
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? 'Failed');
+      setData(json.data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed');
+    } finally { setLoading(false); }
+  }, [teamId]);
+
+  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    const a = setInterval(() => load(), 30000);
+    const b = setInterval(() => setTick((n) => n + 1), 15000);
+    return () => { clearInterval(a); clearInterval(b); };
+  }, [load]);
+
+  if (loading) return <PageLoadingSpinner />;
+  if (error) return <ErrorCard message={error} onRetry={load} />;
+
+  const all = [...(data?.needs_report ?? []), ...(data?.live ?? [])];
   return (
-    <section>
-      <SectionLabel accent={DS.muted}>{title}</SectionLabel>
-      <DsCard className="p-8 text-center">
-        <Clock className="w-8 h-8 text-neutral-500 mx-auto mb-3" />
-        <p className="text-sm text-neutral-400 font-sans">{hint}</p>
-      </DsCard>
+    <section className="space-y-4">
+      <div className="flex items-center justify-between">
+        <SectionLabel accent={DS.teal}>Currently Clocked In · {all.length}</SectionLabel>
+        <DsButton variant="ghost" onClick={load}>
+          <RefreshCw className="w-3.5 h-3.5" /> Refresh
+        </DsButton>
+      </div>
+      {all.length === 0 ? (
+        <DsEmpty icon={<Activity className="w-6 h-6" />} title="No-one clocked in right now" body="VAs show here live when they clock in." />
+      ) : (
+        <DsTable>
+          <DsThead>
+            <DsTh>VA</DsTh>
+            <DsTh>Task</DsTh>
+            <DsTh>Project / Order</DsTh>
+            <DsTh>Started</DsTh>
+            <DsTh className="text-right">Duration</DsTh>
+            <DsTh>Status</DsTh>
+          </DsThead>
+          <tbody>
+            {all.map((r) => {
+              const start = new Date(r.started_at);
+              const hrs = hoursBetween(start, null);
+              return (
+                <DsTr key={r.employee_id}>
+                  <DsTd className="font-semibold text-white">{r.first_name} {r.last_name}</DsTd>
+                  <DsTd><DsStatusPill label={TASK_LABELS[r.task as TaskTypeKey] ?? r.task} color={DS.orange} /></DsTd>
+                  <DsTd>{r.project_name ?? (r.order_id ? `Order #${r.order_id}` : '—')}</DsTd>
+                  <DsTd className="tabular-nums text-neutral-400">{formatZonedTime(start)}</DsTd>
+                  <DsTd className="text-right tabular-nums font-mono text-teal-300">{formatDuration(hrs * 3600000)}</DsTd>
+                  <DsTd>
+                    {r.needs_report
+                      ? <DsStatusPill label="Needs EOD Report" color={DS.red} />
+                      : <DsStatusPill label="Live" color={DS.teal} />}
+                  </DsTd>
+                </DsTr>
+              );
+            })}
+          </tbody>
+        </DsTable>
+      )}
     </section>
+  );
+}
+
+// ─── Hours Report ──────────────────────────────────────────────────────────
+
+function HoursReportTab({ teamId }: { teamId: string }) {
+  const [from, setFrom] = useState(toBusinessDateInput(payPeriodStart()));
+  const [to, setTo] = useState(toBusinessDateInput(new Date(payPeriodEnd().getTime())));
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [report, setReport] = useState<{
+    rows: Array<{
+      employee_id: string; first_name: string; last_name: string; email: string; active: boolean;
+      total_hours: number; by_task: Record<TaskTypeKey, number>; hourly_rate: number; gross_pay: number;
+      unresolved_entries: number;
+    }>;
+  } | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true); setError(null);
+    try {
+      const res = await fetch(`/api/my-team/hours-report?teamId=${encodeURIComponent(teamId)}&from=${from}&to=${to}`);
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? 'Failed');
+      setReport(json.data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed');
+    } finally { setLoading(false); }
+  }, [teamId, from, to]);
+  useEffect(() => { load(); }, [load]);
+
+  const exportCsv = () => {
+    window.open(`/api/my-team/payroll-export?teamId=${encodeURIComponent(teamId)}&from=${from}&to=${to}`, '_blank');
+  };
+
+  return (
+    <section className="space-y-3">
+      <DsCard className="p-4">
+        <div className="flex items-end gap-3 flex-wrap">
+          <DsInput label="From" type="date" value={from} onChange={setFrom} />
+          <DsInput label="To"   type="date" value={to}   onChange={setTo} />
+          <DsButton onClick={load} variant="secondary" accent={DS.teal}>
+            <RefreshCw className="w-3.5 h-3.5" /> Refresh
+          </DsButton>
+          <div className="flex-1" />
+          <DsButton onClick={exportCsv} accent={DS.orange}>
+            <Download className="w-3.5 h-3.5" /> Export Payroll CSV
+          </DsButton>
+        </div>
+      </DsCard>
+      {loading && <PageLoadingSpinner />}
+      {error && <ErrorCard message={error} onRetry={load} />}
+      {report && !loading && !error && (
+        report.rows.length === 0 ? (
+          <DsEmpty icon={<ClipboardList className="w-6 h-6" />} title="No hours logged" body="No time entries in this range." />
+        ) : (
+          <div className="overflow-x-auto">
+            <DsTable>
+              <DsThead>
+                <DsTh>VA</DsTh>
+                <DsTh className="text-right">Total</DsTh>
+                {TASK_TYPES.map((t) => <DsTh key={t} className="text-right">{TASK_LABELS[t]}</DsTh>)}
+                <DsTh className="text-right">Rate</DsTh>
+                <DsTh className="text-right">Gross</DsTh>
+              </DsThead>
+              <tbody>
+                {report.rows.map((r) => (
+                  <DsTr key={r.employee_id}>
+                    <DsTd className="font-semibold text-white">
+                      {r.first_name} {r.last_name}
+                      {!r.active && <span className="ml-2 text-[10px] text-neutral-500 uppercase">(inactive)</span>}
+                      {r.unresolved_entries > 0 && (
+                        <span className="ml-2 text-[10px] text-rose-400 uppercase">
+                          {r.unresolved_entries} unresolved
+                        </span>
+                      )}
+                    </DsTd>
+                    <DsTd className="text-right tabular-nums font-bold">{r.total_hours.toFixed(2)}</DsTd>
+                    {TASK_TYPES.map((t) => (
+                      <DsTd key={t} className="text-right tabular-nums text-neutral-400">
+                        {r.by_task[t] > 0 ? r.by_task[t].toFixed(2) : '—'}
+                      </DsTd>
+                    ))}
+                    <DsTd className="text-right tabular-nums">${Number(r.hourly_rate).toFixed(2)}</DsTd>
+                    <DsTd className="text-right tabular-nums font-bold text-teal-300">${r.gross_pay.toFixed(2)}</DsTd>
+                  </DsTr>
+                ))}
+              </tbody>
+            </DsTable>
+          </div>
+        )
+      )}
+    </section>
+  );
+}
+
+// ─── Hours by Project ──────────────────────────────────────────────────────
+
+function HoursByProjectTab({ teamId }: { teamId: string }) {
+  const [from, setFrom] = useState(toBusinessDateInput(payPeriodStart()));
+  const [to, setTo] = useState(toBusinessDateInput(new Date(payPeriodEnd().getTime())));
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [rows, setRows] = useState<Array<{
+    project_id: string; name: string; total_hours: number;
+    per_employee: Array<{ employee_id: string; name: string; total: number; byTask: Record<string, number> }>;
+  }> | null>(null);
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+
+  const load = useCallback(async () => {
+    setLoading(true); setError(null);
+    try {
+      const res = await fetch(`/api/my-team/hours-by-project?teamId=${encodeURIComponent(teamId)}&from=${from}&to=${to}`);
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? 'Failed');
+      setRows(json.data.rows);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed');
+    } finally { setLoading(false); }
+  }, [teamId, from, to]);
+  useEffect(() => { load(); }, [load]);
+
+  return (
+    <section className="space-y-3">
+      <DsCard className="p-4">
+        <div className="flex items-end gap-3 flex-wrap">
+          <DsInput label="From" type="date" value={from} onChange={setFrom} />
+          <DsInput label="To"   type="date" value={to}   onChange={setTo} />
+          <DsButton onClick={load} variant="secondary" accent={DS.teal}>
+            <RefreshCw className="w-3.5 h-3.5" /> Refresh
+          </DsButton>
+        </div>
+      </DsCard>
+      {loading && <PageLoadingSpinner />}
+      {error && <ErrorCard message={error} onRetry={load} />}
+      {rows && !loading && !error && (
+        rows.length === 0 ? (
+          <DsEmpty icon={<PackageIcon className="w-6 h-6" />} title="No labor hours by project" body="No entries tagged to a project in this range." />
+        ) : (
+          <div className="space-y-2">
+            {rows.map((r) => (
+              <DsCard key={r.project_id} className="p-4">
+                <button
+                  onClick={() => setExpanded((x) => ({ ...x, [r.project_id]: !x[r.project_id] }))}
+                  className="flex items-center justify-between w-full text-left"
+                >
+                  <span className="flex items-center gap-2">
+                    {expanded[r.project_id] ? <ChevronDown className="w-3.5 h-3.5 text-neutral-500" /> : <ChevronRight className="w-3.5 h-3.5 text-neutral-500" />}
+                    <span className="font-mono uppercase tracking-widest text-sm font-bold text-white">{r.name}</span>
+                  </span>
+                  <span className="font-mono tabular-nums text-teal-300">{r.total_hours.toFixed(2)} h</span>
+                </button>
+                {expanded[r.project_id] && (
+                  <div className="mt-3 pl-3 border-l border-white/[0.08] space-y-2">
+                    {r.per_employee.map((pe) => (
+                      <div key={pe.employee_id} className="flex items-center justify-between gap-3 text-xs flex-wrap">
+                        <span className="text-white font-sans">{pe.name}</span>
+                        <div className="flex items-center gap-3 flex-wrap">
+                          {Object.entries(pe.byTask).map(([t, h]) => (
+                            <span key={t} className="font-mono text-[10px] uppercase tracking-widest text-neutral-400">
+                              {TASK_LABELS[t as TaskTypeKey] ?? t}: {(h as number).toFixed(2)}
+                            </span>
+                          ))}
+                          <span className="font-mono tabular-nums text-teal-300">{pe.total.toFixed(2)}h</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </DsCard>
+            ))}
+          </div>
+        )
+      )}
+    </section>
+  );
+}
+
+// ─── Daily Reports ─────────────────────────────────────────────────────────
+
+function DailyReportsTab({ teamId, vas }: { teamId: string; vas: TeamState['vas'] }) {
+  const defaultFrom = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 7);
+    return toBusinessDateInput(d);
+  }, []);
+  const [from, setFrom] = useState(defaultFrom);
+  const [to, setTo] = useState(toBusinessDateInput(new Date()));
+  const [employeeId, setEmployeeId] = useState<string>('');
+  const [q, setQ] = useState('');
+  const [rows, setRows] = useState<Array<{
+    id: string; employee_id: string; employee_name: string; report_date: string;
+    accomplishments: string; stuck_on: string | null; tomorrow_plan: string | null;
+    submitted_at: string; edited_at: string | null;
+  }> | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+
+  const load = useCallback(async () => {
+    setLoading(true); setError(null);
+    try {
+      const params = new URLSearchParams({ teamId, from, to });
+      if (employeeId) params.set('employeeId', employeeId);
+      if (q.trim()) params.set('q', q.trim());
+      const res = await fetch(`/api/my-team/daily-reports?${params.toString()}`);
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? 'Failed');
+      setRows(json.data.rows);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed');
+    } finally { setLoading(false); }
+  }, [teamId, from, to, employeeId, q]);
+  useEffect(() => { load(); }, [load]);
+
+  return (
+    <section className="space-y-3">
+      <DsCard className="p-4">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-3 items-end">
+          <label className="block">
+            <span className="block text-[10px] font-bold uppercase tracking-widest text-neutral-500 mb-1">VA</span>
+            <select
+              value={employeeId}
+              onChange={(e) => setEmployeeId(e.target.value)}
+              className="w-full text-sm text-white rounded-lg px-3 py-2 border font-mono"
+              style={{ backgroundColor: DS.inputBg, borderColor: 'rgba(255,255,255,0.1)' }}
+            >
+              <option value="">All VAs</option>
+              {vas.map((v) => (
+                <option key={v.id} value={v.id}>{v.first_name} {v.last_name}</option>
+              ))}
+            </select>
+          </label>
+          <DsInput label="From" type="date" value={from} onChange={setFrom} />
+          <DsInput label="To"   type="date" value={to}   onChange={setTo} />
+          <DsInput label="Search" value={q} onChange={setQ} placeholder="e.g. damaged units" />
+          <DsButton onClick={load} variant="secondary" accent={DS.teal}>
+            <RefreshCw className="w-3.5 h-3.5" /> Refresh
+          </DsButton>
+        </div>
+      </DsCard>
+
+      {loading && <PageLoadingSpinner />}
+      {error && <ErrorCard message={error} onRetry={load} />}
+      {rows && !loading && !error && (
+        rows.length === 0 ? (
+          <DsEmpty icon={<FileText className="w-6 h-6" />} title="No reports found" body="Try widening the date range or clearing the search." />
+        ) : (
+          <div className="space-y-2">
+            {rows.map((r) => {
+              const expand = !!expanded[r.id];
+              const preview = r.accomplishments.slice(0, 120) + (r.accomplishments.length > 120 ? '…' : '');
+              return (
+                <DsCard key={r.id} className="p-4">
+                  <button
+                    onClick={() => setExpanded((x) => ({ ...x, [r.id]: !x[r.id] }))}
+                    className="flex items-start justify-between w-full text-left gap-3"
+                  >
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {expand ? <ChevronDown className="w-3.5 h-3.5 text-neutral-500" /> : <ChevronRight className="w-3.5 h-3.5 text-neutral-500" />}
+                        <span className="font-mono uppercase tracking-widest text-sm font-bold text-white">{r.employee_name}</span>
+                        <span className="text-[10px] text-neutral-500 font-mono uppercase">{r.report_date}</span>
+                        {r.edited_at && <span className="text-[10px] text-yellow-400 font-mono uppercase">edited</span>}
+                      </div>
+                      {!expand && <p className="text-xs text-neutral-400 font-sans mt-1.5 pl-5">{preview}</p>}
+                    </div>
+                    <span className="text-[10px] text-neutral-500 font-mono uppercase whitespace-nowrap">
+                      {formatZonedTime(new Date(r.submitted_at))}
+                    </span>
+                  </button>
+                  {expand && (
+                    <div className="mt-3 pl-5 space-y-3 text-xs text-neutral-300 font-sans">
+                      <div>
+                        <div className="text-[10px] font-bold uppercase tracking-widest text-teal-400 mb-0.5">Accomplished</div>
+                        <pre className="whitespace-pre-wrap font-sans leading-relaxed">{r.accomplishments}</pre>
+                      </div>
+                      {r.stuck_on && (
+                        <div>
+                          <div className="text-[10px] font-bold uppercase tracking-widest text-rose-400 mb-0.5">Stuck on</div>
+                          <pre className="whitespace-pre-wrap font-sans leading-relaxed">{r.stuck_on}</pre>
+                        </div>
+                      )}
+                      {r.tomorrow_plan && (
+                        <div>
+                          <div className="text-[10px] font-bold uppercase tracking-widest text-orange-400 mb-0.5">Tomorrow</div>
+                          <pre className="whitespace-pre-wrap font-sans leading-relaxed">{r.tomorrow_plan}</pre>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </DsCard>
+              );
+            })}
+          </div>
+        )
+      )}
+    </section>
+  );
+}
+
+function ErrorCard({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return (
+    <DsCard className="p-5" accent={DS.red}>
+      <div className="flex items-start gap-2">
+        <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+        <p className="text-sm text-rose-400 font-sans">{message}</p>
+      </div>
+      <DsButton variant="ghost" onClick={onRetry} className="mt-3">
+        <RefreshCw className="w-3.5 h-3.5" /> Retry
+      </DsButton>
+    </DsCard>
   );
 }
