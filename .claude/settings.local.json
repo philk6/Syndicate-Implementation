@@ -1,7 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "Bash(railway status *)"
+      "Bash(railway status *)",
+      "Bash(npx next *)"
     ]
   }
 }
