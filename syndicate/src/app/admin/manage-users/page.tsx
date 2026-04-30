@@ -19,7 +19,7 @@ import ManageChatMentorsModal from '@/components/ManageChatMentorsModal';
 import { CompanyProfileDrawer } from '@/components/CompanyProfileDrawer';
 import { LoadingSpinner, PageLoadingSpinner } from '@/components/ui/loading-spinner';
 import {
-  PageShell, PageHeader, SectionLabel, DsCard, DsStatusPill,
+  PageShell, PageHeader, SectionLabel, DsCard,
   DsTable, DsThead, DsTh, DsTr, DsTd, DsButton, DsInput, DsEmpty, DsCountPill, DS,
 } from '@/components/ui/ds';
 
@@ -54,7 +54,61 @@ const ROLE_COLOR: Record<string, string> = {
   user: DS.blue,
   mentor: '#4ade80',
   student: DS.teal,
+  employee: DS.gold,
+  va: DS.teal,
 };
+
+const SYSTEM_ROLES = ['user', 'admin', 'employee', 'va'] as const;
+type SystemRole = (typeof SYSTEM_ROLES)[number];
+
+interface TeamOwnerOption {
+  team_id: string;
+  team_name: string;
+  owner_user_id: string;
+  owner_name: string;
+  owner_email: string;
+}
+
+// What the confirmation modal shows for each transition. Picked by the
+// to-role first, then refined by the from-role for "demote from admin".
+function modalCopy(opts: {
+  fromRole: SystemRole;
+  toRole: SystemRole;
+  fullName: string;
+}): { title: string; body: string } {
+  const { fromRole, toRole, fullName } = opts;
+  const name = fullName || 'This user';
+
+  if (toRole === 'admin') {
+    return {
+      title: 'Promote to Admin?',
+      body: `${name} will get full admin access to Syndicate, including Manage Users, Manage Orders, Credit Dashboard, and all teams. This is a powerful role.`,
+    };
+  }
+  if (fromRole === 'admin') {
+    return {
+      title: 'Demote from Admin?',
+      body: `${name} will lose admin access. They will no longer see Manage Users, Manage Orders, Credit Dashboard, or other teams. Their time entry history is preserved.`,
+    };
+  }
+  if (toRole === 'employee') {
+    return {
+      title: 'Convert to Employee?',
+      body: `${name} becomes a warehouse employee. They will be added to the Warehouse team and able to clock in via My Time. Their existing data is preserved.`,
+    };
+  }
+  if (toRole === 'va') {
+    return {
+      title: 'Convert to VA?',
+      body: `${name} becomes a VA. You must assign them to a team owner (one-on-one student) before they can clock in. Continue?`,
+    };
+  }
+  // Default → user
+  return {
+    title: 'Reset to Regular User?',
+    body: `${name} becomes a regular user. If they were a VA or employee, they will be removed from their current team but their time entry history stays in place. Continue?`,
+  };
+}
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
@@ -78,6 +132,17 @@ export default function ManageUsersPage() {
   const [oneOnOneRooms, setOneOnOneRooms] = useState<ChatRoom1on1[]>([]);
   const [loadingRooms, setLoadingRooms] = useState(false);
   const [managingRoom, setManagingRoom] = useState<ChatRoom1on1 | null>(null);
+
+  // System-role change confirmation modal state.
+  const [roleModal, setRoleModal] = useState<{
+    user: User; toRole: SystemRole; teamId: string;
+  } | null>(null);
+  const [roleModalSubmitting, setRoleModalSubmitting] = useState(false);
+  const [roleModalError, setRoleModalError] = useState<string | null>(null);
+  // Teams owned by one-on-one students — populated lazily when an admin
+  // first opens a "convert to VA" modal so we don't hit the DB on every load.
+  const [vaTeamOptions, setVaTeamOptions] = useState<TeamOwnerOption[] | null>(null);
+  const [vaTeamOptionsLoading, setVaTeamOptionsLoading] = useState(false);
 
   const { isAuthenticated, loading: authLoading, user } = useAuth();
   const router = useRouter();
@@ -172,6 +237,83 @@ export default function ManageUsersPage() {
       setLoadingRooms(false);
     }
   }, []);
+
+  // ── Update users.role (system role) ──────────────────────────────────────
+
+  const loadVaTeamOptions = useCallback(async () => {
+    if (vaTeamOptions || vaTeamOptionsLoading) return;
+    setVaTeamOptionsLoading(true);
+    const { data, error } = await supabase
+      .from('users')
+      .select('user_id, firstname, lastname, email, is_one_on_one_student, teams!teams_owner_id_fkey(id, name, is_warehouse)')
+      .eq('is_one_on_one_student', true);
+    if (error) {
+      console.error('Failed to fetch one-on-one student teams:', error.message);
+      setVaTeamOptionsLoading(false);
+      return;
+    }
+    const opts: TeamOwnerOption[] = [];
+    for (const u of data ?? []) {
+      const teams = Array.isArray(u.teams) ? u.teams : [];
+      for (const t of teams) {
+        if (!t || (t as { is_warehouse?: boolean }).is_warehouse) continue;
+        opts.push({
+          team_id: (t as { id: string }).id,
+          team_name: (t as { name: string }).name,
+          owner_user_id: u.user_id as string,
+          owner_name: `${u.firstname ?? ''} ${u.lastname ?? ''}`.trim() || (u.email as string).split('@')[0],
+          owner_email: u.email as string,
+        });
+      }
+    }
+    opts.sort((a, b) => a.owner_name.localeCompare(b.owner_name));
+    setVaTeamOptions(opts);
+    setVaTeamOptionsLoading(false);
+  }, [vaTeamOptions, vaTeamOptionsLoading]);
+
+  const requestRoleChange = (target: User, toRole: SystemRole) => {
+    if (target.role === toRole) return;
+    setRoleModalError(null);
+    setRoleModal({ user: target, toRole, teamId: '' });
+    if (toRole === 'va') void loadVaTeamOptions();
+  };
+
+  const submitRoleChange = async () => {
+    if (!roleModal) return;
+    if (roleModal.toRole === 'va' && !roleModal.teamId) {
+      setRoleModalError('Pick a team owner before continuing.');
+      return;
+    }
+    setRoleModalSubmitting(true);
+    setRoleModalError(null);
+    try {
+      const res = await fetch(`/api/admin/users/${roleModal.user.user_id}/role`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          role: roleModal.toRole,
+          team_id: roleModal.toRole === 'va' ? roleModal.teamId : undefined,
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json.ok) {
+        setRoleModalError(json.error ?? 'Role change failed.');
+        return;
+      }
+      // Optimistic: update the row locally so the badge flips before refetch.
+      setUsers((prev) => prev.map((u) =>
+        u.user_id === roleModal.user.user_id ? { ...u, role: roleModal.toRole } : u,
+      ));
+      setMessage(`Role updated to ${roleModal.toRole}.`);
+      setRoleModal(null);
+      // Best-effort refetch to pick up any server-side reconciliations.
+      void fetchUsers();
+    } catch (err) {
+      setRoleModalError(err instanceof Error ? err.message : 'Role change failed.');
+    } finally {
+      setRoleModalSubmitting(false);
+    }
+  };
 
   // ── Update platform_role ─────────────────────────────────────────────────
 
@@ -624,12 +766,44 @@ export default function ManageUsersPage() {
                   {/* Email */}
                   <DsTd className="text-neutral-400 text-xs">{u.email}</DsTd>
 
-                  {/* System Role */}
+                  {/* System Role — admin-editable dropdown matching the
+                      Platform Role dropdown styling next to it. Selecting a
+                      different value opens the confirmation modal; we don't
+                      mutate on bare onChange to avoid misclick demotions. */}
                   <DsTd>
-                    <DsStatusPill
-                      label={u.role}
-                      color={ROLE_COLOR[u.role.toLowerCase()] || DS.muted}
-                    />
+                    <Select
+                      value={u.role}
+                      onValueChange={(val) => requestRoleChange(u, val as SystemRole)}
+                      disabled={updatingUserId === u.user_id}
+                    >
+                      <SelectTrigger className="w-[110px] h-8 text-xs border-white/[0.08] bg-white/[0.03]">
+                        <SelectValue>
+                          <span
+                            className="flex items-center gap-1.5 uppercase tracking-wider"
+                            style={{ color: ROLE_COLOR[u.role.toLowerCase()] ?? DS.muted }}
+                          >
+                            <span
+                              className="w-1.5 h-1.5 rounded-full"
+                              style={{ backgroundColor: ROLE_COLOR[u.role.toLowerCase()] ?? DS.muted }}
+                            />
+                            {u.role}
+                          </span>
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent className="border-white/[0.08] bg-[#0a0a0a]/95 backdrop-blur-xl">
+                        {SYSTEM_ROLES.map((r) => (
+                          <SelectItem key={r} value={r} className="rounded-lg hover:bg-white/[0.04]">
+                            <span className="flex items-center gap-1.5 uppercase tracking-wider">
+                              <span
+                                className="w-1.5 h-1.5 rounded-full"
+                                style={{ backgroundColor: ROLE_COLOR[r] ?? DS.muted }}
+                              />
+                              {r}
+                            </span>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </DsTd>
 
                   {/* Platform Role dropdown */}
@@ -957,6 +1131,85 @@ export default function ManageUsersPage() {
           chatRoomName={managingRoom.name}
         />
       )}
+
+      {/* System-role change confirmation modal. Mirrors the existing buyers-
+          group/mentor-room modals — black backdrop, narrow card, copy varies
+          by transition (see modalCopy). VA conversion adds a team-owner
+          picker; everything else is a single confirm button. */}
+      {roleModal && (() => {
+        const fullName = `${roleModal.user.firstname ?? ''} ${roleModal.user.lastname ?? ''}`.trim() || roleModal.user.email;
+        const copy = modalCopy({
+          fromRole: (roleModal.user.role as SystemRole),
+          toRole: roleModal.toRole,
+          fullName,
+        });
+        const needsTeam = roleModal.toRole === 'va';
+        return (
+          <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+            <div
+              className="w-full max-w-lg rounded-2xl border p-6 space-y-4"
+              style={{ backgroundColor: DS.bg, borderColor: `${DS.orange}55` }}
+            >
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-[0.4em] text-neutral-500 mb-1">
+                  Role change · {roleModal.user.role} → {roleModal.toRole}
+                </p>
+                <h2 className="text-lg font-black text-white">{copy.title}</h2>
+                <p className="text-sm text-neutral-300 font-sans mt-2 leading-relaxed">{copy.body}</p>
+              </div>
+              {needsTeam && (
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-widest text-neutral-500 mb-1">
+                    Assign to team
+                  </label>
+                  <select
+                    value={roleModal.teamId}
+                    onChange={(e) => setRoleModal((m) => (m ? { ...m, teamId: e.target.value } : m))}
+                    className="w-full text-sm text-white rounded-lg px-3 py-2 border font-mono"
+                    style={{ backgroundColor: DS.inputBg, borderColor: 'rgba(255,255,255,0.1)' }}
+                    disabled={vaTeamOptionsLoading}
+                  >
+                    <option value="">
+                      {vaTeamOptionsLoading
+                        ? 'Loading teams…'
+                        : (vaTeamOptions?.length ?? 0) === 0
+                          ? 'No one-on-one student teams exist yet'
+                          : 'Pick a team owner…'}
+                    </option>
+                    {(vaTeamOptions ?? []).map((opt) => (
+                      <option key={opt.team_id} value={opt.team_id}>
+                        {opt.owner_name} — {opt.team_name}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-[10px] text-neutral-500 mt-1 uppercase tracking-widest">
+                    The selected student becomes the VA&apos;s team owner.
+                  </p>
+                </div>
+              )}
+              {roleModalError && (
+                <p className="text-xs text-rose-400 font-sans">{roleModalError}</p>
+              )}
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <DsButton variant="ghost" onClick={() => setRoleModal(null)} disabled={roleModalSubmitting}>
+                  Cancel
+                </DsButton>
+                <DsButton
+                  accent={DS.orange}
+                  onClick={submitRoleChange}
+                  disabled={roleModalSubmitting || (needsTeam && !roleModal.teamId)}
+                >
+                  {roleModalSubmitting ? (
+                    <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Updating…</>
+                  ) : (
+                    <><Check className="w-3.5 h-3.5" /> Confirm</>
+                  )}
+                </DsButton>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </PageShell>
   );
 }
