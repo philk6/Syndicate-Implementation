@@ -386,7 +386,7 @@ export default function UserDashboardPage() {
       {user?.user_id && activePhase && (
         <WeeklyCheckIn
           userId={user.user_id}
-          companyId={(user as { company_id?: number | null })?.company_id ?? null}
+          companyId={user?.company_id ?? null}
           phaseId={activePhase.id}
           phaseColor={activePhase.color}
           phaseName={activePhase.name}

@@ -99,8 +99,11 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const hasBuyersGroupAccess =
     user?.role === 'admin' || (user?.buyersgroup === true && user?.role !== 'va');
 
-  // Prep Portal visibility
-  const has1on1 = (user as { has_1on1_membership?: boolean })?.has_1on1_membership === true;
+  // Prep Portal visibility — has_1on1_membership now lives on AuthUser
+  // directly. The earlier `as` cast hid a fetch-shape mismatch (the
+  // column wasn't selected by fetchProfileOnce) which silently demoted
+  // every 1-on-1 student to "no Prep Portal access."
+  const has1on1 = user?.has_1on1_membership === true;
   const isAdmin = user?.role === 'admin';
   const isEmployee = user?.role === 'employee';
   const isVa = user?.role === 'va';

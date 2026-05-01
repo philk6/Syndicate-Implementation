@@ -47,6 +47,15 @@ interface AuthUser {
   tos_accepted: boolean;
   buyersgroup: boolean;
   is_one_on_one_student: boolean;
+  // Used by /prep + sidebar Prep Portal gate. Mismatch alert: this column
+  // had to be added explicitly because the previous fetch shape omitted
+  // it, and downstream code was reading it via `as` casts that silently
+  // returned undefined.
+  has_1on1_membership: boolean;
+  membership_end_date: string | null;
+  // Used by chat features (mentor designations); kept on the AuthUser so
+  // we don't need a second round-trip when rendering chat UI.
+  platform_role: 'student' | 'mentor' | 'none';
   totalXp: number;
   // Populated for roles 'employee' / 'va' via a joined fetch. null for
   // user / admin. Drives sidebar + clock-in behaviour.
@@ -117,18 +126,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   ): Promise<boolean> => {
     const userId = currentSession.user.id;
     const queryController = new AbortController();
-    // 6s per attempt — aligns with the Supabase browser client's new 10s hard
-    // timeout and leaves headroom for a second attempt + a render cycle.
+    // 4s per attempt. Real DB-side latency on this schema is 80-250ms;
+    // 4s is generous for cold starts and lets a failed first attempt + 2s
+    // back-off + retry still finish well inside the 12s STUCK-LOADING
+    // safety net in AuthProvider, so users never see the spinner-forever
+    // path on a transient network blip.
     const queryTimeout = setTimeout(() => {
-      console.warn('[auth] fetchProfileOnce: 6s timeout — aborting query');
+      console.warn('[auth] fetchProfileOnce: 4s timeout — aborting query');
       queryController.abort();
-    }, 6000);
+    }, 4000);
 
     try {
       const [userRes, xpRes, empRes] = await Promise.all([
         supabase
           .from('users')
-          .select('user_id, email, role, firstname, lastname, company_id, tos_accepted, buyersgroup, is_one_on_one_student')
+          .select('user_id, email, role, firstname, lastname, company_id, tos_accepted, buyersgroup, is_one_on_one_student, has_1on1_membership, membership_end_date, platform_role')
           .eq('user_id', userId)
           .abortSignal(queryController.signal)
           .single(),
@@ -163,6 +175,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         user_id: userRes.data.user_id ?? userId,
         email: userRes.data.email ?? currentSession.user.email,
         is_one_on_one_student: Boolean(userRes.data.is_one_on_one_student),
+        has_1on1_membership: Boolean(userRes.data.has_1on1_membership),
+        membership_end_date: (userRes.data.membership_end_date as string | null) ?? null,
+        platform_role: (userRes.data.platform_role as AuthUser['platform_role']) ?? 'none',
         totalXp: xpRes.data?.total_xp ?? 0,
         employee: empRes.data
           ? {

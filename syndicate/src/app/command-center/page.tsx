@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@lib/auth';
 import { supabase } from '@lib/supabase/client';
 import { PageLoadingSpinner } from '@/components/ui/loading-spinner';
-import { Zap, Radio, Lock } from 'lucide-react';
+import { Zap, Radio, Lock, AlertCircle, RefreshCw } from 'lucide-react';
 
 import { MissionControlBackground } from '@/components/command-center/MissionControlBackground';
 import { HeaderAnimatedBg } from '@/components/command-center/HeaderAnimatedBg';
@@ -23,6 +23,7 @@ export default function CommandCenterPage() {
   const router = useRouter();
 
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [firstname, setFirstname] = useState<string | undefined>(undefined);
   const [data, setData] = useState<MissionControlData | null>(null);
   const [activePhaseId, setActivePhaseId] = useState<number>(1);
@@ -30,6 +31,7 @@ export default function CommandCenterPage() {
   const fetchData = useCallback(async () => {
     if (!user?.user_id) return;
     setLoading(true);
+    setError(null);
     try {
       const [{ data: profile }, mc] = await Promise.all([
         supabase
@@ -47,7 +49,12 @@ export default function CommandCenterPage() {
       );
       setData(mc);
     } catch (err) {
+      // Surface the failure to the user instead of silently spinning. The
+      // catch was previously console-only, which is what produced Levon's
+      // infinite-spinner symptom — `data` stayed null and the render path
+      // below fell into the spinner branch with no escape.
       console.error('Error fetching command center data:', err);
+      setError(err instanceof Error ? err.message : 'Could not load Mission Control.');
     } finally {
       setLoading(false);
     }
@@ -59,7 +66,15 @@ export default function CommandCenterPage() {
       router.push('/login');
       return;
     }
-    if (!user?.user_id) return;
+    // Auth resolved + authenticated but profile is still null — the
+    // AuthProvider's profile fetch failed (cold start, RLS hiccup, etc.).
+    // Stop spinning so the user sees a recoverable error instead of a
+    // permanent grey screen.
+    if (!user?.user_id) {
+      setLoading(false);
+      setError('Could not load your profile. Try refreshing the page.');
+      return;
+    }
     fetchData();
   }, [isAuthenticated, authLoading, router, user?.user_id, fetchData]);
 
@@ -114,7 +129,11 @@ export default function CommandCenterPage() {
     return m;
   }, [data]);
 
-  if (authLoading || loading || !data) {
+  if (!isAuthenticated && !authLoading) return null;
+
+  // Spinner only while we're actually waiting on a request. Once an error
+  // is set or the profile is unavailable, fall through to the error card.
+  if ((authLoading || loading) && !error) {
     return (
       <>
         <MissionControlBackground />
@@ -122,7 +141,39 @@ export default function CommandCenterPage() {
       </>
     );
   }
-  if (!isAuthenticated) return null;
+
+  if (error || !data) {
+    return (
+      <>
+        <MissionControlBackground />
+        <div className="min-h-screen w-full font-mono flex items-center justify-center p-6">
+          <div
+            className="w-full max-w-md rounded-2xl border p-6 space-y-3"
+            style={{ borderColor: 'rgba(255,68,68,0.4)', backgroundColor: 'rgba(255,68,68,0.06)' }}
+          >
+            <div className="flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-mono uppercase tracking-widest text-rose-400">
+                  Could not load Mission Control
+                </p>
+                <p className="text-xs text-neutral-400 mt-1 font-sans leading-relaxed">
+                  {error ?? 'Mission data was unavailable. Try refreshing.'}
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => fetchData()}
+              className="text-[11px] font-bold font-mono uppercase tracking-widest px-3 py-1.5 rounded-lg border inline-flex items-center gap-2"
+              style={{ borderColor: 'rgba(255,68,68,0.4)', color: '#FF4444', backgroundColor: 'rgba(255,68,68,0.1)' }}
+            >
+              <RefreshCw className="w-3.5 h-3.5" /> Retry
+            </button>
+          </div>
+        </div>
+      </>
+    );
+  }
 
   const { rank, nextRank, xpToNextRank, progressPercent } = getRankProgress(data.totalXp);
   const missionsCompleted = data.missions.filter(

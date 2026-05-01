@@ -87,7 +87,7 @@ export default function PrepPortalPage() {
     const hasAccess =
       user?.role === 'admin' ||
       user?.role === 'employee' ||
-      (user as { has_1on1_membership?: boolean })?.has_1on1_membership === true;
+      user?.has_1on1_membership === true;
     if (!hasAccess) { router.push('/unauthorized'); return; }
     if (!user?.user_id) return;
     reload();
