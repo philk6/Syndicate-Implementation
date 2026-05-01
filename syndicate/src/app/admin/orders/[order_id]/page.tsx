@@ -312,33 +312,35 @@ export default function AdminOrderManagementPage() {
       console.error('Error fetching company applications:', applicationError);
       setCompanyApplications([]);
     } else if (applicationData && applicationData.length > 0) {
-      const companyApps = await Promise.all(
-        applicationData.map(async (app: CompanyApplicationResult) => {
-          const { data: ungatedData, error: ungatedError } = await supabase
-            .from('order_products_company')
-            .select('sequence')
-            .eq('order_id', currentOrderId)
-            .eq('company_id', app.company_id)
-            .eq('ungated', true);
+      // Single round-trip for ungated counts across every applying company.
+      // Replaces the previous N+1 (one query per application) which produced
+      // ~14 round-trips on busy orders. We pull the (company_id, sequence)
+      // pairs and tally per company in JS — sequence is unique within an
+      // order so each row counts as one ungated product.
+      const companyIds = applicationData.map((app) => app.company_id);
+      const { data: ungatedRows, error: ungatedError } = await supabase
+        .from('order_products_company')
+        .select('company_id')
+        .eq('order_id', currentOrderId)
+        .eq('ungated', true)
+        .in('company_id', companyIds);
 
-          if (ungatedError) {
-            console.error(`Error fetching ungated products for company ${app.company_id}:`, ungatedError);
-            return {
-              company_id: app.company_id,
-              company_name: app.company?.name || 'Unknown',
-              max_investment: app.max_investment,
-              ungated_count: 0,
-            };
-          }
+      if (ungatedError) {
+        console.error('Error fetching ungated products:', ungatedError);
+      }
 
-          return {
-            company_id: app.company_id,
-            company_name: app.company?.name || 'Unknown',
-            max_investment: app.max_investment,
-            ungated_count: ungatedData?.length || 0,
-          };
-        })
-      );
+      const ungatedCountByCompany = new Map<number, number>();
+      for (const row of ungatedRows ?? []) {
+        const cid = (row as { company_id: number }).company_id;
+        ungatedCountByCompany.set(cid, (ungatedCountByCompany.get(cid) ?? 0) + 1);
+      }
+
+      const companyApps = applicationData.map((app: CompanyApplicationResult) => ({
+        company_id: app.company_id,
+        company_name: app.company?.name || 'Unknown',
+        max_investment: app.max_investment,
+        ungated_count: ungatedCountByCompany.get(app.company_id) ?? 0,
+      }));
 
       const sortedApps = companyApps.sort((a, b) => b.max_investment - a.max_investment);
       setCompanyApplications(sortedApps);
